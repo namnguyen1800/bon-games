@@ -104,6 +104,7 @@
   // Mỗi bạn 1 "miệng": lời mới cắt lời cũ. Lời reo qua ống được ưu tiên: đang reo thì tap chỉ có "bộp".
   // iOS chỉ cho phát sau lần chạm đầu → sfxUnlock() gọi trong pointerdown/keydown.
   const SFX = { ctx: null, buf: {}, mouth: null, mouthKey: null, mouthEnd: 0, muted: false, log: [], tapsLeft: 0 };
+  const DEBUG = /[?&]debug/.test(location.search); // thêm "?debug" cuối link → hiện góc chữ nhỏ để chụp màn hình gửi Nam soi
   try { SFX.muted = localStorage.getItem('flappy_mute') === '1'; } catch(e) {}
   (function loadSounds() {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -116,7 +117,10 @@
         const bin = atob(src[id][k].split(',')[1]), arr = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
         // dạng callback: Safari cũ không trả promise
-        SFX.ctx.decodeAudioData(arr.buffer, function(buf) { SFX.buf[id][k] = buf; }, function() {});
+        SFX.ctx.decodeAudioData(arr.buffer, function(buf) { SFX.buf[id][k] = buf; }, function(e) {
+          const why = e && (e.name || e.message) ? (e.name || e.message) : '?';
+          SFX.log.push({ id: 'decodeErr', key: id + ':' + k + ':' + why, t: performance.now() });
+        });
       }
     }
   })();
@@ -135,7 +139,10 @@
     SFX.ctx.decodeAudioData(arr.buffer, function(buf) {
       if (SFX.buf[id]) SFX.buf[id][key] = buf; // cache lại cho lần sau
       cb(buf);
-    }, function() { SFX.log.push({ id: 'decodeErr', key: id + ':' + key, t: performance.now() }); });
+    }, function(e) {
+      const why = e && (e.name || e.message) ? (e.name || e.message) : '?';
+      SFX.log.push({ id: 'decodeErr', key: id + ':' + key + ':' + why, t: performance.now() });
+    });
   }
   // bạn nói 1 câu. soft = nhường nếu miệng đang bận (dùng cho tap, để không cắt lời reo)
   function say(id, key, soft) {
@@ -1040,6 +1047,21 @@
     }
     drawScene();
     if (shaking) ctx.restore();
+    drawDebugHud();
+  }
+
+  // góc chữ nhỏ (chỉ hiện khi link có "?debug"): loa đang mở/tắt, mấy tiếng vừa gọi phát — để Nam chụp màn hình gửi lại
+  function drawDebugHud() {
+    if (!DEBUG) return;
+    const lines = ['ctx: ' + (SFX.ctx ? SFX.ctx.state : 'none') + '  loa(nut game): ' + (SFX.muted ? 'TAT' : 'mo')];
+    for (const e of SFX.log.slice(-8)) lines.push(e.id + ':' + e.key);
+    ctx.save();
+    ctx.font = '11px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const pad = 5, lh = 13, w = 260, h = pad * 2 + lh * lines.length;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(4, 4, w, h);
+    ctx.fillStyle = '#3f3';
+    lines.forEach((l, i) => ctx.fillText(l, 4 + pad, 4 + pad + lh * i));
+    ctx.restore();
   }
 
   function drawScene() {
