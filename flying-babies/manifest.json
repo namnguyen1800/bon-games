@@ -1,0 +1,13 @@
+{
+  "name": "Bon's Flying Babies",
+  "short_name": "Bon's Babies",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#70c5ce",
+  "theme_color": "#70c5ce",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

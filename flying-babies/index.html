@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Bon's Flying Babies</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #70c5ce;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+    touch-action: none; font-family: -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; touch-action: none; }
+</style>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Babies">
+<meta name="theme-color" content="#70c5ce">
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+<canvas id="c"></canvas>
+<!-- hình Froggy nặn trong Blender (froggy3d/build_froggy.py → embed_sprites.py) -->
+<script src="froggy3d/sprites.js"></script>
+<!-- 3 bạn còn lại (friends3d/build_chicken.py, build_babyfrog.py, build_pillow.py → friends3d/embed_sprites.py) -->
+<script src="friends3d/sprites.js"></script>
+<!-- tiếng kêu 4 bạn (friends3d/build_sounds.py → sounds.js, giọng máy Edge TTS kéo cao/thấp) -->
+<script src="friends3d/sounds.js"></script>
+<script>
+(function(){
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
+  const H_REF = 600;
+  const GRAV = 1500, FLAP = -400, MAXV = 700, SPEED = 180, GAP = 160, PW = 70, SPACING = 220;
+
+  // 4 bạn bay — chỉ khác HÌNH, vùng va chạm y hệt nhau
+  const CHARS = [
+    { id: 'chicken',  name: 'Chicken Banana' },
+    { id: 'babyfrog', name: 'Baby Froggy' },
+    { id: 'froggy',   name: 'Froggy' },
+    { id: 'pillow',   name: 'Gối chút chút' },
+  ];
+
+  let W, H, DPR, S, groundY, groundH;
+  let bird, pipes, score, best, state, frameCount, deathTime, groundOffset;
+  let selectActors = [], selectCell = 0;
+  let fx = [], freezeT = 0, shakeT = 0, lastGag = null;
+
+  best = (function(){ try { return parseInt(localStorage.getItem('flappy_best') || '0', 10); } catch(e) { return 0; } })();
+  let charId = (function(){ try { return localStorage.getItem('flappy_char') || 'chicken'; } catch(e) { return 'chicken'; } })();
+  if (!CHARS.some(ch => ch.id === charId)) charId = 'chicken';
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    S = H / H_REF;
+    c.width = Math.floor(W * DPR);
+    c.height = Math.floor(H * DPR);
+    c.style.width = W + 'px';
+    c.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    groundH = 70 * S;
+    groundY = H - groundH;
+    if (bird) { if (state === 'SELECT') layoutSelect(); else reset(); }
+  }
+
+  // Mọi bạn dùng chung 1 bộ "lò xo": 4 lò xo nhanh (skirt) + 1 lò xo mềm (hat) + nhịp đạp (leg).
+  // Gà: 4 cánh váy + mũ. Baby Froggy: ly trà sữa + trân châu + vương miện. Froggy: bụng + 2 mắt. Gối: 4 góc gối.
+  function makeActor(id, x, y, r) {
+    return { id: id, x: x, y: y, r: r, vy: 0, wing: 0,
+      skirt: [0, 0, 0, 0], skirtV: [0, 0, 0, 0], hat: 0, hatV: 0, leg: 0,
+      // Froggy 3D: co giãn + hẹn giờ biểu cảm + trò lúc đụng
+      st: 0, stV: 0, face: 'idle', blinkT: 1 + Math.random() * 2, blinkOn: 0,
+      flapT: 0, winkT: 0, shockT: 0, phewT: 0, sweatT: 0,
+      vx: 0, ang: 0, spin: 0, gag: null, gagT: 0, gsx: 1, gsy: 1, gsxV: 0, gsyV: 0,
+      stuckT: 0, grounded: false, bounces: 0, wallX: null,
+      panicT: 0, screamed: false }; // Froggy: rơi hoảng đủ lâu → hét, tối đa 1 lần mỗi mạng
+  }
+
+  // ================= FROGGY 3D — hình chụp từ Blender =================
+  // Blender lo MẶT (mỗi biểu cảm 1 tấm), code lo CHUYỂN ĐỘNG (co giãn, xoay, sao, mồ hôi).
+  const FROG_IMG = {};
+  let frogReady = false;
+  (function loadFrog() {
+    const src = window.FROG_SPRITES || {};
+    const keys = Object.keys(src);
+    let left = keys.length;
+    for (const k of keys) {
+      const im = new Image();
+      im.onload = function() { if (--left === 0) frogReady = true; };
+      im.src = src[k];
+      FROG_IMG[k] = im;
+    }
+  })();
+  const FROG_FRAME = 3.4, FROG_CAMZ = 0.15; // khớp ORTHO / CAM_Z trong build_froggy.py
+  const GAGS = ['splat', 'dizzy', 'bounce'];
+  const GAG_TEXT = { splat: 'BẸP!', dizzy: 'Dizzy~', bounce: 'Boing boing!' }; // "BẸP!" giữ tiếng Việt — Nam chốt, funny
+  const TAU = Math.PI * 2;
+
+  // ================= TIẾNG KÊU — lời nói từ friends3d/sounds.js + tiếng động code tự tạo =================
+  // Mỗi bạn 1 "miệng": lời mới cắt lời cũ. Lời reo qua ống được ưu tiên: đang reo thì tap chỉ có "bộp".
+  // iOS chỉ cho phát sau lần chạm đầu → sfxUnlock() gọi trong pointerdown/keydown.
+  const SFX = { ctx: null, buf: {}, mouth: null, mouthKey: null, mouthEnd: 0, muted: false, log: [], tapsLeft: 0 };
+  try { SFX.muted = localStorage.getItem('flappy_mute') === '1'; } catch(e) {}
+  (function loadSounds() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { SFX.ctx = new AC(); } catch(e) { return; }
+    const src = window.FRIEND_SOUNDS || {};
+    for (const id of Object.keys(src)) {
+      SFX.buf[id] = {};
+      for (const k of Object.keys(src[id])) {
+        const bin = atob(src[id][k].split(',')[1]), arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        // dạng callback: Safari cũ không trả promise
+        SFX.ctx.decodeAudioData(arr.buffer, function(buf) { SFX.buf[id][k] = buf; }, function() {});
+      }
+    }
+  })();
+  function sfxUnlock() { if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
+  function sfxNow() { return SFX.ctx ? SFX.ctx.currentTime : 0; }
+  function sfxReady() { return Object.keys(SFX.buf).every(id => Object.keys(window.FRIEND_SOUNDS[id]).every(k => SFX.buf[id][k])); }
+  function setMuted(m) { SFX.muted = m; try { localStorage.setItem('flappy_mute', m ? '1' : '0'); } catch(e) {} if (m && SFX.mouth) { try { SFX.mouth.stop(); } catch(e) {} } }
+  // bạn nói 1 câu. soft = nhường nếu miệng đang bận (dùng cho tap, để không cắt lời reo)
+  function say(id, key, soft) {
+    SFX.log.push({ id: id, key: key, t: performance.now() }); // ghi cả khi tắt loa → phép kiểm đếm được
+    const buf = SFX.buf[id] && SFX.buf[id][key];
+    if (!buf || !SFX.ctx || SFX.muted) return;
+    if (soft && SFX.mouth && sfxNow() < SFX.mouthEnd) return;
+    if (SFX.mouth) { try { SFX.mouth.stop(); } catch(e) {} }
+    const s = SFX.ctx.createBufferSource(); s.buffer = buf;
+    s.connect(SFX.ctx.destination); s.start();
+    SFX.mouth = s; SFX.mouthKey = key; SFX.mouthEnd = sfxNow() + buf.duration;
+  }
+  function hush(key) { if (SFX.mouth && SFX.mouthKey === key) { try { SFX.mouth.stop(); } catch(e) {} SFX.mouth = null; } }
+  function pick(id, prefix) { // chọn ngẫu nhiên 1 trong các câu cùng nhóm (tap1/tap2/tap3…)
+    const ks = Object.keys((window.FRIEND_SOUNDS || {})[id] || {}).filter(k => k.indexOf(prefix) === 0);
+    return ks.length ? ks[Math.floor(Math.random() * ks.length)] : null;
+  }
+  // tiếng động không lời, code tự tạo (không cần file): 1 nốt tắt dần, có thể trượt cao độ + trễ
+  function tone(freq, dur, type, vol, slideTo, delay) {
+    if (!SFX.ctx || SFX.muted) return;
+    const t = sfxNow() + (delay || 0), o = SFX.ctx.createOscillator(), g = SFX.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(SFX.ctx.destination); o.start(t); o.stop(t + dur);
+  }
+  const NOISE = {
+    pop:   () => tone(300, 0.09, 'triangle', 0.18, 120),                                   // bộp — mỗi lần vỗ cánh
+    ding:  () => { tone(880, 0.12, 'sine', 0.12); tone(1320, 0.2, 'sine', 0.08, 0, 0.06); }, // qua ống
+    boing: () => tone(150, 0.3, 'square', 0.1, 480),                                       // mỗi cú nảy
+    best:  () => { tone(660, 0.2, 'triangle', 0.14); tone(880, 0.2, 'triangle', 0.14, 0, 0.13); tone(1100, 0.4, 'triangle', 0.14, 0, 0.26); }, // phá kỷ lục
+  };
+  function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); NOISE[k](); }
+
+  // ---- 3 bạn còn lại: mỗi bạn 1 bộ tấm + meta [o, cx, cz] (o = cạnh khung theo r, (cx, cz) = tâm khung, toạ độ Blender: z lên) ----
+  const FRIEND_IMG = {}, FRIEND_META = {}, friendReady = {};
+  (function loadFriends() {
+    const src = window.FRIEND_SPRITES || {};
+    for (const id of Object.keys(src)) {
+      FRIEND_IMG[id] = {}; FRIEND_META[id] = src[id].meta; friendReady[id] = false;
+      const keys = Object.keys(src[id].img);
+      let left = keys.length;
+      for (const k of keys) {
+        const im = new Image();
+        im.onload = function() { if (--left === 0) friendReady[id] = true; };
+        im.src = src[id].img[k];
+        FRIEND_IMG[id][k] = im;
+      }
+    }
+  })();
+  // bottom/top = khoảng từ tâm tới đáy / đỉnh hình (đơn vị r) → đứng trên đất, nằm ngửa thì đỉnh thành đáy. Froggy giữ số cũ y hệt.
+  const CHAR3D = {
+    froggy:   { bottom: 1.02, top: 1.22 },
+    chicken:  { bottom: 1.35, top: 1.3 },
+    babyfrog: { bottom: 1.1,  top: 1.15 },
+    pillow:   { bottom: 0.8,  top: 0.8 },
+  };
+  // chưa load xong hình thì bạn đó vẫn vẽ bằng code như bản cũ
+  function is3D(b) { return !!b && (b.id === 'froggy' ? frogReady : !!friendReady[b.id]); }
+  function restartMs() { return is3D(bird) ? 700 : 400; } // cần thêm chút để kịp thấy trò hề
+
+  function addFx(img, x, y, vx, vy, life, size, spin, grav) {
+    fx.push({ img: img, x: x, y: y, vx: vx, vy: vy, life: life, max: life, size: size,
+      rot: Math.random() * TAU, spin: spin, grav: grav });
+  }
+  function updateFx(dt) {
+    for (const p of fx) {
+      p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      p.rot += p.spin * dt; p.life -= dt;
+    }
+    fx = fx.filter(p => p.life > 0);
+  }
+  function drawFx() {
+    for (const p of fx) {
+      const im = FROG_IMG[p.img];
+      if (!im) continue;
+      const k = p.life / p.max, s = p.size * (0.6 + 0.4 * k);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 2);
+      ctx.translate(p.x, p.y);
+      // giọt mồ hôi: chóp nhọn chĩa ngược hướng bay
+      ctx.rotate(p.img === 'sweat' ? Math.atan2(-p.vx, p.vy) : p.rot);
+      ctx.drawImage(im, -s / 2, -s / 2, s, s);
+      ctx.restore();
+    }
+  }
+
+  // lúc bay: co giãn theo tốc độ + chọn mặt
+  function updateFrogFlight(b, dt, playing) {
+    const f = Math.max(-1, Math.min(1, b.vy / (MAXV * S)));
+    // bay lên → dài ra; rơi → lùn bè ra; đứng chờ → thở phập phồng
+    const target = (f < 0 ? -f * 0.2 : -f * 0.1) + (playing ? 0 : Math.sin(frameCount * 0.08 + (b.phase || 0)) * 0.03);
+    const a = (target - b.st) * 180 - b.stV * 12;
+    b.stV += a * dt; b.st += b.stV * dt;
+    b.blinkT -= dt;
+    if (b.blinkT <= 0) { b.blinkOn = 0.13; b.blinkT = 1.8 + Math.random() * 2.5; }
+    b.blinkOn -= dt; b.flapT -= dt; b.winkT -= dt; b.shockT -= dt; b.phewT -= dt;
+    let face = b.blinkOn > 0 ? 'blink' : 'idle';
+    if (playing) {
+      if (b.shockT > 0) face = 'shock';
+      else if (b.phewT > 0) face = 'phew';
+      else if (b.winkT > 0) face = 'wink';
+      else if (b.flapT > 0) face = 'flap';
+      else if (f > 0.8) face = 'panic';
+      else if (f > 0.3) face = 'fall';
+      // rơi hoảng liên tục quá 0.35s → Froggy hét "ôôôp" (chỉ 1 lần mỗi mạng, để không hét suốt màn)
+      b.panicT = face === 'panic' ? b.panicT + dt : 0;
+      if (b.id === 'froggy' && b.panicT > 0.35 && !b.screamed && b === bird) { b.screamed = true; say(b.id, 'scream'); }
+      if (face === 'panic') {
+        b.sweatT -= dt;
+        if (b.sweatT <= 0) {
+          b.sweatT = 0.14;
+          for (let s = -1; s <= 1; s += 2)
+            addFx('sweat', b.x + s * b.r * 0.9, b.y - b.r * 0.8,
+              s * (60 + Math.random() * 70) * S, -(120 + Math.random() * 80) * S, 0.45, b.r * 1.6, 0, 900 * S);
+        }
+      }
+    }
+    b.face = face;
+  }
+
+  // khoảng từ tâm tới đáy hình (nằm ngửa thì đỉnh thành đáy) — số lấy từ bảng CHAR3D
+  function bottomOf(b) {
+    const C = CHAR3D[b.id] || CHAR3D.froggy;
+    return b.r * (C.bottom + (C.top - C.bottom) * Math.max(0, -Math.cos(b.ang))) * b.gsy;
+  }
+  // sàn dưới chân: nóc ống dưới nếu đang đứng trong cột ống, không thì mặt đất
+  function floorAt(b) {
+    const hr = b.r * 0.8;
+    let floor = groundY;
+    for (const p of pipes) {
+      if (b.x + hr > p.x && b.x - hr < p.x + p.w && b.y < p.bottom) floor = Math.min(floor, p.bottom);
+    }
+    return floor;
+  }
+
+  // ---- 3 trò hề lúc đụng: BẸP dính ống / CHÓNG MẶT sao bay / NẢY như bóng rồi nằm ngửa ----
+  function startGag(b, hit) {
+    let g = GAGS[Math.floor(Math.random() * GAGS.length)];
+    if (g === lastGag) g = GAGS[(GAGS.indexOf(g) + 1 + Math.floor(Math.random() * 2)) % 3]; // không lặp trò 2 lần liền
+    if (window.__forceGag) g = window.__forceGag; // chỉ phép kiểm tự động đặt biến này
+    lastGag = g;
+    const r = b.r;
+    b.gag = g; b.gagT = 0; b.grounded = false; b.bounces = 0; b.ang = 0; b.spin = 0; b.wallX = null;
+    b.gsxV = 0; b.gsyV = 0;
+    freezeT = 0.12; shakeT = 0.3; // khựng 1 nhịp + rung màn → cú đụng thấy "mạnh"
+    const ix = hit.kind === 'side' ? b.x + r * 0.8 : b.x;
+    const iy = hit.kind === 'ground' ? b.y + r : hit.kind === 'ceil' ? b.y - r : b.y;
+    for (let i = 0; i < 6; i++) {
+      const an = Math.random() * TAU, sp = (150 + Math.random() * 180) * S;
+      addFx('star', ix, iy, Math.cos(an) * sp, Math.sin(an) * sp - 80 * S, 0.55,
+        r * (0.9 + Math.random() * 0.5), (Math.random() - 0.5) * 14, 600 * S);
+    }
+    // tiếng lúc đụng: bẹp/chóng mặt có câu riêng; nảy = Froggy hét, bạn khác kêu tiếng ngắn (boing thêm ở mỗi cú chạm đất)
+    say(b.id, g === 'bounce' ? (b.id === 'froggy' ? 'scream' : pick(b.id, 'tap')) : g);
+    if (g === 'splat') {
+      b.face = 'ouch'; b.stuckT = 0.6; b.vx = 0; b.vy = 0;
+      if (hit.kind === 'side') { b.gsx = 0.42; b.gsy = 1.35; b.wallX = hit.px; b.x = hit.px - r * 1.02 * b.gsx; } // dẹp lép dán vào mặt ống
+      else { b.gsx = 1.55; b.gsy = 0.45; }                                              // bẹp như bánh tráng
+      if (hit.kind === 'ground') b.y = groundY - bottomOf(b);
+    } else if (g === 'dizzy') {
+      b.face = 'dizzy'; b.vx = -90 * S; b.vy = -160 * S; b.gsx = 0.7; b.gsy = 1.25;
+    } else {
+      b.face = 'panic'; b.vx = -210 * S; b.vy = -430 * S; b.spin = -11; b.gsx = 0.6; b.gsy = 1.4;
+    }
+  }
+
+  function updateGag(b, dt) {
+    b.gagT += dt;
+    if (b.stuckT > 0) { b.stuckT -= dt; return; } // dính cứng trên ống 1 nhịp
+    // lò xo mềm như thạch đưa độ bẹp về bình thường
+    let ax = (1 - b.gsx) * 90 - b.gsxV * 7, ay = (1 - b.gsy) * 90 - b.gsyV * 7;
+    b.gsxV += ax * dt; b.gsx += b.gsxV * dt;
+    b.gsyV += ay * dt; b.gsy += b.gsyV * dt;
+    // dán ống: người phồng lại thì lùi ra, lưng vẫn áp mặt ống (không lấn vào trong ống)
+    if (b.wallX !== null) b.x = b.wallX - b.r * 1.02 * b.gsx;
+    if (!b.grounded) {
+      b.vy = Math.min(MAXV * S, b.vy + GRAV * S * (b.gag === 'splat' ? 0.4 : 1) * dt); // bẹp thì trượt từ từ
+      b.x += b.vx * dt; b.y += b.vy * dt; b.ang += b.spin * dt;
+      if (b.x < b.r * 1.3) { b.x = b.r * 1.3; b.vx = -b.vx * 0.4; }
+      const floor = floorAt(b);
+      // đang bay LÊN thì không tính là đáp đất — thân đang giãn dài (gsy 1.4) nên đáy hình vẫn lút dưới mặt đất,
+      // trò "nảy" lúc chết sát đất bị khoá cứng ngay nhịp đầu, không nảy lần nào (đo 09-15, có từ bản 09-14)
+      if (b.vy >= 0 && b.y + bottomOf(b) >= floor) {
+        if (b.gag === 'bounce' && b.vy > 140 * S && b.bounces < 2) {
+          b.vy = -b.vy * 0.45; b.vx *= 0.6; b.bounces++;
+          b.gsx = 1.45; b.gsy = 0.6; shakeT = Math.max(shakeT, 0.12);
+          noise('boing'); if (b.id !== 'froggy') say(b.id, pick(b.id, 'tap'), true); // Froggy đang hét thì để hét tiếp
+        } else {
+          b.grounded = true; b.vy = 0; b.vx = 0; b.spin = 0;
+          b.gsx = 1.35; b.gsy = 0.7; // đáp xuống bẹp nhẹ rồi nảy lại
+          if (b.gag !== 'dizzy') b.face = 'dizzy';
+          if (b.gag === 'bounce') b.ang = ((b.ang % TAU) + TAU) % TAU;
+        }
+        b.y = floor - bottomOf(b);
+      }
+    } else {
+      if (b.gag === 'bounce') b.ang += (Math.PI - b.ang) * Math.min(1, dt * 8); // lật nằm ngửa khoe bụng
+      if (b.gag === 'dizzy') b.ang = Math.sin(b.gagT * 7) * 0.22;              // lắc lư choáng váng
+      b.y = floorAt(b) - bottomOf(b);
+    }
+  }
+
+  function drawFrogFeet(b) {
+    const r = b.r, fr = 0.5 * r, fs = FROG_FRAME * fr, im = FROG_IMG.foot;
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.save();
+      ctx.translate(s * 0.5 * r, 0.8 * r);                                // hông
+      ctx.rotate(Math.PI - s * 0.35 + Math.sin(b.gagT * 18 + s) * 0.5); // đạp đạp
+      ctx.drawImage(im, -fs / 2, -fs / 2 - 1.4 * fr, fs, fs);
+      ctx.restore();
+    }
+  }
+
+  function drawFrog3D(b, rot) {
+    const r = b.r, sz = FROG_FRAME * r, im = FROG_IMG[b.face] || FROG_IMG.idle;
+    ctx.rotate(b.gag ? b.ang : rot * 0.7);
+    if (b.gag) ctx.scale(b.gsx, b.gsy);
+    else ctx.scale(1 - b.st * 0.55, 1 + b.st);
+    if (b.gag === 'bounce') drawFrogFeet(b);
+    ctx.drawImage(im, -sz / 2, -sz / 2 - FROG_CAMZ * r, sz, sz);
+  }
+
+  // ================= 3 BẠN CÒN LẠI — thân theo biểu cảm + mảnh rời gắn theo lò xo cũ =================
+  // part(): vẽ tấm `name` sao cho gốc (0,0) Blender rơi đúng điểm (x, z) tính theo r (z lên = -y màn hình), xoay `ang`.
+  // meta [o, cx, cz]: ảnh vuông cạnh o·r, tâm ảnh nằm tại (cx, cz) Blender → dời ảnh đúng bằng đó.
+  function part(b, name, x, z, ang) {
+    const im = FRIEND_IMG[b.id][name], m = FRIEND_META[b.id][name];
+    if (!im || !m) return;
+    const r = b.r, sz = m[0] * r;
+    ctx.save();
+    ctx.translate(x * r, -z * r);
+    if (ang) ctx.rotate(ang);
+    ctx.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz);
+    ctx.restore();
+  }
+  function faceFrame(b) { return FRIEND_IMG[b.id][b.face] ? b.face : 'idle'; }
+
+  function drawChicken3D(b, rot) {
+    const r = b.r, lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    // chân trước (váy rũ thì che, tốc lên thì lộ ra đạp) — hông (±0.3, -0.9), số như drawChicken cũ
+    for (let s = -1; s <= 1; s += 2) {
+      const swing = Math.sin(b.leg + (s > 0 ? Math.PI : 0)) * 0.9 * (0.15 + lift);
+      part(b, 'leg', s * 0.3, -0.9, swing);
+    }
+    part(b, faceFrame(b), 0, 0, 0);
+    // váy 4 cánh vỏ chuối ở eo z=-0.55 — góc tính theo MÀN HÌNH (trừ rot) y như bản cũ
+    const petals = [
+      { base: Math.PI / 2 - 0.95, side: -1 },
+      { base: Math.PI / 2 - 0.32, side: -1 },
+      { base: Math.PI / 2 + 0.32, side:  1 },
+      { base: Math.PI / 2 + 0.95, side:  1 },
+    ];
+    ctx.save();
+    ctx.translate(0, 0.55 * r);
+    ctx.rotate(-rot);
+    for (let i = 0; i < 4; i++) {
+      const p = petals[i], k = b.skirt[i];
+      part(b, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, p.base + p.side * k * 1.45 - Math.PI / 2);
+    }
+    ctx.restore();
+    // mũ đầu bếp trên đỉnh đầu z≈1.15: rơi → nhấc lên, vỗ cánh → ép xuống (b.hat -1..1)
+    part(b, 'hat', 0, 1.02 + b.hat * 0.55, -b.hat * 0.25);
+  }
+
+  function drawBabyFrog3D(b) {
+    part(b, faceFrame(b), 0, 0, 0);
+    // ly trà sữa (kèm 2 tay ôm + ống hút) lắc theo lò xo: rơi → văng ra trước
+    const ang = -b.skirt[0] * 0.55 + (b.skirt[1] - b.skirt[0]) * 0.8;
+    part(b, 'cup', 0.02, -0.32, ang);
+    // vương miện: lò xo mềm → rơi thì bật lên khỏi đầu, chỉ bật LÊN không tụt xuống che mặt
+    const crown = Math.max(-0.15, b.hat);
+    part(b, 'crown', 0, 0.84 + crown * 0.6, -crown * 0.3);
+  }
+
+  // Gối không có mặt → biểu cảm bằng DÁNG: nhăn (hẹp, cao) khi sốc/úi/hoảng, giãn (bè, mỏng) khi thở phào/nháy, phồng khi rơi.
+  // [tấm, co ngang, co dọc] — số co khớp wx/hz trong build_pillow.py để 4 góc vẫn dính đúng mép thân.
+  const PILLOW_POSE = { shock: ['tense', 0.78, 1.2], ouch: ['tense', 0.78, 1.2], panic: ['tense', 0.78, 1.2],
+                        phew: ['sag', 1.16, 0.8], wink: ['sag', 1.16, 0.8], fall: ['puff', 1, 1] };
+  function pillowPose(b) { return (FRIEND_IMG.pillow && PILLOW_POSE[b.face] && FRIEND_IMG.pillow[PILLOW_POSE[b.face][0]]) ? PILLOW_POSE[b.face] : ['idle', 1, 1]; }
+  function drawPillow3D(b) {
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    const up = i => Math.max(0, b.skirt[i]);
+    const [pose, kx, kz] = pillowPose(b);
+    // 4 góc vẽ TRƯỚC, thân đè lên → giấu mối nối. Bay → vỗ như cánh; rơi → tốc ngược lên, mỗi góc 1 lò xo.
+    const flap = Math.sin(b.wing) * 0.35 * (1 - Math.min(1, lift));
+    const C = [ // [tên, sx, sz, lò xo]
+      ['cornerTL', -1,  1, 0], ['cornerTR', 1,  1, 3],
+      ['cornerBL', -1, -1, 1], ['cornerBR', 1, -1, 2],
+    ];
+    for (const [name, sx, sz, i] of C) {
+      // góc phải ngẩng lên = xoay ngược chiều kim đồng hồ (âm), góc trái thì ngược lại
+      part(b, name, sx * 0.98 * kx, sz * 0.56 * kz, -sx * (flap * (sz > 0 ? 1 : 0.6) + up(i) * 0.9));
+    }
+    part(b, pose, 0, 0, 0);
+  }
+
+  function drawFriend3D(b, rot) {
+    const eff = b.gag ? b.ang : rot * 0.7;
+    ctx.rotate(eff);
+    if (b.gag) ctx.scale(b.gsx, b.gsy);
+    else ctx.scale(1 - b.st * 0.55, 1 + b.st);
+    if (b.id === 'chicken') drawChicken3D(b, eff);
+    else if (b.id === 'babyfrog') drawBabyFrog3D(b);
+    else drawPillow3D(b);
+  }
+
+  function drawDizzyStars(b) {
+    const r = b.r, im = FROG_IMG.star, hy = b.y - 1.4 * r * b.gsy;
+    for (let i = 0; i < 3; i++) {
+      const an = b.gagT * 5 + i * TAU / 3, s = r * (0.9 + 0.3 * Math.sin(an));
+      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(an);
+      ctx.drawImage(im, b.x + Math.cos(an) * r - s / 2, hy + Math.sin(an) * r * 0.3 - s / 2, s, s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function reset() {
+    bird = makeActor(charId, Math.min(W * 0.3, 180 * S), H * 0.42, 15 * S);
+    fx = []; freezeT = 0; shakeT = 0;
+    SFX.tapsLeft = 1; // tap đầu của mạng mới thì bạn nói chữ luôn cho vui, sau đó mới thưa ra
+    pipes = [];
+    score = 0;
+    state = 'READY';
+    frameCount = 0;
+    deathTime = 0;
+    groundOffset = 0;
+  }
+
+  // ---- màn chọn bạn: ngang = 4 bạn 1 hàng, dọc = 2x2 ----
+  function layoutSelect() {
+    const top = H * 0.26, bottom = groundY - 10 * S;
+    const landscape = W > H * 1.1;
+    const cols = landscape ? 4 : 2, rows = landscape ? 1 : 2;
+    const cellW = W / cols, cellH = (bottom - top) / rows;
+    selectCell = Math.min(cellW, cellH);
+    const r = selectCell * 0.16;
+    selectActors = CHARS.map((ch, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const cx = cellW * (col + 0.5), cy = top + cellH * (row + 0.42);
+      const a = makeActor(ch.id, cx, cy, r);
+      a.cy = cy; a.phase = i * 1.3; a.name = ch.name;
+      return a;
+    });
+  }
+
+  function enterSelect() {
+    state = 'SELECT';
+    pipes = [];
+    layoutSelect();
+  }
+
+  function pickChar(id) {
+    charId = id;
+    try { localStorage.setItem('flappy_char', id); } catch(e) {}
+    reset();
+    say(id, 'hello'); // chỉ chào lúc CHỌN bạn — chơi lại không chào lại
+  }
+
+  function spawnPipe() {
+    const gap = GAP * S, w = PW * S;
+    const top = (40 * S) + Math.random() * (groundY - gap - 80 * S);
+    pipes.push({ x: W + w, w: w, top: top, bottom: top + gap, passed: false });
+  }
+
+  function flap() {
+    if (state === 'READY' || state === 'PLAYING') {
+      state = 'PLAYING'; bird.vy = FLAP * S;
+      bird.flapT = 0.3; bird.stV += 4; // ếch: bật mặt "wheee" + giật dài người ra
+      // mỗi tap chỉ "bộp" nhỏ; cứ 3-6 tap mới nói chữ 1 lần, và nhường nếu đang reo (ChatGPT góp, Nam chốt 09-15)
+      noise('pop');
+      if (--SFX.tapsLeft <= 0) {
+        SFX.tapsLeft = 3 + Math.floor(Math.random() * 4);
+        say(bird.id, pick(bird.id, 'tap'), true);
+      }
+    }
+    else if (state === 'DEAD') { if (performance.now() - deathTime > restartMs()) reset(); }
+  }
+
+  function die(hit) {
+    state = 'DEAD';
+    deathTime = performance.now();
+    if (is3D(bird)) startGag(bird, hit || { kind: 'edge' });
+    if (score > best) { best = score; try { localStorage.setItem('flappy_best', String(best)); } catch(e) {} }
+  }
+
+  // Váy/mũ không gắn thẳng vào tốc độ rơi mà "đuổi theo" bằng lò xo:
+  // thân đổi hướng trước → váy chạy theo → nảy nhẹ rồi ổn định (như áo thật).
+  const SKIRT_K = [110, 135, 160, 185]; // độ cứng từng cánh, lệch nhau → không máy móc
+  const SKIRT_DAMP = 9;
+  const HAT_K = 60, HAT_DAMP = 7;
+  function updateCostume(b, dt) {
+    // mục tiêu: rơi (vy>0) → váy tốc lên tới 1; bay lên (vy<0) → cụp ôm thân tới -0.35
+    const fall = Math.max(-1, Math.min(1, b.vy / (MAXV * S)));
+    const target = fall > 0 ? fall : fall * 0.35;
+    for (let i = 0; i < 4; i++) {
+      const a = (target - b.skirt[i]) * SKIRT_K[i] - b.skirtV[i] * SKIRT_DAMP;
+      b.skirtV[i] += a * dt;
+      b.skirt[i] += b.skirtV[i] * dt;
+    }
+    // mũ: rơi → nhấc lên khỏi đầu; vỗ cánh bay lên → ép xuống. Lò xo mềm nên trễ hơn váy.
+    const hatTarget = -fall;
+    const ha = (hatTarget - b.hat) * HAT_K - b.hatV * HAT_DAMP;
+    b.hatV += ha * dt;
+    b.hat += b.hatV * dt;
+    // chân: váy càng tốc lên càng đạp nhanh
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    b.leg += dt * (6 + 22 * lift);
+  }
+
+  function update(dt) {
+    frameCount++;
+    if (shakeT > 0) shakeT -= dt;
+    if (freezeT > 0) { freezeT -= dt; return; } // khựng hình lúc đụng
+    updateFx(dt);
+    if (state === 'SELECT') {
+      // mỗi bạn nhấp nhô lệch nhịp; vy giả lập để trò ngố cũng chạy trên màn chọn
+      const t = frameCount / 60, w = 2.4;
+      for (const a of selectActors) {
+        a.vy = Math.sin(t * w + a.phase) * MAXV * S * 0.45; // nhún vừa phải — mạnh quá thì mũ gà đè lên mắt
+        a.y = a.cy - Math.cos(t * w + a.phase) * 10 * S;
+        a.wing += dt * 10;
+        updateCostume(a, dt);
+        if (is3D(a)) updateFrogFlight(a, dt, false);
+      }
+      groundOffset = (groundOffset + 40 * S * dt) % (24 * S);
+      return;
+    }
+    if (state === 'READY') {
+      bird.y = H * 0.42 + Math.sin(frameCount * 0.08) * 6 * S;
+      bird.leg += dt * 4;
+      bird.wing += dt * 6;
+      if (is3D(bird)) updateFrogFlight(bird, dt, false);
+      return;
+    }
+    if (state === 'PLAYING') {
+      bird.vy += GRAV * S * dt;
+      if (bird.vy > MAXV * S) bird.vy = MAXV * S;
+      bird.y += bird.vy * dt;
+      bird.wing += dt * 12;
+      updateCostume(bird, dt);
+      const sp = SPEED * S, hr = bird.r * 0.8;
+      for (const p of pipes) {
+        p.x -= sp * dt;
+        if (bird.x + hr > p.x && bird.x - hr < p.x + p.w) {
+          // đang lách giữa 2 ống: sát quá → ếch trợn mắt
+          const clear = Math.min(bird.y - hr - p.top, p.bottom - bird.y - hr);
+          p.minClear = Math.min(p.minClear === undefined ? Infinity : p.minClear, clear);
+          if (clear < 10 * S) bird.shockT = Math.max(bird.shockT, 0.25);
+        }
+        if (!p.passed && p.x + p.w < bird.x) {
+          p.passed = true; score++;
+          noise('ding');
+          if (score > best) noise('best');          // phá kỷ lục: leng keng ấm, khác tiếng qua ống
+          say(bird.id, pick(bird.id, 'pass'));      // reo — tap sau đó không cắt được (say(..., soft))
+          SFX.tapsLeft = 3 + Math.floor(Math.random() * 4); // vừa reo xong → đếm lại, khỏi nói chữ liền
+          if (p.minClear < 10 * S) bird.phewT = 0.8; // qua được rồi → thở phào
+          else bird.winkT = 0.35;                    // qua ngon → nháy mắt
+        }
+      }
+      if (is3D(bird)) updateFrogFlight(bird, dt, true);
+      pipes = pipes.filter(p => p.x + p.w > -20);
+      const last = pipes[pipes.length - 1];
+      if (!last || last.x < W - SPACING * S) spawnPipe();
+      groundOffset = (groundOffset + sp * dt) % (24 * S);
+      const hit = collide();
+      if (hit) die(hit);
+    }
+    else if (state === 'DEAD' && is3D(bird) && bird.gag) {
+      updateGag(bird, dt);
+    }
+    else if (state === 'DEAD') {
+      bird.vy += GRAV * S * dt;
+      if (bird.vy > MAXV * S) bird.vy = MAXV * S;
+      bird.y += bird.vy * dt;
+      if (bird.y + bird.r > groundY) { bird.y = groundY - bird.r; bird.vy = 0; }
+      updateCostume(bird, dt);
+    }
+  }
+
+  function collide() {
+    // vùng va chạm giữ nguyên bản cũ; chỉ báo thêm ĐỤNG KIỂU GÌ để ếch chọn tư thế bẹp
+    const b = bird, hr = b.r * 0.8;
+    if (b.y + hr >= groundY) return { kind: 'ground' };
+    if (b.y - hr <= 0) return { kind: 'ceil' };
+    for (const p of pipes) {
+      if (b.x + hr > p.x && b.x - hr < p.x + p.w) {
+        if (b.y - hr < p.top || b.y + hr > p.bottom) {
+          // tâm còn bên trái ống và ngang thân ống → đâm ngang mặt ống; còn lại = đụng mép miệng ống
+          const side = b.x < p.x && (b.y < p.top || b.y > p.bottom);
+          return { kind: side ? 'side' : 'edge', px: p.x };
+        }
+      }
+    }
+    return null;
+  }
+
+  function drawActor(b, rot) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    if (is3D(b)) { (b.id === 'froggy' ? drawFrog3D : drawFriend3D)(b, rot); ctx.restore(); return; }
+    ctx.rotate(rot);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (b.id === 'babyfrog') drawBabyFrog(b);
+    else if (b.id === 'froggy') drawFroggy(b);
+    else if (b.id === 'pillow') drawPillow(b);
+    else drawChicken(b, rot);
+    ctx.restore();
+  }
+
+  // ================= CHICKEN BANANA =================
+  function drawChicken(b, rot) {
+    const r = b.r;
+    const waistY = r * 0.55;          // eo — chỗ 4 cánh vỏ chuối gắn vào
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2); // váy tốc lên bao nhiêu (0..1)
+    const lw = Math.max(1, r * 0.1);
+
+    // ---- chân (vẽ TRƯỚC váy → váy rũ xuống thì che, tốc lên thì lộ ra đạp) ----
+    for (let s = -1; s <= 1; s += 2) {
+      const swing = Math.sin(b.leg + (s > 0 ? Math.PI : 0)) * 0.9 * (0.15 + lift);
+      ctx.save();
+      ctx.translate(s * r * 0.3, r * 0.9);
+      ctx.rotate(swing);
+      ctx.strokeStyle = '#43a047'; ctx.lineWidth = r * 0.28;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, r * 0.95); ctx.stroke();
+      ctx.fillStyle = '#ff9800';
+      ctx.beginPath(); ctx.ellipse(r * 0.15, r * 1.0, r * 0.42, r * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // ---- thân gà trắng bông (đầu tròn + thân bầu) ----
+    ctx.fillStyle = '#fffdf7';
+    ctx.strokeStyle = '#e0dcd0'; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.25, r * 0.85, r * 1.05, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -r * 0.45, r * 0.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // ---- váy = 4 cánh vỏ chuối. Góc tính theo MÀN HÌNH (trừ rot) để hất đúng chiều lên/xuống ----
+    // base = góc treo tự nhiên (PI/2 = thẳng xuống). side = cánh bên trái/phải. inner = cánh sát giữa.
+    const petals = [
+      { base: Math.PI / 2 - 0.95, side: -1 },
+      { base: Math.PI / 2 - 0.32, side: -1 },
+      { base: Math.PI / 2 + 0.32, side:  1 },
+      { base: Math.PI / 2 + 0.95, side:  1 },
+    ];
+    ctx.save();
+    ctx.translate(0, waistY);
+    ctx.rotate(-rot);
+    for (let i = 0; i < 4; i++) {
+      const p = petals[i], k = b.skirt[i];
+      // k>0: xoay ngược lên phía trên (tốc); k<0: xoay vào giữa (cụp ôm thân)
+      const ang = p.base + p.side * k * 1.45; // 1.45 rad ≈ tốc lên ngang vai, chưa che mặt
+      const L = r * 1.35, Wd = r * 0.42;
+      // ngọn cong thêm khi tốc lên → giống vạt áo bị gió hất
+      const curl = p.side * Math.max(0, k) * 0.9;
+      ctx.save();
+      ctx.rotate(ang - Math.PI / 2); // hình cánh vẽ dọc xuống (+y) → trừ PI/2 để ang=PI/2 là thẳng xuống
+      ctx.fillStyle = i === 1 || i === 2 ? '#fdd835' : '#f9c62b';
+      ctx.strokeStyle = '#e0a800'; ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(-Wd * 0.5, 0);
+      ctx.bezierCurveTo(-Wd * 1.1, L * 0.45, -Wd * 0.4 + curl * Wd, L * 0.95, curl * Wd * 1.6, L);
+      ctx.bezierCurveTo(Wd * 0.4 + curl * Wd, L * 0.95, Wd * 1.1, L * 0.45, Wd * 0.5, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // ---- mỏ cam ----
+    ctx.fillStyle = '#ff8a3d';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.55, -r * 0.5);
+    ctx.lineTo(r * 1.25, -r * 0.3);
+    ctx.lineTo(r * 0.55, -r * 0.12);
+    ctx.closePath(); ctx.fill();
+    // ---- mắt hạt nâu (rơi nhanh → trợn to) ----
+    ctx.fillStyle = '#5d4037';
+    ctx.beginPath(); ctx.arc(r * 0.35, -r * 0.62, r * (0.1 + 0.12 * lift), 0, Math.PI * 2); ctx.fill();
+
+    // ---- mũ đầu bếp: nhấc lên khi rơi, ép xuống khi vỗ cánh (b.hat -1..1, lò xo mềm → trễ) ----
+    ctx.save();
+    ctx.translate(-r * 0.05, -r * 1.15 - b.hat * r * 0.55);
+    ctx.rotate(-b.hat * 0.25);
+    // vành: sọc cam + xanh
+    ctx.fillStyle = '#ff8a3d';
+    ctx.fillRect(-r * 0.62, -r * 0.05, r * 1.24, r * 0.22);
+    ctx.fillStyle = '#2e7d32';
+    ctx.fillRect(-r * 0.62, -r * 0.05, r * 1.24, r * 0.09);
+    // chóp phồng
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#d6d2c8'; ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.arc(-r * 0.35, -r * 0.35, r * 0.4, 0, Math.PI * 2);
+    ctx.arc(r * 0.05, -r * 0.55, r * 0.48, 0, Math.PI * 2);
+    ctx.arc(r * 0.42, -r * 0.3, r * 0.36, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillRect(-r * 0.62, -r * 0.4, r * 1.24, r * 0.38);
+    ctx.restore();
+  }
+
+  // ================= BABY FROGGY (ếch nhỏ, vương miện, trà sữa) =================
+  function drawBabyFrog(b) {
+    const r = b.r, lw = Math.max(1, r * 0.08);
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    const G = '#cbe89e', GD = '#9fc56f';
+
+    // ---- 2 cục mắt trên đỉnh đầu (vẽ trước thân → thân che chân cục mắt) ----
+    ctx.fillStyle = G; ctx.strokeStyle = GD; ctx.lineWidth = lw;
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.beginPath(); ctx.arc(s * r * 0.5, -r * 0.78, r * 0.36, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    // ---- thân tròn trứng ----
+    ctx.beginPath(); ctx.ellipse(0, r * 0.1, r * 0.98, r * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // ---- bụng vàng ----
+    ctx.fillStyle = '#f2dc8c';
+    ctx.beginPath(); ctx.ellipse(0, r * 0.6, r * 0.58, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+
+    // ---- mắt đen + chấm trắng (rơi → trợn to) ----
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.fillStyle = '#1b1b1b';
+      ctx.beginPath(); ctx.arc(s * r * 0.5, -r * 0.8, r * 0.19 * (1 + 0.35 * lift), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(s * r * 0.5 + r * 0.06, -r * 0.86, r * 0.06, 0, Math.PI * 2); ctx.fill();
+    }
+    // ---- má hồng 3 gạch ----
+    ctx.strokeStyle = '#ee6f8f'; ctx.lineWidth = Math.max(1, r * 0.06);
+    for (let s = -1; s <= 1; s += 2) {
+      for (let k = 0; k < 3; k++) {
+        const x = s * r * (0.58 + k * 0.1);
+        ctx.beginPath(); ctx.moveTo(x, -r * 0.3); ctx.lineTo(x + s * r * 0.03, -r * 0.16); ctx.stroke();
+      }
+    }
+    // ---- miệng lượn sóng ----
+    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.38, -r * 0.36);
+    ctx.bezierCurveTo(-r * 0.3, -r * 0.18, -r * 0.1, -r * 0.2, 0, -r * 0.3);
+    ctx.bezierCurveTo(r * 0.1, -r * 0.2, r * 0.3, -r * 0.18, r * 0.38, -r * 0.36);
+    ctx.stroke();
+
+    // ---- ly trà sữa: lắc theo lò xo (rơi → văng ra trước), trân châu nảy trong ly ----
+    const px = r * 0.02, py = r * 0.32;
+    const ang = -b.skirt[0] * 0.55 + (b.skirt[1] - b.skirt[0]) * 0.8;
+    const cos = Math.cos(ang), sin = Math.sin(ang);
+    const tx = r * 0.05, ty = -r * 0.34;                       // đầu ống hút trong hệ toạ độ của ly
+    const topX = px + tx * cos - ty * sin, topY = py + tx * sin + ty * cos;
+    // ống hút từ miệng xuống ly
+    ctx.strokeStyle = '#f08c3a'; ctx.lineWidth = Math.max(1.5, r * 0.1);
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.28); ctx.lineTo(topX, topY); ctx.stroke();
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(ang);
+    const tw = r * 0.27, bw = r * 0.22, yt = -r * 0.26, yb = r * 0.36, ym = -r * 0.04;
+    // phần sữa phía trên
+    ctx.fillStyle = '#f1e4d2';
+    ctx.beginPath(); ctx.moveTo(-tw, yt); ctx.lineTo(tw, yt); ctx.lineTo(tw * 0.93, ym); ctx.lineTo(-tw * 0.93, ym); ctx.closePath(); ctx.fill();
+    // phần trà cam phía dưới
+    ctx.fillStyle = '#e39a4e';
+    ctx.beginPath(); ctx.moveTo(-tw * 0.93, ym); ctx.lineTo(tw * 0.93, ym); ctx.lineTo(bw, yb); ctx.lineTo(-bw, yb); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#c98a4c'; ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.beginPath(); ctx.moveTo(-tw, yt); ctx.lineTo(-bw, yb); ctx.lineTo(bw, yb); ctx.lineTo(tw, yt); ctx.stroke();
+    // trân châu
+    const bounce = Math.max(0, b.skirt[2]) * r * 0.14;
+    const pearls = [[-0.12, 0.05, 0], [0.1, 0.1, 1.3], [-0.02, 0.2, 2.1], [0.12, 0.27, 0.7], [-0.13, 0.28, 2.7]];
+    ctx.fillStyle = '#5a3a22';
+    for (const p of pearls) {
+      const dy = -Math.abs(Math.sin(b.leg * 1.4 + p[2])) * bounce;
+      ctx.beginPath(); ctx.arc(p[0] * r, p[1] * r + dy, r * 0.055, 0, Math.PI * 2); ctx.fill();
+    }
+    // nắp trắng phồng
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#ddd6cc'; ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.beginPath(); ctx.ellipse(0, yt - r * 0.04, tw * 1.08, r * 0.1, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // 2 tay ôm ly
+    ctx.fillStyle = G; ctx.strokeStyle = GD; ctx.lineWidth = lw;
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.beginPath(); ctx.ellipse(s * r * 0.3, r * 0.05, r * 0.13, r * 0.2, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+
+    // ---- vương miện vàng: lò xo mềm → rơi thì bật lên khỏi đầu, trễ 1 nhịp ----
+    ctx.save();
+    const crown = Math.max(-0.15, b.hat);                      // chỉ bật LÊN, không tụt xuống che mặt
+    ctx.translate(0, -r * 0.9 - crown * r * 0.6);
+    ctx.rotate(-crown * 0.3);
+    ctx.fillStyle = '#f3e27a'; ctx.strokeStyle = '#d4bd4f'; ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.3, 0);
+    ctx.lineTo(-r * 0.3, -r * 0.2);
+    ctx.lineTo(-r * 0.14, -r * 0.1);
+    ctx.lineTo(0, -r * 0.32);
+    ctx.lineTo(r * 0.14, -r * 0.1);
+    ctx.lineTo(r * 0.3, -r * 0.2);
+    ctx.lineTo(r * 0.3, 0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ================= FROGGY (ếch bự, bụng kem, má hồng) =================
+  function drawFroggy(b) {
+    const r = b.r, lw = Math.max(1, r * 0.08);
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    // 2 lò xo cứng khác nhau → hiệu số dao động lúc đổi hướng = bụng rung như thạch
+    const wob = b.skirt[0] - b.skirt[1];
+    const G = '#b5e163', GD = '#86b73f';
+
+    ctx.save();
+    ctx.scale(1 + 0.08 * lift + wob * 0.35, 1 - 0.08 * lift - wob * 0.35);
+    // ---- thân vuông bo tròn kiểu gối ôm ----
+    ctx.fillStyle = G; ctx.strokeStyle = GD; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.08, r * 1.05, r * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // ---- bụng kem to, lắc lệch theo thạch ----
+    ctx.fillStyle = '#efe9dc';
+    ctx.beginPath();
+    ctx.ellipse(wob * r * 0.2, r * 0.38 + wob * r * 0.12, r * 0.72 * (1 + wob * 0.15), r * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // ---- 2 cục mắt ở 2 góc trên, mỗi con 1 lò xo → nảy tưng tưng lệch nhau ----
+    for (let s = -1; s <= 1; s += 2) {
+      const k = b.skirt[s < 0 ? 2 : 3];
+      const ex = s * r * 0.62, ey = -r * 0.86 - Math.max(-0.3, k) * r * 0.38;
+      ctx.fillStyle = G; ctx.strokeStyle = GD; ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.arc(ex, ey, r * 0.33, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(ex, ey, r * 0.19 * (1 + 0.3 * lift), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, r * 0.04);
+      ctx.beginPath(); ctx.arc(ex, ey, r * 0.22 * (1 + 0.3 * lift), 0, Math.PI * 2); ctx.stroke();
+    }
+    // ---- mặt: 2 lỗ mũi, miệng cười, má hồng ----
+    ctx.fillStyle = '#222';
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.beginPath(); ctx.arc(s * r * 0.08, -r * 0.44, r * 0.035, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = '#222'; ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.beginPath(); ctx.arc(0, -r * 0.36, r * 0.15 * (1 - 0.4 * lift), 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.fillStyle = '#f4b6c6';
+    for (let s = -1; s <= 1; s += 2) {
+      ctx.beginPath(); ctx.ellipse(s * r * 0.52, -r * 0.3, r * 0.13, r * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ================= GỐI CHÚT CHÚT (gối hoa, viền hồng) =================
+  const FLOWERS = [ // [x, y] trong khung -1..1, màu, cỡ
+    [-0.55, -0.35, '#e0442e', 0.13], [0.35, -0.45, '#3a5f9e', 0.08], [0.05, 0.05, '#e0442e', 0.15],
+    [-0.2, 0.5, '#9aa7b3', 0.1], [0.62, 0.25, '#e0442e', 0.1], [-0.72, 0.3, '#3a5f9e', 0.07],
+    [0.3, 0.55, '#c8b9a6', 0.1], [-0.15, -0.6, '#9fc0dd', 0.09], [0.75, -0.15, '#3a5f9e', 0.06],
+  ];
+  function drawPillow(b) {
+    const r = b.r;
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    const hw = r * 1.15, hh = r * 0.72 * (1 + 0.3 * lift);      // rơi → phồng lên
+    const flap = Math.sin(b.wing) * r * 0.28 * (1 - Math.min(1, lift)); // bay → 4 góc vỗ như cánh
+    const up = i => Math.max(0, b.skirt[i]);
+    // 4 góc, mỗi góc 1 lò xo riêng → tốc ngược lên lệch nhịp nhau
+    const TL = [-hw, -hh - flap - up(0) * r * 0.5];
+    const TR = [ hw, -hh - flap - up(3) * r * 0.5];
+    const BR = [ hw,  hh - flap * 0.6 - up(2) * r * 0.65];
+    const BL = [-hw,  hh - flap * 0.6 - up(1) * r * 0.65];
+    const bul = r * (0.22 + 0.2 * lift);
+    const path = () => {
+      ctx.beginPath();
+      ctx.moveTo(TL[0], TL[1]);
+      ctx.quadraticCurveTo(0, (TL[1] + TR[1]) / 2 - bul, TR[0], TR[1]);
+      ctx.quadraticCurveTo(hw + bul, (TR[1] + BR[1]) / 2, BR[0], BR[1]);
+      ctx.quadraticCurveTo(0, (BR[1] + BL[1]) / 2 + bul, BL[0], BL[1]);
+      ctx.quadraticCurveTo(-hw - bul, (BL[1] + TL[1]) / 2, TL[0], TL[1]);
+      ctx.closePath();
+    };
+    path();
+    ctx.fillStyle = '#f8f3ea'; ctx.fill();
+    // hoa in trên vỏ gối (cắt theo viền gối)
+    ctx.save();
+    path(); ctx.clip();
+    for (const f of FLOWERS) {
+      const fx = f[0] * hw * 0.85, fy = f[1] * hh * 0.85, fr = f[3] * r;
+      ctx.fillStyle = f[2];
+      for (let k = 0; k < 5; k++) {
+        const a = k * Math.PI * 0.4;
+        ctx.beginPath(); ctx.arc(fx + Math.cos(a) * fr * 0.6, fy + Math.sin(a) * fr * 0.6, fr * 0.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // cành lá xám mảnh
+    ctx.strokeStyle = '#a9b0a3'; ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.beginPath(); ctx.moveTo(-hw * 0.8, hh * 0.7); ctx.quadraticCurveTo(-hw * 0.2, 0, hw * 0.1, -hh * 0.8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hw * 0.2, hh * 0.8); ctx.quadraticCurveTo(hw * 0.5, 0, hw * 0.85, -hh * 0.5); ctx.stroke();
+    ctx.restore();
+    // viền hồng
+    path();
+    ctx.strokeStyle = '#e8c9c0'; ctx.lineWidth = Math.max(1.5, r * 0.16); ctx.stroke();
+  }
+
+  function drawPipe(p) {
+    const capH = 24 * S;
+    ctx.fillStyle = '#43a047';
+    ctx.fillRect(p.x, 0, p.w, p.top - capH);
+    ctx.fillRect(p.x - 4 * S, p.top - capH, p.w + 8 * S, capH);
+    ctx.fillRect(p.x, p.bottom + capH, p.w, groundY - p.bottom - capH);
+    ctx.fillRect(p.x - 4 * S, p.bottom, p.w + 8 * S, capH);
+    ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 2 * S;
+    ctx.strokeRect(p.x, 0, p.w, p.top - capH);
+    ctx.strokeRect(p.x - 4 * S, p.top - capH, p.w + 8 * S, capH);
+    ctx.strokeRect(p.x, p.bottom + capH, p.w, groundY - p.bottom - capH);
+    ctx.strokeRect(p.x - 4 * S, p.bottom, p.w + 8 * S, capH);
+  }
+
+  function drawGround() {
+    ctx.fillStyle = '#8d6e63';
+    ctx.fillRect(0, groundY, W, groundH);
+    ctx.fillStyle = '#66bb6a';
+    ctx.fillRect(0, groundY, W, 14 * S);
+    ctx.fillStyle = '#a1887f';
+    for (let x = -groundOffset; x < W + 24 * S; x += 24 * S) {
+      ctx.fillRect(x, groundY + 22 * S, 12 * S, 6 * S);
+    }
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = '#70c5ce'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const clouds = [[W * 0.2, H * 0.15, 1.0], [W * 0.6, H * 0.25, 0.7], [W * 0.8, H * 0.1, 0.85]];
+    for (const cc of clouds) {
+      const cx = cc[0], cy = cc[1], sc = cc[2];
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22 * S * sc, 0, Math.PI * 2);
+      ctx.arc(cx + 20 * S * sc, cy + 6 * S * sc, 18 * S * sc, 0, Math.PI * 2);
+      ctx.arc(cx - 20 * S * sc, cy + 8 * S * sc, 16 * S * sc, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawText(txt, size, y, x) {
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 6 * S * Math.min(1, size / 28);
+    ctx.font = 'bold ' + (size * S) + 'px -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeText(txt, x === undefined ? W / 2 : x, y);
+    ctx.fillText(txt, x === undefined ? W / 2 : x, y);
+  }
+
+  // nút "Đổi bạn" góc trên trái — hiện lúc chờ bay và lúc thua
+  function swapBtn() { return { x: 14 * S, y: 14 * S, w: 112 * S, h: 38 * S }; }
+  // nút loa: góc trên PHẢI, luôn hiện mọi màn (kể cả lúc đang bay) để người lớn tắt được ngay
+  function muteBtn() { const d = 38 * S; return { x: W - 14 * S - d, y: 14 * S, w: d, h: d }; }
+  function drawMuteBtn() {
+    const b = muteBtn(), cx = b.x + b.w / 2, cy = b.y + b.h / 2, u = b.w / 38;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2 * S;
+    ctx.beginPath(); ctx.arc(cx, cy, b.w / 2, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2e6b73'; ctx.strokeStyle = '#2e6b73'; ctx.lineWidth = 2.4 * S * u;
+    ctx.beginPath();                                    // thân loa
+    ctx.moveTo(cx - 8 * u, cy - 3.5 * u); ctx.lineTo(cx - 4 * u, cy - 3.5 * u);
+    ctx.lineTo(cx + 1 * u, cy - 8 * u); ctx.lineTo(cx + 1 * u, cy + 8 * u);
+    ctx.lineTo(cx - 4 * u, cy + 3.5 * u); ctx.lineTo(cx - 8 * u, cy + 3.5 * u);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    if (SFX.muted) {                                    // tắt: dấu X
+      ctx.moveTo(cx + 5 * u, cy - 4 * u); ctx.lineTo(cx + 12 * u, cy + 4 * u);
+      ctx.moveTo(cx + 12 * u, cy - 4 * u); ctx.lineTo(cx + 5 * u, cy + 4 * u);
+    } else {                                            // bật: 2 vòng sóng
+      ctx.arc(cx + 2 * u, cy, 6 * u, -0.8, 0.8);
+      ctx.moveTo(cx + 10.6 * u, cy - 6.5 * u); ctx.arc(cx + 2 * u, cy, 10 * u, -0.7, 0.7);
+    }
+    ctx.stroke();
+  }
+  function canSwap() {
+    return state === 'READY' || (state === 'DEAD' && performance.now() - deathTime > restartMs());
+  }
+  function drawSwapBtn() {
+    const bt = swapBtn(), rr = bt.h / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2 * S;
+    ctx.beginPath();
+    ctx.moveTo(bt.x + rr, bt.y);
+    ctx.arcTo(bt.x + bt.w, bt.y, bt.x + bt.w, bt.y + bt.h, rr);
+    ctx.arcTo(bt.x + bt.w, bt.y + bt.h, bt.x, bt.y + bt.h, rr);
+    ctx.arcTo(bt.x, bt.y + bt.h, bt.x, bt.y, rr);
+    ctx.arcTo(bt.x, bt.y, bt.x + bt.w, bt.y, rr);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2e6b73';
+    ctx.font = 'bold ' + (17 * S) + 'px -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Switch baby', bt.x + bt.w / 2, bt.y + bt.h / 2 + 1 * S);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  function draw() {
+    const shaking = shakeT > 0;
+    if (shaking) {
+      const k = Math.min(1, shakeT / 0.3) * 7 * S;
+      ctx.save();
+      ctx.translate((Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
+    }
+    drawScene();
+    if (shaking) ctx.restore();
+  }
+
+  function drawScene() {
+    drawBackground();
+    if (state === 'SELECT') {
+      drawGround();
+      drawText('Pick your baby!', 34, H * 0.17);
+      for (const a of selectActors) {
+        const rot = Math.max(-0.35, Math.min(0.6, a.vy / (700 * S))) * 0.5;
+        drawActor(a, rot);
+        drawText(a.name, Math.max(14, Math.min(22, selectCell * 0.075 / S)), a.cy + a.r * 2.6, a.x);
+      }
+      drawMuteBtn();
+      return;
+    }
+    for (const p of pipes) drawPipe(p);
+    drawGround();
+    const rot = (state === 'PLAYING' || state === 'DEAD')
+      ? Math.max(-0.35, Math.min(0.6, bird.vy / (700 * S))) : 0; // nghiêng nhẹ thôi — người đứng thì váy mới thấy tốc LÊN
+    drawActor(bird, rot);
+    const frogGag = is3D(bird) && state === 'DEAD' && bird.gag;
+    if (frogGag && (bird.gag === 'dizzy' || bird.grounded)) drawDizzyStars(bird);
+    drawFx();
+    // score
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 6 * S;
+    ctx.font = 'bold ' + (48 * S) + 'px -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeText(String(score), W / 2, H * 0.15);
+    ctx.fillText(String(score), W / 2, H * 0.15);
+    ctx.font = 'bold ' + (16 * S) + 'px -apple-system, "Segoe UI", sans-serif';
+    ctx.lineWidth = 4 * S;
+    ctx.strokeText('Best: ' + best, W / 2, H * 0.15 + 24 * S);
+    ctx.fillText('Best: ' + best, W / 2, H * 0.15 + 24 * S);
+    if (state === 'READY') {
+      drawText('Tap to fly', 28, H * 0.5);
+      drawText('Space / Click to play', 16, H * 0.55);
+    }
+    else if (frogGag) {
+      // ếch không có chữ "thua" — chỉ hét tiếng hề, chữ bật to rồi co lại
+      const pop = 1 + 0.6 * Math.max(0, 1 - bird.gagT * 5);
+      drawText(GAG_TEXT[bird.gag], 44 * pop, H * 0.33);   // cao hơn chỗ ếch nằm để không đè lên ếch
+      if (canSwap()) drawText('Tap to fly again', 20, H * 0.4);
+    }
+    else if (state === 'DEAD') {
+      drawText('Game Over', 40, H * 0.45);
+      drawText('Tap to play again', 20, H * 0.52);
+    }
+    if (canSwap()) drawSwapBtn();
+    drawMuteBtn();
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.05) dt = 0.05; // clamp delta (tránh bug khi tab bị background)
+    if (dt < 0) dt = 0;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function onTap(x, y) {
+    {                                        // nút loa bắt trước mọi thứ, ở mọi màn
+      const m = muteBtn();
+      if (x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h) { setMuted(!SFX.muted); return; }
+    }
+    if (state === 'SELECT') {
+      // chạm gần bạn nào nhất (trong phạm vi ô của bạn đó) thì chọn bạn đó
+      let bestA = null, bestD = Infinity;
+      for (const a of selectActors) {
+        const d = Math.hypot(x - a.x, y - a.cy);
+        if (d < bestD) { bestD = d; bestA = a; }
+      }
+      if (bestA && bestD < selectCell * 0.5) pickChar(bestA.id);
+      return;
+    }
+    if (canSwap()) {
+      const bt = swapBtn();
+      if (x >= bt.x && x <= bt.x + bt.w && y >= bt.y && y <= bt.y + bt.h) { enterSelect(); return; }
+    }
+    flap();
+  }
+
+  window.addEventListener('resize', resize);
+  // iOS/Safari chỉ cho phát tiếng sau lần chạm đầu → mở loa ngay trong tay của người chơi
+  document.addEventListener('pointerdown', function(e) { e.preventDefault(); sfxUnlock(); onTap(e.clientX, e.clientY); });
+  window.addEventListener('keydown', function(e) {
+    sfxUnlock();
+    if (e.code === 'KeyM') { e.preventDefault(); setMuted(!SFX.muted); return; }
+    if (state === 'SELECT') {
+      const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+      if (n >= 0) { e.preventDefault(); pickChar(CHARS[n].id); }
+      else if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); pickChar(charId); }
+      return;
+    }
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); flap(); }
+  });
+
+  // cửa cho phép kiểm tự động — chỉ mở khi link có ?test, người chơi không bao giờ thấy
+  if (/[?&]test/.test(location.search)) {
+    window.__g = {
+      st: () => ({ state: state, id: bird.id, face: bird.face, gag: bird.gag, grounded: bird.grounded,
+        x: bird.x, y: bird.y, r: bird.r, vy: bird.vy, ang: bird.ang, gsx: bird.gsx, gsy: bird.gsy, wallX: bird.wallX, frogReady: frogReady, ready: Object.assign({ froggy: frogReady }, friendReady),
+        fx: fx.length, score: score, H: H, groundY: groundY }),
+      pipes: () => pipes.map(p => ({ x: p.x, w: p.w, top: p.top, bottom: p.bottom })),
+      // sổ tiếng kêu: mọi lần say()/noise() đều ghi vào đây, kể cả lúc tắt loa hoặc chưa decode xong
+      sfx: () => ({ log: SFX.log.map(e => e.id + ':' + e.key), muted: SFX.muted, ready: sfxReady(),
+        clips: Object.keys(SFX.buf).map(id => id + ':' + Object.keys(SFX.buf[id]).length) }),
+      sfxClear: () => { SFX.log.length = 0; },
+      setMuted: setMuted,
+      tapMute: () => { const m = muteBtn(); onTap(m.x + m.w / 2, m.y + m.h / 2); },
+    };
+  }
+
+  resize();
+  reset();
+  enterSelect();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
