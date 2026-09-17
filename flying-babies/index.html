@@ -136,6 +136,14 @@
     SFX.mouth = s; SFX.mouthKey = key; SFX.mouthEnd = sfxNow() + buf.duration;
   }
   function hush(key) { if (SFX.mouth && SFX.mouthKey === key) { try { SFX.mouth.stop(); } catch(e) {} SFX.mouth = null; } }
+  // hiệu ứng dùng giọng thật nhưng KHÔNG qua "miệng" chung — để khỏi cắt lời hét đang phát cùng lúc (vd lúc nảy đất)
+  function fxSay(key) {
+    SFX.log.push({ id: 'fx', key: key, t: performance.now() });
+    const buf = SFX.buf._fx && SFX.buf._fx[key];
+    if (!buf || !SFX.ctx || SFX.muted) return;
+    const s = SFX.ctx.createBufferSource(); s.buffer = buf;
+    s.connect(SFX.ctx.destination); s.start();
+  }
   function pick(id, prefix) { // chọn ngẫu nhiên 1 trong các câu cùng nhóm (tap1/tap2/tap3…)
     const ks = Object.keys((window.FRIEND_SOUNDS || {})[id] || {}).filter(k => k.indexOf(prefix) === 0);
     return ks.length ? ks[Math.floor(Math.random() * ks.length)] : null;
@@ -152,7 +160,6 @@
   const NOISE = {
     pop:   () => tone(300, 0.09, 'triangle', 0.18, 120),                                   // bộp — mỗi lần vỗ cánh
     ding:  () => { tone(880, 0.12, 'sine', 0.12); tone(1320, 0.2, 'sine', 0.08, 0, 0.06); }, // qua ống
-    boing: () => tone(150, 0.3, 'square', 0.1, 480),                                       // mỗi cú nảy
     best:  () => { tone(660, 0.2, 'triangle', 0.14); tone(880, 0.2, 'triangle', 0.14, 0, 0.13); tone(1100, 0.4, 'triangle', 0.14, 0, 0.26); }, // phá kỷ lục
   };
   function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); NOISE[k](); }
@@ -228,9 +235,9 @@
       else if (b.flapT > 0) face = 'flap';
       else if (f > 0.8) face = 'panic';
       else if (f > 0.3) face = 'fall';
-      // rơi hoảng liên tục quá 0.35s → Froggy hét "ôôôp" (chỉ 1 lần mỗi mạng, để không hét suốt màn)
+      // rơi hoảng liên tục quá 0.35s → hét (chỉ 1 lần mỗi mạng, để không hét suốt màn)
       b.panicT = face === 'panic' ? b.panicT + dt : 0;
-      if (b.id === 'froggy' && b.panicT > 0.35 && !b.screamed && b === bird) { b.screamed = true; say(b.id, 'scream'); }
+      if (b.panicT > 0.35 && !b.screamed && b === bird) { b.screamed = true; say(b.id, 'scream'); }
       if (face === 'panic') {
         b.sweatT -= dt;
         if (b.sweatT <= 0) {
@@ -276,8 +283,8 @@
       addFx('star', ix, iy, Math.cos(an) * sp, Math.sin(an) * sp - 80 * S, 0.55,
         r * (0.9 + Math.random() * 0.5), (Math.random() - 0.5) * 14, 600 * S);
     }
-    // tiếng lúc đụng: bẹp/chóng mặt có câu riêng; nảy = Froggy hét, bạn khác kêu tiếng ngắn (boing thêm ở mỗi cú chạm đất)
-    say(b.id, g === 'bounce' ? (b.id === 'froggy' ? 'scream' : pick(b.id, 'tap')) : g);
+    // tiếng lúc đụng: bẹp/chóng mặt có câu riêng; nảy = hét ("Bẹp!" thêm ở mỗi cú chạm đất, xem updateGag)
+    say(b.id, g === 'bounce' ? 'scream' : g);
     if (g === 'splat') {
       b.face = 'ouch'; b.stuckT = 0.6; b.vx = 0; b.vy = 0;
       if (hit.kind === 'side') { b.gsx = 0.42; b.gsy = 1.35; b.wallX = hit.px; b.x = hit.px - r * 1.02 * b.gsx; } // dẹp lép dán vào mặt ống
@@ -310,7 +317,7 @@
         if (b.gag === 'bounce' && b.vy > 140 * S && b.bounces < 2) {
           b.vy = -b.vy * 0.45; b.vx *= 0.6; b.bounces++;
           b.gsx = 1.45; b.gsy = 0.6; shakeT = Math.max(shakeT, 0.12);
-          noise('boing'); if (b.id !== 'froggy') say(b.id, pick(b.id, 'tap'), true); // Froggy đang hét thì để hét tiếp
+          fxSay('bep'); // nói "Bẹp!" mỗi cú chạm đất, không cắt lời hét đang phát
         } else {
           b.grounded = true; b.vy = 0; b.vx = 0; b.spin = 0;
           b.gsx = 1.35; b.gsy = 0.7; // đáp xuống bẹp nhẹ rồi nảy lại
