@@ -122,27 +122,43 @@
   })();
   function sfxUnlock() { if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
   function sfxNow() { return SFX.ctx ? SFX.ctx.currentTime : 0; }
-  function sfxReady() { return Object.keys(SFX.buf).every(id => Object.keys(window.FRIEND_SOUNDS[id]).every(k => SFX.buf[id][k])); }
+  function sfxReady() { const ids = Object.keys(SFX.buf); return ids.length > 0 && ids.every(id => Object.keys(window.FRIEND_SOUNDS[id]).every(k => SFX.buf[id][k])); }
   function setMuted(m) { SFX.muted = m; try { localStorage.setItem('flappy_mute', m ? '1' : '0'); } catch(e) {} if (m && SFX.mouth) { try { SFX.mouth.stop(); } catch(e) {} } }
+  // buffer chưa giải mã kịp lúc cần phát (máy chậm/mới mở trang) → giải mã ngay lúc đó rồi phát, không bỏ cuộc im lặng
+  function playWhenReady(id, key, cb) {
+    const have = SFX.buf[id] && SFX.buf[id][key];
+    if (have) { cb(have); return; }
+    const raw = window.FRIEND_SOUNDS && window.FRIEND_SOUNDS[id] && window.FRIEND_SOUNDS[id][key];
+    if (!raw || !SFX.ctx) return;
+    const bin = atob(raw.split(',')[1]), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    SFX.ctx.decodeAudioData(arr.buffer, function(buf) {
+      if (SFX.buf[id]) SFX.buf[id][key] = buf; // cache lại cho lần sau
+      cb(buf);
+    }, function() { SFX.log.push({ id: 'decodeErr', key: id + ':' + key, t: performance.now() }); });
+  }
   // bạn nói 1 câu. soft = nhường nếu miệng đang bận (dùng cho tap, để không cắt lời reo)
   function say(id, key, soft) {
     SFX.log.push({ id: id, key: key, t: performance.now() }); // ghi cả khi tắt loa → phép kiểm đếm được
-    const buf = SFX.buf[id] && SFX.buf[id][key];
-    if (!buf || !SFX.ctx || SFX.muted) return;
+    if (!SFX.ctx || SFX.muted) return;
     if (soft && SFX.mouth && sfxNow() < SFX.mouthEnd) return;
-    if (SFX.mouth) { try { SFX.mouth.stop(); } catch(e) {} }
-    const s = SFX.ctx.createBufferSource(); s.buffer = buf;
-    s.connect(SFX.ctx.destination); s.start();
-    SFX.mouth = s; SFX.mouthKey = key; SFX.mouthEnd = sfxNow() + buf.duration;
+    playWhenReady(id, key, function(buf) {
+      if (soft && SFX.mouth && sfxNow() < SFX.mouthEnd) return; // giải mã xong hơi trễ, lúc này đã có lời khác đang nói → vẫn nhường
+      if (SFX.mouth) { try { SFX.mouth.stop(); } catch(e) {} }
+      const s = SFX.ctx.createBufferSource(); s.buffer = buf;
+      s.connect(SFX.ctx.destination); s.start();
+      SFX.mouth = s; SFX.mouthKey = key; SFX.mouthEnd = sfxNow() + buf.duration;
+    });
   }
   function hush(key) { if (SFX.mouth && SFX.mouthKey === key) { try { SFX.mouth.stop(); } catch(e) {} SFX.mouth = null; } }
   // hiệu ứng dùng giọng thật nhưng KHÔNG qua "miệng" chung — để khỏi cắt lời hét đang phát cùng lúc (vd lúc nảy đất)
   function fxSay(key) {
     SFX.log.push({ id: 'fx', key: key, t: performance.now() });
-    const buf = SFX.buf._fx && SFX.buf._fx[key];
-    if (!buf || !SFX.ctx || SFX.muted) return;
-    const s = SFX.ctx.createBufferSource(); s.buffer = buf;
-    s.connect(SFX.ctx.destination); s.start();
+    if (!SFX.ctx || SFX.muted) return;
+    playWhenReady('_fx', key, function(buf) {
+      const s = SFX.ctx.createBufferSource(); s.buffer = buf;
+      s.connect(SFX.ctx.destination); s.start();
+    });
   }
   function pick(id, prefix) { // chọn ngẫu nhiên 1 trong các câu cùng nhóm (tap1/tap2/tap3…)
     const ks = Object.keys((window.FRIEND_SOUNDS || {})[id] || {}).filter(k => k.indexOf(prefix) === 0);
@@ -1136,6 +1152,8 @@
       sfx: () => ({ log: SFX.log.map(e => e.id + ':' + e.key), muted: SFX.muted, ready: sfxReady(),
         clips: Object.keys(SFX.buf).map(id => id + ':' + Object.keys(SFX.buf[id]).length) }),
       sfxClear: () => { SFX.log.length = 0; },
+      // giả lập "chưa giải mã kịp": xoá 1 buffer đã có, để kiểm máy có tự giải mã lại lúc cần phát không
+      clearBuf: (id, key) => { if (SFX.buf[id]) delete SFX.buf[id][key]; },
       setMuted: setMuted,
       tapMute: () => { const m = muteBtn(); onTap(m.x + m.w / 2, m.y + m.h / 2); },
     };
