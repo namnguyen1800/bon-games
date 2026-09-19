@@ -45,6 +45,7 @@
 
   let W, H, DPR, S, groundY, groundH;
   let bird, pipes, score, best, state, frameCount, deathTime, groundOffset;
+  let paused = false; // chỉ bật được lúc đang bay (PLAYING); không đổi `state` — chỉ khựng update()
   let selectActors = [], selectCell = 0;
   let fx = [], freezeT = 0, shakeT = 0, lastGag = null;
 
@@ -564,6 +565,7 @@
   }
 
   function update(dt) {
+    if (paused) return; // đứng hình toàn bộ — vật lý/ống/điểm/hoạt hình đều không nhích
     frameCount++;
     if (shakeT > 0) shakeT -= dt;
     if (freezeT > 0) { freezeT -= dt; return; } // khựng hình lúc đụng
@@ -1017,6 +1019,50 @@
     }
     ctx.stroke();
   }
+  // nút Pause — hình chữ nhật bo góc, cạnh TRÁI nút loa; chỉ hiện lúc đang bay (PLAYING)
+  function pauseBtn() { const w = 112 * S, h = 38 * S, m = muteBtn(); return { x: m.x - 10 * S - w, y: m.y, w: w, h: h }; }
+  function canPause() { return state === 'PLAYING'; }
+  function drawPauseBtn() {
+    const bt = pauseBtn(), rr = bt.h / 2, u = bt.h / 38;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2 * S;
+    ctx.beginPath();
+    ctx.moveTo(bt.x + rr, bt.y);
+    ctx.arcTo(bt.x + bt.w, bt.y, bt.x + bt.w, bt.y + bt.h, rr);
+    ctx.arcTo(bt.x + bt.w, bt.y + bt.h, bt.x, bt.y + bt.h, rr);
+    ctx.arcTo(bt.x, bt.y + bt.h, bt.x, bt.y, rr);
+    ctx.arcTo(bt.x, bt.y, bt.x + bt.w, bt.y, rr);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    const cx = bt.x + bt.w / 2, cy = bt.y + bt.h / 2;
+    ctx.fillStyle = '#2e6b73';
+    if (paused) {                                       // ▶ play
+      ctx.beginPath();
+      ctx.moveTo(cx - 6 * u, cy - 9 * u);
+      ctx.lineTo(cx - 6 * u, cy + 9 * u);
+      ctx.lineTo(cx + 9 * u, cy);
+      ctx.closePath(); ctx.fill();
+    } else {                                             // ⏸ 2 vạch
+      ctx.fillRect(cx - 9 * u, cy - 9 * u, 5.5 * u, 18 * u);
+      ctx.fillRect(cx + 3.5 * u, cy - 9 * u, 5.5 * u, 18 * u);
+    }
+  }
+  // Lúc Pause: nền tối lại + chữ "Paused" + dải 1/3 bên phải chạm để chơi tiếp (Nam chọn 09-18 vì thuận tay phải trên iPad)
+  function drawPauseOverlay() {
+    ctx.fillStyle = 'rgba(10,20,20,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    drawText('Paused', 44, H * 0.42);
+    const zx = W * (2 / 3);
+    ctx.fillStyle = 'rgba(238,111,143,0.22)';
+    ctx.fillRect(zx, 0, W - zx, H);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(238,111,143,0.9)';
+    ctx.setLineDash([8 * S, 6 * S]);
+    ctx.lineWidth = 3 * S;
+    ctx.beginPath(); ctx.moveTo(zx, 0); ctx.lineTo(zx, H); ctx.stroke();
+    ctx.restore();
+    drawText('touch here', 15, H * 0.5, zx + (W - zx) / 2);
+    drawText('to play', 15, H * 0.5 + 20 * S, zx + (W - zx) / 2);
+  }
   function canSwap() {
     return state === 'READY' || (state === 'DEAD' && performance.now() - deathTime > restartMs());
   }
@@ -1113,6 +1159,8 @@
     }
     if (canSwap()) drawSwapBtn();
     drawMuteBtn();
+    if (canPause()) drawPauseBtn();
+    if (paused) drawPauseOverlay();
   }
 
   let last = performance.now();
@@ -1130,6 +1178,14 @@
     {                                        // nút loa bắt trước mọi thứ, ở mọi màn
       const m = muteBtn();
       if (x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h) { setMuted(!SFX.muted); return; }
+    }
+    if (canPause()) {
+      const pb = pauseBtn();
+      if (x >= pb.x && x <= pb.x + pb.w && y >= pb.y && y <= pb.y + pb.h) { paused = !paused; return; }
+      if (paused) {
+        if (x >= W * (2 / 3)) paused = false;  // dải 1/3 bên phải: chạm để chơi tiếp
+        return;                                // đang Pause thì mọi chạm khác không làm gì (khỏi lỡ tay bay)
+      }
     }
     if (state === 'SELECT') {
       // chạm gần bạn nào nhất (trong phạm vi ô của bạn đó) thì chọn bạn đó
@@ -1154,6 +1210,8 @@
   window.addEventListener('keydown', function(e) {
     sfxUnlock();
     if (e.code === 'KeyM') { e.preventDefault(); setMuted(!SFX.muted); return; }
+    if (e.code === 'KeyP' && canPause()) { e.preventDefault(); paused = !paused; return; }
+    if (paused) return;
     if (state === 'SELECT') {
       const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
       if (n >= 0) { e.preventDefault(); pickChar(CHARS[n].id); }
@@ -1168,7 +1226,7 @@
     window.__g = {
       st: () => ({ state: state, id: bird.id, face: bird.face, gag: bird.gag, grounded: bird.grounded,
         x: bird.x, y: bird.y, r: bird.r, vy: bird.vy, ang: bird.ang, gsx: bird.gsx, gsy: bird.gsy, wallX: bird.wallX, frogReady: frogReady, ready: Object.assign({ froggy: frogReady }, friendReady),
-        fx: fx.length, score: score, H: H, groundY: groundY }),
+        fx: fx.length, score: score, H: H, groundY: groundY, paused: paused }),
       pipes: () => pipes.map(p => ({ x: p.x, w: p.w, top: p.top, bottom: p.bottom })),
       // sổ tiếng kêu: mọi lần say()/noise() đều ghi vào đây, kể cả lúc tắt loa hoặc chưa decode xong
       sfx: () => ({ log: SFX.log.map(e => e.id + ':' + e.key), muted: SFX.muted, ready: sfxReady(),
@@ -1178,6 +1236,10 @@
       clearBuf: (id, key) => { if (SFX.buf[id]) delete SFX.buf[id][key]; },
       setMuted: setMuted,
       tapMute: () => { const m = muteBtn(); onTap(m.x + m.w / 2, m.y + m.h / 2); },
+      tapPause: () => { const p = pauseBtn(); onTap(p.x + p.w / 2, p.y + p.h / 2); },
+      tapResumeZone: () => { onTap(W * 0.9, H * 0.5); },
+      pauseBtnRect: () => pauseBtn(),
+      tap: (x, y) => onTap(x, y),
     };
   }
 
