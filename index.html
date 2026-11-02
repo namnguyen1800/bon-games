@@ -1,14 +1,46 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta http-equiv="refresh" content="0; url=flying-babies/">
 <title>Bon's Games</title>
-<script>location.replace('flying-babies/');</script>
-<style>body{font-family:-apple-system,"Segoe UI",sans-serif;background:#70c5ce;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-a{font-size:28px;color:#fff;text-decoration:none;background:#2a9d8f;padding:18px 32px;border-radius:16px}</style>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
+<meta name="theme-color" content="#70c5ce">
+<style>
+  /* Trang chủ game của Bon: mỗi game 1 ô to (hình chụp game + tên). Thêm game = thêm 1 thẻ <a class="game">. */
+  :root { color-scheme: light; --sky-top: #9adbe3; --sky: #70c5ce; --ink: #1f3b40; --card: #ffffff; --edge: #2e6b73; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    background: linear-gradient(var(--sky-top), var(--sky)) fixed; color: var(--ink);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+  }
+  h1 { text-align: center; font-size: clamp(34px, 7vw, 60px); font-weight: 900; color: #fff;
+       text-shadow: 0 3px 0 var(--edge), 0 6px 14px rgba(0,0,0,0.18); margin: 4px 0 24px; }
+  .games { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
+  .game {
+    flex: 1 1 300px; max-width: 460px; display: block; text-decoration: none; color: var(--ink);
+    background: var(--card); border: 5px solid var(--edge); border-radius: 28px; overflow: hidden;
+    box-shadow: 0 8px 0 rgba(46,107,115,0.55); transition: transform 0.08s;
+  }
+  .game:active { transform: translateY(5px); box-shadow: 0 3px 0 rgba(46,107,115,0.55); }
+  .game img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--sky); }
+  .game span { display: block; text-align: center; font-size: clamp(26px, 4.5vw, 36px); font-weight: 900; padding: 14px 10px 18px; }
+</style>
 </head>
-<body><a href="flying-babies/">🐸 Bon's Flying Babies</a></body>
+<body>
+<h1>Bon's Games</h1>
+<main class="games">
+  <a class="game" href="flying-babies/"><img src="tile-flying-babies.jpg" alt=""><span>Flying Babies</span></a>
+  <a class="game" href="star-finder/"><img src="tile-star-finder.jpg" alt=""><span>Star Finder</span></a>
+</main>
+</body>
 </html>

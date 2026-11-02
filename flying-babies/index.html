@@ -11,12 +11,12 @@
     touch-action: none; font-family: -apple-system, "Segoe UI", sans-serif; }
   canvas { display: block; touch-action: none; }
 </style>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Bon's Babies">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
 </head>
@@ -106,6 +106,7 @@
   // iOS chỉ cho phát sau lần chạm đầu → sfxUnlock() gọi trong pointerdown/keydown.
   const SFX = { ctx: null, buf: {}, mouth: null, mouthKey: null, mouthEnd: 0, muted: false, log: [], tapsLeft: 0 };
   const DEBUG = /[?&]debug/.test(location.search); // thêm "?debug" cuối link → hiện góc chữ nhỏ để chụp màn hình gửi Nam soi
+  const HOME = location.protocol !== 'file:'; // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu
   try { SFX.muted = localStorage.getItem('flappy_mute') === '1'; } catch(e) {}
   (function loadSounds() {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -1019,6 +1020,23 @@
     }
     ctx.stroke();
   }
+  // nút 🏠 về trang chủ: tròn như nút loa, cạnh TRÁI nút loa — chỉ hiện khi KHÔNG đang bay (lúc bay chỗ đó là nút Pause)
+  function homeBtn() { const d = 38 * S, m = muteBtn(); return { x: m.x - 10 * S - d, y: m.y, w: d, h: d }; }
+  function canHome() { return HOME && state !== 'PLAYING'; }
+  function drawHomeBtn() {
+    const b = homeBtn(), cx = b.x + b.w / 2, cy = b.y + b.h / 2, u = b.w / 38;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2 * S;
+    ctx.beginPath(); ctx.arc(cx, cy, b.w / 2, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2e6b73';
+    ctx.beginPath();                                    // mái + thân nhà
+    ctx.moveTo(cx, cy - 10 * u); ctx.lineTo(cx + 11 * u, cy); ctx.lineTo(cx + 7 * u, cy);
+    ctx.lineTo(cx + 7 * u, cy + 9 * u); ctx.lineTo(cx - 7 * u, cy + 9 * u); ctx.lineTo(cx - 7 * u, cy);
+    ctx.lineTo(cx - 11 * u, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';           // cửa
+    ctx.fillRect(cx - 2.5 * u, cy + 2 * u, 5 * u, 7 * u);
+  }
+  function goHome() { location.href = '../'; }
   // nút Pause — hình chữ nhật bo góc, cạnh TRÁI nút loa; chỉ hiện lúc đang bay (PLAYING)
   function pauseBtn() { const w = 112 * S, h = 38 * S, m = muteBtn(); return { x: m.x - 10 * S - w, y: m.y, w: w, h: h }; }
   function canPause() { return state === 'PLAYING'; }
@@ -1121,6 +1139,7 @@
         drawText(a.name, Math.max(14, Math.min(22, selectCell * 0.075 / S)), a.cy + a.r * 2.6, a.x);
       }
       drawMuteBtn();
+      if (canHome()) drawHomeBtn();
       return;
     }
     for (const p of pipes) drawPipe(p);
@@ -1159,6 +1178,7 @@
     }
     if (canSwap()) drawSwapBtn();
     drawMuteBtn();
+    if (canHome()) drawHomeBtn();
     if (canPause()) drawPauseBtn();
     if (paused) drawPauseOverlay();
   }
@@ -1178,6 +1198,10 @@
     {                                        // nút loa bắt trước mọi thứ, ở mọi màn
       const m = muteBtn();
       if (x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h) { setMuted(!SFX.muted); return; }
+    }
+    if (canHome()) {
+      const h = homeBtn();
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) { goHome(); return; }
     }
     if (canPause()) {
       const pb = pauseBtn();
@@ -1239,6 +1263,7 @@
       tapPause: () => { const p = pauseBtn(); onTap(p.x + p.w / 2, p.y + p.h / 2); },
       tapResumeZone: () => { onTap(W * 0.9, H * 0.5); },
       pauseBtnRect: () => pauseBtn(),
+      homeBtnRect: () => (canHome() ? homeBtn() : null),
       tap: (x, y) => onTap(x, y),
     };
   }

@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Bon's Star Finder</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #5bb3bd;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; touch-action: none; font-family: -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; touch-action: none; }
+</style>
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
+<meta name="theme-color" content="#70c5ce">
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+<canvas id="c"></canvas>
+<!-- hình 4 baby dùng chung với game Flappy (Blender nặn → embed_sprites.py) -->
+<script src="froggy3d/sprites.js"></script>
+<script src="friends3d/sprites.js"></script>
+<!-- tiếng kêu 4 baby (friends3d/build_sounds.py) -->
+<script src="friends3d/sounds.js"></script>
+<script>
+(function(){
+  'use strict';
+  // Game 2 của Bon: 3 mode — BUILD (xếp món lên màn) · DRAW (vẽ nét đen làm tường/cầu) · PLAY (đi tới/lui, nhảy, lấy star).
+  // Mỗi màn = đúng 1 khung (không cuộn), lưới ô 32px. Thanh trên = chọn mode; thanh DƯỚI = nút điều khiển / đồ nghề
+  // (nằm ngoài màn chơi để ngón tay không che baby). Chữ trong game = tiếng Anh (trừ tên "Gối chút chút").
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
+  const WW = 1024, WH = 768, BAR = 64, CELL = 32, COLS = 32, ROWS = 18;
+  const LVB = BAR + ROWS * CELL; // đáy màn chơi = 640; từ đây xuống là thanh dưới
+  // COLS = bề ngang 1 màn hình (ô). Màn chơi dài được: level.cols = 32..160 (tối đa 5 màn hình — mốc thử)
+  const MAX_COLS = COLS * 5;
+  const TEST = /[?&]test/.test(location.search);
+  const HOME = location.protocol !== 'file:'; // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu
+  const GRAV = 1800, MOVE = 230, ACC_G = 2400, ACC_A = 1500, JUMP = 660, SPRING_V = 1080, MAXFALL = 1100;
+  const RC = 20, RV = 21, LW = 8, COYOTE = 0.1, JBUF = 0.12, DT = 1 / 120;
+  const TAU = Math.PI * 2;
+
+  const CHARS = [
+    { id: 'froggy',   name: 'Froggy' },
+    { id: 'chicken',  name: 'Chicken Banana' },
+    { id: 'babyfrog', name: 'Baby Froggy' },
+    { id: 'pillow',   name: 'Gối chút chút' },
+  ];
+  // khoảng từ tâm tới đáy / đỉnh hình (đơn vị r) — chép từ CHAR3D của flappy_bon_3d.html
+  const CHAR3D = {
+    froggy:   { bottom: 1.02, top: 1.22 },
+    chicken:  { bottom: 1.35, top: 1.3 },
+    babyfrog: { bottom: 1.1,  top: 1.15 },
+    pillow:   { bottom: 0.8,  top: 0.8 },
+  };
+
+  // ================= MÓN ĐỒ =================
+  // rw/rh = kéo dài ngang / dọc được trong Build
+  const KINDS = {
+    block:  { w: 2, h: 1, rw: true,  rh: true,  hz: false },
+    spike:  { w: 3, h: 1, rw: true,  rh: false, hz: true },
+    fire:   { w: 3, h: 1, rw: true,  rh: false, hz: true },
+    water:  { w: 4, h: 2, rw: true,  rh: true,  hz: true },
+    spring: { w: 1, h: 1, rw: false, rh: false, hz: false },
+    star:   { w: 1, h: 1, rw: false, rh: false, hz: false },
+    start:  { w: 1, h: 1, rw: false, rh: false, hz: false },
+  };
+  const PALETTE = ['block', 'spike', 'fire', 'water', 'spring', 'star', 'start'];
+
+  // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
+  const SAMPLES = [
+    { name: 'Level 1', cols: 32, lines: [], objs: [
+      { t: 'block', x: 0, y: 16, w: 12, h: 2 }, { t: 'water', x: 12, y: 16, w: 6, h: 2 }, { t: 'block', x: 18, y: 16, w: 14, h: 2 },
+      { t: 'start', x: 2, y: 15 }, { t: 'star', x: 27, y: 15 } ] },
+    { name: 'Level 2', cols: 32, lines: [], objs: [
+      { t: 'block', x: 0, y: 16, w: 32, h: 2 }, { t: 'spike', x: 10, y: 15, w: 6, h: 1 }, { t: 'spring', x: 21, y: 15 },
+      { t: 'start', x: 2, y: 15 }, { t: 'star', x: 28, y: 15 } ] },
+    { name: 'Level 3', cols: 32, lines: [], objs: [
+      { t: 'block', x: 0, y: 16, w: 32, h: 2 }, { t: 'fire', x: 8, y: 15, w: 6, h: 1 },
+      { t: 'block', x: 17, y: 9, w: 8, h: 1 }, { t: 'spike', x: 22, y: 8, w: 1, h: 1 },
+      { t: 'start', x: 2, y: 15 }, { t: 'star', x: 29, y: 15 } ] },
+  ];
+  const N_MY = 6;
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function norm(o) { const k = KINDS[o.t]; if (!o.w) o.w = k.w; if (!o.h) o.h = k.h; if (!k.rw) o.w = 1; if (!k.rh) o.h = k.h; return o; }
+  // chuẩn hoá 1 màn (kể cả màn lưu từ bản thử cũ): có cols, không còn mực, đúng 1 star — nhiều star thì giữ star xa nhất (star cuối đường)
+  function normLevel(L) {
+    L.cols = clamp(Math.round((L.cols || COLS) / COLS) * COLS, COLS, MAX_COLS);
+    delete L.ink;
+    L.objs.forEach(norm);
+    const stars = L.objs.filter(o => o.t === 'star');
+    if (stars.length > 1) { const keep = stars.reduce((a, b) => (b.x > a.x ? b : a)); L.objs = L.objs.filter(o => o.t !== 'star' || o === keep); }
+    return L;
+  }
+  function sampleLevel(i) { return normLevel(clone(SAMPLES[i])); }
+  function blankLevel(n) {
+    return { name: 'My level ' + n, cols: COLS, lines: [], objs: [
+      { t: 'block', x: 0, y: 16, w: 32, h: 2 }, { t: 'start', x: 2, y: 15, w: 1, h: 1 }, { t: 'star', x: 28, y: 15, w: 1, h: 1 } ] };
+  }
+  function freshSlot(i) { return i < SAMPLES.length ? sampleLevel(i) : blankLevel(i - SAMPLES.length + 1); }
+  function validLevel(L) {
+    return L && Array.isArray(L.objs) && Array.isArray(L.lines) &&
+      L.objs.every(o => o && KINDS[o.t] && isFinite(o.x) && isFinite(o.y)) && L.lines.every(a => Array.isArray(a));
+  }
+
+  // ================= LƯU TRÊN MÁY =================
+  // Mỗi thay đổi lưu ngay (không có nút Save). Màn mẫu gốc nằm trong code → "Start over" luôn lấy lại được.
+  const SAVE_KEY = 'bon_starbuilder_v2';
+  const NSLOT = SAMPLES.length + N_MY;
+  // v3 (10-27): thêm cols, bỏ mực, 1 star/màn — đọc được save v1/v2 của bản thử, KHÔNG thay ô nào (màn đã xếp/sửa vẫn còn)
+  let save = { v: 3, cur: 0, char: 'froggy', mute: false, picked: false, slots: [] };
+  for (let i = 0; i < NSLOT; i++) save.slots.push(freshSlot(i));
+  (function loadSave() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!s || !Array.isArray(s.slots)) return;
+      for (let i = 0; i < NSLOT; i++) if (validLevel(s.slots[i])) save.slots[i] = normLevel(s.slots[i]);
+      if (CHARS.some(ch => ch.id === s.char)) save.char = s.char;
+      save.cur = (s.cur >= 0 && s.cur < NSLOT) ? s.cur : 0;
+      save.mute = !!s.mute; save.picked = !!s.picked;
+      if (s.v !== 3) localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    } catch (e) {}
+  })();
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+  let askedPersist = false;
+  function askPersist() { // xin trình duyệt đừng tự xoá dữ liệu (Safari không hứa, nhưng có báo là giúp được)
+    if (askedPersist) return; askedPersist = true;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); } catch (e) {}
+  }
+  let level = save.slots[save.cur];
+
+  // ================= HÌNH 4 BABY (chép cách vẽ của flappy_bon_3d.html) =================
+  const FROG_IMG = {}; let frogReady = false;
+  (function() {
+    const src = window.FROG_SPRITES || {}, keys = Object.keys(src); let left = keys.length;
+    for (const k of keys) { const im = new Image(); im.onload = function() { if (--left === 0) frogReady = true; }; im.src = src[k]; FROG_IMG[k] = im; }
+  })();
+  const FROG_FRAME = 3.4, FROG_CAMZ = 0.15;
+  const FRIEND_IMG = {}, FRIEND_META = {}, friendReady = {};
+  (function() {
+    const src = window.FRIEND_SPRITES || {};
+    for (const id of Object.keys(src)) {
+      FRIEND_IMG[id] = {}; FRIEND_META[id] = src[id].meta; friendReady[id] = false;
+      const keys = Object.keys(src[id].img); let left = keys.length;
+      for (const k of keys) { const im = new Image(); im.onload = function() { if (--left === 0) friendReady[id] = true; }; im.src = src[id].img[k]; FRIEND_IMG[id][k] = im; }
+    }
+  })();
+  function is3D(id) { return id === 'froggy' ? frogReady : !!friendReady[id]; }
+  function part(b, name, x, z, ang) {
+    const im = FRIEND_IMG[b.id][name], m = FRIEND_META[b.id][name];
+    if (!im || !m) return;
+    const r = b.r, sz = m[0] * r;
+    ctx.save(); ctx.translate(x * r, -z * r); if (ang) ctx.rotate(ang);
+    ctx.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz);
+    ctx.restore();
+  }
+  function faceFrame(b) { return FRIEND_IMG[b.id][b.face] ? b.face : 'idle'; }
+  function drawFrog(b) {
+    const r = b.r, sz = FROG_FRAME * r, im = FROG_IMG[b.face] || FROG_IMG.idle;
+    ctx.drawImage(im, -sz / 2, -sz / 2 - FROG_CAMZ * r, sz, sz);
+  }
+  function drawChicken(b) {
+    const r = b.r, lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    for (let s = -1; s <= 1; s += 2) part(b, 'leg', s * 0.3, -0.9, Math.sin(b.leg + (s > 0 ? Math.PI : 0)) * 0.9 * (0.15 + lift));
+    part(b, faceFrame(b), 0, 0, 0);
+    const petals = [ { base: Math.PI / 2 - 0.95, side: -1 }, { base: Math.PI / 2 - 0.32, side: -1 },
+                     { base: Math.PI / 2 + 0.32, side: 1 },  { base: Math.PI / 2 + 0.95, side: 1 } ];
+    ctx.save(); ctx.translate(0, 0.55 * r);
+    for (let i = 0; i < 4; i++) part(b, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, petals[i].base + petals[i].side * b.skirt[i] * 1.45 - Math.PI / 2);
+    ctx.restore();
+    part(b, 'hat', 0, 1.02 + b.hat * 0.55, -b.hat * 0.25);
+  }
+  function drawBabyFrog(b) {
+    part(b, faceFrame(b), 0, 0, 0);
+    part(b, 'cup', 0.02, -0.32, -b.skirt[0] * 0.55 + (b.skirt[1] - b.skirt[0]) * 0.8);
+    const crown = Math.max(-0.15, b.hat);
+    part(b, 'crown', 0, 0.84 + crown * 0.6, -crown * 0.3);
+  }
+  const PILLOW_POSE = { shock: ['tense', 0.78, 1.2], ouch: ['tense', 0.78, 1.2], panic: ['tense', 0.78, 1.2],
+                        phew: ['sag', 1.16, 0.8], wink: ['sag', 1.16, 0.8], fall: ['puff', 1, 1] };
+  function drawPillow(b) {
+    const up = i => Math.max(0, b.skirt[i]);
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    const P = (FRIEND_IMG.pillow && PILLOW_POSE[b.face] && FRIEND_IMG.pillow[PILLOW_POSE[b.face][0]]) ? PILLOW_POSE[b.face] : ['idle', 1, 1];
+    const flap = Math.sin(b.wing) * 0.35 * (1 - Math.min(1, lift));
+    const C = [['cornerTL', -1, 1, 0], ['cornerTR', 1, 1, 3], ['cornerBL', -1, -1, 1], ['cornerBR', 1, -1, 2]];
+    for (const [name, sx, sz, i] of C) part(b, name, sx * 0.98 * P[1], sz * 0.56 * P[2], -sx * (flap * (sz > 0 ? 1 : 0.6) + up(i) * 0.9));
+    part(b, P[0], 0, 0, 0);
+  }
+  const FALLBACK_COL = { froggy: '#5fb85a', chicken: '#f5f0e6', babyfrog: '#9bd68e', pillow: '#f7c6d9' };
+  function drawActor(b) { // gốc toạ độ = tâm hình
+    if (!is3D(b.id)) {
+      ctx.fillStyle = FALLBACK_COL[b.id] || '#ccc'; ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(b.r * 0.35, -b.r * 0.2, b.r * 0.12, 0, TAU); ctx.arc(-b.r * 0.1, -b.r * 0.2, b.r * 0.12, 0, TAU); ctx.fill();
+      return;
+    }
+    if (b.id === 'froggy') drawFrog(b);
+    else if (b.id === 'chicken') drawChicken(b);
+    else if (b.id === 'babyfrog') drawBabyFrog(b);
+    else drawPillow(b);
+  }
+  function makeActor(id, r) {
+    return { id: id, r: r, face: 'idle', skirt: [0, 0, 0, 0], skirtV: [0, 0, 0, 0], hat: 0, hatV: 0, leg: 0, wing: 0 };
+  }
+
+  // ================= TIẾNG (chép khối SFX của Flappy, gọn lại) =================
+  const SFX = { ctx: null, buf: {}, mouth: null, log: [] };
+  (function loadSounds() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { SFX.ctx = new AC(); } catch (e) { return; }
+    const src = window.FRIEND_SOUNDS || {};
+    for (const id of Object.keys(src)) {
+      SFX.buf[id] = {};
+      for (const k of Object.keys(src[id])) decodeOne(id, k, null);
+    }
+  })();
+  function decodeOne(id, k, cb) {
+    const raw = window.FRIEND_SOUNDS && window.FRIEND_SOUNDS[id] && window.FRIEND_SOUNDS[id][k];
+    if (!raw || !SFX.ctx) return;
+    const bin = atob(raw.split(',')[1]), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    SFX.ctx.decodeAudioData(arr.buffer, function(buf) { SFX.buf[id][k] = buf; if (cb) cb(buf); },
+      function(e) { SFX.log.push({ id: 'decodeErr', key: id + ':' + k }); });
+  }
+  function sfxUnlock() { if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
+  function sfxNow() { return SFX.ctx ? SFX.ctx.currentTime : 0; }
+  // dur = chỉ phát đoạn đầu (clip "scream" là 7 tiếng hét nối nhau — lấy 1 tiếng)
+  function say(id, key, dur) {
+    SFX.log.push({ id: id, key: key, t: performance.now() });
+    if (!SFX.ctx || save.mute) return;
+    const go = function(buf) {
+      if (SFX.mouth) { try { SFX.mouth.stop(); } catch (e) {} }
+      const s = SFX.ctx.createBufferSource(); s.buffer = buf; s.connect(SFX.ctx.destination);
+      if (dur) s.start(0, 0, Math.min(dur, buf.duration)); else s.start();
+      SFX.mouth = s;
+    };
+    if (SFX.buf[id] && SFX.buf[id][key]) go(SFX.buf[id][key]); else decodeOne(id, key, go);
+  }
+  function tone(freq, dur, type, vol, slideTo, delay) {
+    if (!SFX.ctx || save.mute) return;
+    const t = sfxNow() + (delay || 0), o = SFX.ctx.createOscillator(), g = SFX.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(SFX.ctx.destination); o.start(t); o.stop(t + dur);
+  }
+  const NOISE = {
+    jump:  () => tone(320, 0.1, 'triangle', 0.16, 520),
+    ding:  () => { tone(880, 0.12, 'sine', 0.13); tone(1320, 0.22, 'sine', 0.09, 0, 0.06); },
+    boing: () => { tone(180, 0.28, 'sine', 0.2, 620); tone(360, 0.2, 'triangle', 0.06, 900, 0.03); },
+    win:   () => { tone(660, 0.2, 'triangle', 0.14); tone(880, 0.2, 'triangle', 0.14, 0, 0.13); tone(1100, 0.45, 'triangle', 0.14, 0, 0.26); },
+    place: () => tone(520, 0.06, 'square', 0.05, 380),
+    nope:  () => tone(220, 0.14, 'square', 0.05, 160),
+    click: () => tone(700, 0.04, 'triangle', 0.08),
+  };
+  function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); if (NOISE[k]) NOISE[k](); }
+
+  // ================= HÌNH HỌC =================
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function approach(v, t, d) { return v < t ? Math.min(t, v + d) : Math.max(t, v - d); }
+  function rectOf(o) { return { x: o.x * CELL, y: BAR + o.y * CELL, w: o.w * CELL, h: o.h * CELL }; }
+  function inRect(px, py, r, pad) { pad = pad || 0; return px >= r.x - pad && px <= r.x + r.w + pad && py >= r.y - pad && py <= r.y + r.h + pad; }
+  function circleRect(cx, cy, rad, r) {
+    const px = clamp(cx, r.x, r.x + r.w), py = clamp(cy, r.y, r.y + r.h);
+    return (cx - px) * (cx - px) + (cy - py) * (cy - py) < rad * rad;
+  }
+  // vùng CHẠM LÀ ĐAU (rộng lượng: nhỏ hơn hình vẽ)
+  function hazardHit(o) {
+    const r = rectOf(o);
+    if (o.t === 'spike') return { x: r.x + 5, y: r.y + 14, w: r.w - 10, h: r.h - 14 };
+    if (o.t === 'fire')  return { x: r.x + 5, y: r.y + 10, w: r.w - 10, h: r.h - 10 };
+    return { x: r.x + 3, y: r.y + 12, w: r.w - 6, h: r.h - 12 }; // water
+  }
+  // vùng KHÔNG ĐƯỢC VẼ ĐÈ (bằng hình vẽ) — nét vẽ cách thêm LW/2+2 nữa
+  function hazardVis(o) {
+    const r = rectOf(o);
+    if (o.t === 'spike') return { x: r.x, y: r.y + 2, w: r.w, h: r.h - 2 };
+    if (o.t === 'water') return { x: r.x, y: r.y + 4, w: r.w, h: r.h - 4 };
+    return r;
+  }
+  function springBox(o) { const r = rectOf(o); return { x: r.x + 3, y: r.y + 12, w: CELL - 6, h: CELL - 12 }; }
+  // màn dài: camX = chỗ đang xem (px). Play: tự chạy theo baby. Build/Draw: nút ◀ ▶ + tự cuộn khi vẽ/kéo sát mép.
+  function levelW() { return level.cols * CELL; }
+  function maxCam() { return Math.max(0, levelW() - WW); }
+  function setCam(x) { camX = clamp(x, 0, maxCam()); }
+
+  let solids = [], hazards = [], springs = [], starObjs = [], noDraw = [];
+  function rebuild() {
+    solids = []; hazards = []; springs = []; starObjs = []; noDraw = [];
+    for (const o of level.objs) {
+      const r = rectOf(o);
+      if (o.t === 'block') solids.push({ k: 'r', x: r.x, y: r.y, w: r.w, h: r.h });
+      else if (KINDS[o.t].hz) { hazards.push({ o: o, hit: hazardHit(o) }); noDraw.push({ t: o.t, r: hazardVis(o) }); }
+      else if (o.t === 'spring') springs.push({ o: o, box: springBox(o) });
+      else if (o.t === 'star') starObjs.push(o);
+      else if (o.t === 'start') noDraw.push({ t: 'start', r: { x: r.x - 4, y: r.y - 14, w: r.w + 8, h: r.h + 14 } });
+    }
+    for (const L of level.lines) for (let i = 0; i + 3 < L.length; i += 2)
+      solids.push({ k: 's', ax: L[i], ay: L[i + 1], bx: L[i + 2], by: L[i + 3] });
+  }
+
+  // ================= TRẠNG THÁI =================
+  let mode = 'build';           // 'build' | 'draw' | 'play'
+  let camX = 0;
+  let overlay = null;           // null | 'pick' | 'levels' | 'win' | 'confirm'
+  let confirmSlot = -1;
+  let clock = 0, hintT = 0, hintText = '', flash = null, shakeT = 0;
+  let tool = null, sel = null, drag = null, undoStack = [];
+  let stroke = null;            // nét đang vẽ (mảng điểm phẳng)
+  let got = new Set(), won = false, wonT = 0, ouches = 0, praiseText = '';
+  let particles = [];
+  const anim = new Map();       // lò xo nhún: object → thời gian còn lại (không lưu vào file)
+  const inp = { left: false, right: false, jumpPressed: false };
+  const keys = { left: false, right: false };
+  let testHold = false;
+
+  const hero = Object.assign(makeActor(save.char, RV), {
+    x: 0, y: 0, vx: 0, vy: 0, grounded: false, gn: [0, -1], coyote: 0, jbuf: 0, dir: 1,
+    ouchT: 0, rode: false, usedSpring: false, st: 0, stV: 0, blinkT: 2, blinkOn: 0,
+    winkT: 0, flapT: 0, landT: 0, tilt: 0 });
+
+  function startObj() { return level.objs.find(o => o.t === 'start'); }
+  function respawn() {
+    const s = startObj() || { x: 2, y: 19 };
+    hero.x = (s.x + 0.5) * CELL; hero.y = BAR + (s.y + 1) * CELL - RC - 1;
+    hero.vx = 0; hero.vy = 0; hero.grounded = false; hero.coyote = 0; hero.jbuf = 0; hero.ouchT = 0;
+  }
+  function showHint(t) { hintText = t; hintT = 4; }
+  function setMode(m) {
+    if (stroke) endStroke();
+    if (overlay === 'win') overlay = null; // đổi mode / đổi màn thì khung khen tự đóng
+    mode = m; sel = null; drag = null;
+    rebuild(); respawn();
+    got = new Set(); won = false; wonT = 0; ouches = 0; hero.rode = false; hero.usedSpring = false;
+    inp.left = inp.right = inp.jumpPressed = false; ptrs.forEach(p => { p.role = null; });
+    if (m === 'play') setCam(hero.x - WW * 0.4); else setCam(camX);
+    if (m === 'build') showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
+    else if (m === 'draw') showHint('Draw black lines to make walls and bridges');
+    else showHint(starObjs.length ? 'Get the star!' : 'Add a star in Build first!');
+  }
+  function loadSlot(i) {
+    save.cur = i; level = save.slots[i]; persist();
+    undoStack = []; tool = null; camX = 0;
+    setMode(i < SAMPLES.length ? 'draw' : 'build');
+  }
+  function setChar(id) { save.char = id; save.picked = true; hero.id = id; persist(); }
+
+  // ================= PLAY: vật lý =================
+  function collide(b) {
+    let ground = null, onLine = false;
+    for (let it = 0; it < 3; it++) {
+      let any = false;
+      for (const s of solids) {
+        let px, py, rad;
+        if (s.k === 'r') {
+          px = clamp(b.x, s.x, s.x + s.w); py = clamp(b.y, s.y, s.y + s.h); rad = RC;
+          if (px === b.x && py === b.y) { // tâm lọt hẳn vào khối → đẩy ra cạnh gần nhất
+            const dl = b.x - s.x, dr = s.x + s.w - b.x, dtp = b.y - s.y, db = s.y + s.h - b.y, m = Math.min(dl, dr, dtp, db);
+            if (m === dtp) { b.y = s.y - RC; if (b.vy > 0) b.vy = 0; ground = [0, -1]; }
+            else if (m === db) { b.y = s.y + s.h + RC; if (b.vy < 0) b.vy = 0; }
+            else if (m === dl) { b.x = s.x - RC; if (b.vx > 0) b.vx = 0; }
+            else { b.x = s.x + s.w + RC; if (b.vx < 0) b.vx = 0; }
+            any = true; continue;
+          }
+        } else {
+          const ex = s.bx - s.ax, ey = s.by - s.ay, L2 = ex * ex + ey * ey;
+          const tt = L2 > 0 ? clamp(((b.x - s.ax) * ex + (b.y - s.ay) * ey) / L2, 0, 1) : 0;
+          px = s.ax + ex * tt; py = s.ay + ey * tt; rad = RC + LW / 2;
+        }
+        const dx = b.x - px, dy = b.y - py, d2 = dx * dx + dy * dy;
+        if (d2 >= rad * rad) continue;
+        const d = Math.sqrt(d2);
+        const nx = d > 1e-4 ? dx / d : 0, ny = d > 1e-4 ? dy / d : -1;
+        const pen = rad - d;
+        b.x += nx * pen; b.y += ny * pen;
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) { b.vx -= vn * nx; b.vy -= vn * ny; }
+        // mặt nghiêng tới ~56° vẫn đứng/đi được; dốc hơn = tường, trượt xuống
+        if (ny < -0.55 && (!ground || ny < ground[1])) { ground = [nx, ny]; onLine = s.k === 's'; }
+        any = true;
+      }
+      if (!any) break;
+    }
+    return { ground: ground, line: onLine };
+  }
+
+  function ouch(kind) {
+    const b = hero;
+    b.ouchT = 0.75; ouches++; shakeT = 0.25;
+    say(b.id, 'scream', 0.42); // "Ốp!" / "Ba!" / "Ah!" — 1 tiếng, không phải cả tràng
+    const col = kind === 'water' ? '#7fd3ff' : kind === 'fire' ? '#ff9d3b' : '#ffffff';
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * TAU, sp = 80 + Math.random() * 160;
+      particles.push({ x: b.x, y: b.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120, life: 0.6, max: 0.6, col: col, size: 4 + Math.random() * 4, kind: 'dot', grav: 500 });
+    }
+  }
+  function collect(i) {
+    got.add(i); hero.winkT = 0.45; noise('ding');
+    const s = starObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * TAU;
+      particles.push({ x: cx, y: cy, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, life: 0.5, max: 0.5, col: '#ffe066', size: 7, kind: 'star', grav: 0, rot: a, vr: 6 });
+    }
+    if (got.size === starObjs.length) {
+      won = true; wonT = 0;
+      praiseText = hero.rode ? 'Your bridge worked!' : hero.usedSpring ? 'What a spring jump!' : 'You found every star!';
+      say(hero.id, 'pass1'); setTimeout(function() { noise('win'); }, 250);
+    }
+  }
+
+  function physStep(dt) {
+    const b = hero;
+    if (b.ouchT > 0) { b.ouchT -= dt; if (b.ouchT <= 0) respawn(); return; }
+    const dirIn = won ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+    if (dirIn) b.dir = dirIn;
+    if (inp.jumpPressed) { inp.jumpPressed = false; if (!won) b.jbuf = JBUF; }
+    if (b.jbuf > 0) b.jbuf -= dt;
+    if (b.coyote > 0) b.coyote -= dt;
+    if (b.grounded) {
+      // đi DỌC theo mặt đang đứng (lên dốc/xuống dốc không nảy), ép nhẹ xuống mặt để khỏi lơ lửng
+      const nx = b.gn[0], ny = b.gn[1], tx = -ny, ty = nx;
+      const vt = approach(b.vx * tx + b.vy * ty, dirIn * MOVE, ACC_G * dt);
+      b.vx = vt * tx - nx * 40; b.vy = vt * ty - ny * 40;
+    } else {
+      b.vx = approach(b.vx, dirIn * MOVE, ACC_A * dt);
+      b.vy = Math.min(MAXFALL, b.vy + GRAV * dt);
+    }
+    // nhảy: bấm sớm một chút vẫn tính (jbuf), hụt mép rồi vẫn kịp nhảy (coyote)
+    if (b.jbuf > 0 && (b.grounded || b.coyote > 0)) {
+      b.vy = -JUMP; b.jbuf = 0; b.coyote = 0; b.grounded = false; b.flapT = 0.3; noise('jump');
+    }
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.x < RC) { b.x = RC; if (b.vx < 0) b.vx = 0; }
+    if (b.x > levelW() - RC) { b.x = levelW() - RC; if (b.vx > 0) b.vx = 0; }
+    if (b.y < BAR + RC) { b.y = BAR + RC; if (b.vy < 0) b.vy = 0; }
+    const wasG = b.grounded, impact = b.vy;
+    const hit = collide(b);
+    if (hit.ground) {
+      b.grounded = true; b.gn = hit.ground; b.coyote = COYOTE;
+      if (!wasG && impact > 300) b.landT = 0.16;
+      if (hit.line) b.rode = true;
+    } else b.grounded = false;
+    // lò xo: không cứng — chạm vào từ trên/ngang là bật lên
+    for (const sp of springs) {
+      if (circleRect(b.x, b.y, RC, sp.box) && b.y < sp.box.y + 6 && b.vy > -200) {
+        b.vy = -SPRING_V; b.grounded = false; b.coyote = 0; b.usedSpring = true;
+        anim.set(sp.o, 0.35); noise('boing');
+      }
+    }
+    for (const h of hazards) if (circleRect(b.x, b.y, RC - 2, h.hit)) { ouch(h.o.t); return; }
+    if (b.y > LVB + 60) { ouch('fall'); return; }
+    for (let i = 0; i < starObjs.length; i++) {
+      if (got.has(i)) continue;
+      const s = starObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
+      if ((b.x - cx) * (b.x - cx) + (b.y - cy) * (b.y - cy) < (RC + 16) * (RC + 16)) collect(i);
+    }
+  }
+
+  function animHero(dt, playing) {
+    const b = hero;
+    b.blinkT -= dt; if (b.blinkT <= 0) { b.blinkOn = 0.13; b.blinkT = 1.8 + Math.random() * 2.5; }
+    b.blinkOn -= dt; b.winkT -= dt; b.flapT -= dt; b.landT -= dt;
+    const moving = playing && b.grounded && Math.abs(b.vx) > 20 && b.ouchT <= 0;
+    if (moving) b.leg += dt * 14;
+    let tgt;
+    if (!playing) tgt = Math.sin(clock * 2.2) * 0.03;
+    else if (b.ouchT > 0) tgt = -0.15;
+    else if (b.landT > 0) tgt = -0.16;
+    else if (!b.grounded) tgt = b.vy < 0 ? 0.14 : -0.05;
+    else tgt = moving ? Math.abs(Math.sin(b.leg)) * 0.07 : Math.sin(clock * 2.2) * 0.03;
+    b.stV += ((tgt - b.st) * 180 - b.stV * 12) * dt; b.st += b.stV * dt;
+    const fall = playing && !b.grounded && b.ouchT <= 0 ? clamp(b.vy / 700, -0.6, 1) : 0;
+    for (let i = 0; i < 4; i++) {
+      b.skirtV[i] += ((fall * (0.85 + 0.1 * i) - b.skirt[i]) * 260 - b.skirtV[i] * 14) * dt;
+      b.skirt[i] += b.skirtV[i] * dt;
+    }
+    b.hatV += ((fall - b.hat) * 120 - b.hatV * 8) * dt; b.hat += b.hatV * dt;
+    b.wing += dt * (playing && !b.grounded ? 16 : 3);
+    b.tilt = approach(b.tilt, playing && b.ouchT <= 0 ? clamp(b.vx / MOVE, -1, 1) * 0.08 : 0, dt * 2);
+    let f = b.blinkOn > 0 ? 'blink' : 'idle';
+    if (playing) {
+      if (b.ouchT > 0) f = 'ouch';
+      else if (won) f = 'phew';
+      else if (b.winkT > 0) f = 'wink';
+      else if (!b.grounded && b.vy < -150) f = 'flap';
+      else if (!b.grounded && b.vy > 650) f = 'panic';
+      else if (!b.grounded && b.vy > 250) f = 'fall';
+    }
+    b.face = f;
+  }
+
+  // ================= DRAW: vẽ nét =================
+  // vẽ bao nhiêu cũng được (Nam bỏ giới hạn mực 10-27) — chỉ cấm đè gai/lửa/nước/chỗ xuất phát/ngoài mép
+  function noDrawAt(x, y) {
+    if (y < BAR + LW / 2 || y > LVB - LW / 2 || x < LW / 2 || x > levelW() - LW / 2) return 'edge';
+    for (const z of noDraw) if (inRect(x, y, z.r, LW / 2 + 2)) return z.t;
+    return null;
+  }
+  const NO_DRAW_MSG = { spike: "Can't draw on spikes!", fire: "Can't draw on fire!", water: "Can't draw on water!", start: 'Leave room for your baby!', edge: '' };
+  function sayNo(why, x, y) { // x, y = toạ độ trong màn chơi; chữ báo hiện theo vị trí trên màn hình
+    if (NO_DRAW_MSG[why]) { flash = { text: NO_DRAW_MSG[why], x: x - camX, y: y, t: 1.2 }; noise('nope'); }
+    if (why !== 'edge') for (const z of noDraw) if (z.t === why && inRect(x, y, z.r, 30)) anim.set(z, 0.5);
+  }
+  function beginStroke(x, y) {
+    const why = noDrawAt(x, y);
+    if (why) { sayNo(why, x, y); return false; }
+    stroke = [x, y]; level.lines.push(stroke);
+    return true;
+  }
+  function extendStroke(x, y) {
+    if (!stroke) return;
+    const lx = stroke[stroke.length - 2], ly = stroke[stroke.length - 1];
+    const d = Math.hypot(x - lx, y - ly);
+    if (d < 6) return;
+    // dò dọc đoạn mới mỗi 3px — đụng chỗ cấm thì nét dừng ngay trước đó
+    const n = Math.ceil(d / 3);
+    let sx = lx, sy = ly;
+    for (let i = 1; i <= n; i++) {
+      const px = lx + (x - lx) * i / n, py = ly + (y - ly) * i / n;
+      const why = noDrawAt(px, py);
+      if (why) {
+        if (Math.hypot(sx - lx, sy - ly) >= 2) stroke.push(sx, sy);
+        sayNo(why, px, py); endStroke(); return;
+      }
+      sx = px; sy = py;
+    }
+    stroke.push(x, y);
+  }
+  function endStroke() {
+    if (!stroke) return;
+    if (stroke.length < 4) { // chỉ chấm 1 điểm → biến thành vạch ngắn để còn thấy và đứng lên được
+      const x = stroke[0], y = stroke[1];
+      if (!noDrawAt(x + 8, y)) stroke.push(x + 8, y);
+      else level.lines.splice(level.lines.indexOf(stroke), 1);
+    }
+    stroke = null; rebuild(); persist();
+  }
+
+  // ================= BUILD: xếp món =================
+  function snapshot() { return JSON.stringify({ objs: level.objs, cols: level.cols }); }
+  function pushUndo(s) { undoStack.push(s); if (undoStack.length > 60) undoStack.shift(); }
+  function objAt(x, y) {
+    for (let i = level.objs.length - 1; i >= 0; i--) { const o = level.objs[i]; if (inRect(x, y, rectOf(o), 4)) return o; }
+    return null;
+  }
+  function fitObj(o) { o.w = clamp(o.w, 1, level.cols); o.h = clamp(o.h, 1, ROWS); o.x = clamp(o.x, 0, level.cols - o.w); o.y = clamp(o.y, 0, ROWS - o.h); }
+  // nút kéo-dài (góc dưới phải) và nút × (góc trên trái) — kẹp vào trong màn để món sát mép vẫn bấm được
+  function handlePos(o) { const r = rectOf(o); return { x: Math.min(r.x + r.w, levelW() - 16), y: Math.min(r.y + r.h, LVB - 16) }; }
+  function delPos(o) { const r = rectOf(o); return { x: Math.max(r.x, 16), y: Math.max(r.y, BAR + 16) }; }
+  function canDelete(o) { return o.t !== 'start' && o.t !== 'star'; } // màn nào cũng phải có chỗ xuất phát + 1 star
+  // nút "+ Map Expand": thêm 1 màn hình bên phải; khối chạm mép phải cũ kéo dài theo, không có đất ở đáy thì thêm đất
+  function makeLonger() {
+    if (level.cols >= MAX_COLS) return;
+    pushUndo(snapshot());
+    const old = level.cols; let floor = false;
+    level.cols += COLS;
+    for (const o of level.objs) if (o.t === 'block' && o.x + o.w === old) { o.w += COLS; if (o.y + o.h === ROWS) floor = true; }
+    if (!floor) level.objs.push({ t: 'block', x: old, y: ROWS - 2, w: COLS, h: 2 });
+    sel = null; afterEdit(); setCam(maxCam()); noise('place');
+  }
+  function placeAt(x, y) {
+    const k = KINDS[tool], before = snapshot();
+    let gx = Math.floor(x / CELL), gy = Math.floor((y - BAR) / CELL);
+    if (tool === 'start' || tool === 'star') { // chỉ có 1 → đặt cái mới = dời cái cũ
+      const s = level.objs.find(o => o.t === tool);
+      if (s) { s.x = gx; s.y = gy; fitObj(s); sel = s; pushUndo(before); afterEdit(); noise('place'); return; }
+    }
+    const o = { t: tool, x: gx, y: gy, w: k.w, h: k.h };
+    fitObj(o); level.objs.push(o); sel = o; pushUndo(before); afterEdit(); noise('place');
+  }
+  function afterEdit() { rebuild(); respawn(); persist(); }
+  function buildDown(id, x, y) {
+    if (sel) {
+      const dp = delPos(sel);
+      if (canDelete(sel) && Math.hypot(x - dp.x, y - dp.y) < 22) {
+        pushUndo(snapshot()); level.objs.splice(level.objs.indexOf(sel), 1); sel = null; afterEdit(); noise('click'); return;
+      }
+      const k = KINDS[sel.t];
+      if (k.rw || k.rh) {
+        const hp = handlePos(sel);
+        if (Math.hypot(x - hp.x, y - hp.y) < 24) { drag = { id: id, kind: 'resize', o: sel, before: snapshot(), changed: false }; return; }
+      }
+    }
+    const o = objAt(x, y);
+    if (o) { sel = o; drag = { id: id, kind: 'move', o: o, dx: x - o.x * CELL, dy: y - BAR - o.y * CELL, before: snapshot(), changed: false }; return; }
+    if (tool) { placeAt(x, y); return; }
+    sel = null;
+  }
+  function buildMove(id, x, y) {
+    if (!drag || drag.id !== id) return;
+    const o = drag.o, k = KINDS[o.t];
+    if (drag.kind === 'move') {
+      const nx = clamp(Math.round((x - drag.dx) / CELL), 0, level.cols - o.w), ny = clamp(Math.round((y - BAR - drag.dy) / CELL), 0, ROWS - o.h);
+      if (nx !== o.x || ny !== o.y) { o.x = nx; o.y = ny; drag.changed = true; rebuild(); respawn(); }
+    } else {
+      const r = rectOf(o);
+      const nw = k.rw ? clamp(Math.round((x - r.x) / CELL), 1, level.cols - o.x) : o.w;
+      const nh = k.rh ? clamp(Math.round((y - r.y) / CELL), 1, ROWS - o.y) : o.h;
+      if (nw !== o.w || nh !== o.h) { o.w = nw; o.h = nh; drag.changed = true; rebuild(); }
+    }
+  }
+  function buildUp(id) {
+    if (!drag || drag.id !== id) return;
+    if (drag.changed) { pushUndo(drag.before); afterEdit(); }
+    drag = null;
+  }
+  function undo() {
+    if (mode === 'draw') { if (level.lines.length) { level.lines.pop(); rebuild(); persist(); noise('click'); } return; }
+    if (!undoStack.length) return;
+    const s = JSON.parse(undoStack.pop());
+    level.objs = s.objs; level.cols = s.cols; sel = null; afterEdit(); setCam(camX); noise('click');
+  }
+
+  // ================= KHUNG HÌNH, CHẠM =================
+  let W = 0, H = 0, DPR = 1, SC = 1, OX = 0, OY = 0;
+  // đo theo khung <body> (trang Artifact có lề an toàn trên/dưới cho điện thoại), không theo cả cửa sổ
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = document.body.clientWidth || window.innerWidth; H = document.body.clientHeight || window.innerHeight;
+    c.width = Math.floor(W * DPR); c.height = Math.floor(H * DPR); c.style.width = W + 'px'; c.style.height = H + 'px';
+    SC = Math.min(W / WW, H / WH); OX = (W - WW * SC) / 2; OY = (H - WH * SC) / 2;
+  }
+  window.addEventListener('resize', resize);
+  function toWorld(cx, cy) { const b = c.getBoundingClientRect(); return [(cx - b.left - OX) / SC, (cy - b.top - OY) / SC]; }
+
+  // nút bấm vẽ kiểu "immediate": mỗi khung đăng ký lại vùng chạm
+  let hits = [];
+  function hit(x, y, w, h, fn, layer) { hits.push({ x: x, y: y, w: w, h: h, fn: fn, layer: layer || 0 }); }
+  // nút điều khiển PLAY (giữ tay) nằm ở thanh dưới — to, vì bấm hụt giữa lúc chơi là hỏng (luật 09-18)
+  const CTRL = { left: { x: 16, y: 650, w: 140, h: 108 }, right: { x: 172, y: 650, w: 140, h: 108 }, jump: { x: 860, y: 650, w: 148, h: 108 } };
+  function ctrlAt(x, y) { for (const k of ['left', 'right', 'jump']) if (inRect(x, y, CTRL[k], 6)) return k; return null; }
+  // nút ◀ ▶ cuộn màn dài trong Build/Draw — ở 2 đầu thanh dưới (Nam chọn nút, không chọn bản đồ nhỏ / 2 ngón tay)
+  const ARW = { scrollL: { x: 8, y: 652, w: 84, h: 104 }, scrollR: { x: 932, y: 652, w: 84, h: 104 } };
+  function arrowAt(x, y) { for (const k in ARW) if (inRect(x, y, ARW[k], 4)) return k; return null; }
+  const ptrs = new Map();
+  function syncHold() {
+    let l = keys.left, r = keys.right;
+    ptrs.forEach(p => { if (p.role === 'left') l = true; if (p.role === 'right') r = true; });
+    inp.left = l; inp.right = r;
+  }
+
+  function onDown(id, x, y) {
+    // lớp phủ (chọn baby / chọn màn / thắng / hỏi lại) chặn hết bên dưới
+    const layer = overlay ? 1 : 0;
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const h = hits[i];
+      if (h.layer === layer && inRect(x, y, h)) { h.fn(); return; }
+    }
+    if (overlay) { if (overlay === 'pick' || overlay === 'levels') overlay = null; return; }
+    if (y < BAR) return;
+    if (mode !== 'play') {
+      const a = arrowAt(x, y);
+      if (a) { ptrs.set(id, { role: a }); setCam(camX + (a === 'scrollR' ? 64 : -64)); return; } // nhấn = nhích ngay, giữ = cuộn tiếp (frame)
+      if (y > LVB) return; // chỗ trống ở thanh dưới
+    }
+    if (mode === 'play') {
+      const role = ctrlAt(x, y);
+      ptrs.set(id, { role: role });
+      if (role === 'jump') inp.jumpPressed = true;
+      syncHold(); return;
+    }
+    // trong màn chơi: toạ độ màn = chỗ chạm + camX; sx/sy giữ chỗ chạm trên màn hình để tự cuộn khi sát mép
+    ptrs.set(id, { role: 'level', sx: x, sy: y });
+    if (mode === 'build') buildDown(id, x + camX, y);
+    else if (mode === 'draw' && !stroke) { if (beginStroke(x + camX, y)) ptrs.get(id).role = 'stroke'; }
+  }
+  function onMove(id, x, y) {
+    const p = ptrs.get(id); if (!p) return;
+    if (mode === 'play') { // trượt ngón cái giữa ◀ ▶ vẫn đổi hướng được
+      const role = ctrlAt(x, y);
+      if (p.role !== 'jump' && (role === 'left' || role === 'right' || role === null)) { p.role = role; syncHold(); }
+      return;
+    }
+    p.sx = x; p.sy = y;
+    if (mode === 'build') buildMove(id, x + camX, y);
+    else if (mode === 'draw' && p.role === 'stroke') extendStroke(x + camX, y);
+  }
+  // mỗi khung (Build/Draw): giữ ◀ ▶ → cuộn; đang vẽ / kéo món mà ngón tay sát mép → màn tự cuộn, nét/món đi theo
+  function scrollStep(dt) {
+    ptrs.forEach(function(p, id) {
+      if (p.role === 'scrollL') setCam(camX - 700 * dt);
+      else if (p.role === 'scrollR') setCam(camX + 700 * dt);
+      else if ((p.role === 'stroke' && stroke) || (p.role === 'level' && drag && drag.id === id)) {
+        const d = p.sx < 60 ? -1 : p.sx > WW - 60 ? 1 : 0;
+        if (!d) return;
+        const before = camX; setCam(camX + d * 500 * dt);
+        if (camX !== before) onMove(id, p.sx, p.sy);
+      }
+    });
+  }
+  function onUp(id) {
+    const p = ptrs.get(id); ptrs.delete(id);
+    if (!p) return;
+    if (mode === 'play') { syncHold(); return; }
+    if (mode === 'build') buildUp(id);
+    else if (mode === 'draw' && p.role === 'stroke') endStroke();
+  }
+  c.addEventListener('pointerdown', function(e) {
+    e.preventDefault(); sfxUnlock(); askPersist();
+    const w = toWorld(e.clientX, e.clientY); onDown(e.pointerId, w[0], w[1]);
+    try { c.setPointerCapture(e.pointerId); } catch (er) {}
+  });
+  c.addEventListener('pointermove', function(e) { e.preventDefault(); const w = toWorld(e.clientX, e.clientY); onMove(e.pointerId, w[0], w[1]); });
+  c.addEventListener('pointerup', function(e) { e.preventDefault(); onUp(e.pointerId); });
+  c.addEventListener('pointercancel', function(e) { onUp(e.pointerId); });
+  document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+  window.addEventListener('blur', function() { keys.left = keys.right = false; ptrs.clear(); syncHold(); });
+  window.addEventListener('keydown', function(e) {
+    sfxUnlock();
+    const k = e.key;
+    if (k === 'Escape' && (overlay === 'pick' || overlay === 'levels')) { overlay = null; return; }
+    if (mode !== 'play' || overlay) return;
+    if (k === 'ArrowLeft' || k === 'a') { keys.left = true; syncHold(); e.preventDefault(); }
+    if (k === 'ArrowRight' || k === 'd') { keys.right = true; syncHold(); e.preventDefault(); }
+    if ((k === ' ' || k === 'ArrowUp' || k === 'w') && !e.repeat) { inp.jumpPressed = true; e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function(e) {
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'a') { keys.left = false; syncHold(); }
+    if (k === 'ArrowRight' || k === 'd') { keys.right = false; syncHold(); }
+  });
+
+  // ================= VẼ MÓN ĐỒ =================
+  function rr(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function drawBlock(x, y, w, h) {
+    for (let j = 0; j < h; j += CELL) for (let i = 0; i < w; i += CELL) {
+      rr(x + i + 1, y + j + 1, CELL - 2, CELL - 2, 6);
+      ctx.fillStyle = '#eda65c'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#b8732f'; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)'; rr(x + i + 5, y + j + 5, CELL - 14, 6, 3); ctx.fill();
+    }
+    rr(x, y - 3, w, 10, 5); ctx.fillStyle = '#6cc04a'; ctx.fill();
+    ctx.fillStyle = '#4f9a35'; ctx.fillRect(x + 3, y + 5, w - 6, 2);
+  }
+  function drawSpikes(x, y, w, h) {
+    for (let i = 0; i < w; i += CELL) {
+      const cx = x + i + CELL / 2;
+      ctx.beginPath(); ctx.moveTo(cx - 13, y + h); ctx.lineTo(cx, y + 3); ctx.lineTo(cx + 13, y + h); ctx.closePath();
+      const g = ctx.createLinearGradient(0, y + 3, 0, y + h); g.addColorStop(0, '#f4f6f8'); g.addColorStop(1, '#8e9aa7');
+      ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.strokeStyle = '#4b5563'; ctx.stroke();
+    }
+  }
+  function flame(cx, by, hw, hh, sway, col) {
+    ctx.beginPath(); ctx.moveTo(cx + sway, by - hh);
+    ctx.bezierCurveTo(cx + hw * 1.15, by - hh * 0.45, cx + hw, by, cx, by);
+    ctx.bezierCurveTo(cx - hw, by, cx - hw * 1.15, by - hh * 0.45, cx + sway, by - hh);
+    ctx.fillStyle = col; ctx.fill();
+  }
+  function drawFire(x, y, w, h, t) {
+    rr(x + 2, y + h - 6, w - 4, 6, 3); ctx.fillStyle = '#7c2d12'; ctx.fill();
+    for (let i = 0; i < w; i += CELL) {
+      const cx = x + i + CELL / 2, ph = t * 9 + i * 0.05, f = 1 + 0.12 * Math.sin(ph) + 0.06 * Math.sin(ph * 2.3), sw = Math.sin(ph * 0.7) * 3;
+      flame(cx, y + h - 3, 13, 27 * f, sw, '#ef4444');
+      flame(cx, y + h - 3, 9, 19 * f, sw * 0.8, '#f97316');
+      flame(cx, y + h - 3, 5, 11 * f, sw * 0.5, '#fde047');
+    }
+  }
+  function drawWater(x, y, w, h, t) {
+    const top = y + 6;
+    ctx.beginPath(); ctx.moveTo(x, y + h); ctx.lineTo(x, top);
+    for (let i = 0; i <= w; i += 8) ctx.lineTo(x + i, top + Math.sin(t * 3 + (x + i) * 0.08) * 2.5);
+    ctx.lineTo(x + w, y + h); ctx.closePath();
+    const g = ctx.createLinearGradient(0, top, 0, y + h); g.addColorStop(0, 'rgba(94,200,255,0.95)'); g.addColorStop(1, 'rgba(29,111,214,0.95)');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i <= w; i += 8) { const yy = top + Math.sin(t * 3 + (x + i) * 0.08) * 2.5; if (i === 0) ctx.moveTo(x + i, yy); else ctx.lineTo(x + i, yy); }
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    const nb = Math.max(1, Math.floor(w / 40));
+    for (let k = 0; k < nb; k++) {
+      const bx = x + 10 + ((k * 53) % Math.max(1, w - 20)), span = Math.max(8, h - 14), by = y + h - 4 - ((t * 26 + k * 37) % span);
+      ctx.beginPath(); ctx.arc(bx, by, 3, 0, TAU); ctx.stroke();
+    }
+  }
+  function drawSpring(x, y, comp) {
+    const base = y + CELL, plateY = y + 12 + comp * 9;
+    rr(x + 3, base - 5, CELL - 6, 5, 2); ctx.fillStyle = '#374151'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + CELL / 2, base - 5);
+    const zig = 4, top = plateY + 5, step = (base - 5 - top) / zig;
+    for (let i = 1; i <= zig; i++) ctx.lineTo(x + (i % 2 ? 8 : CELL - 8), base - 5 - step * i + step / 2);
+    ctx.lineTo(x + CELL / 2, top);
+    ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.strokeStyle = '#9ca3af'; ctx.stroke();
+    rr(x + 2, plateY, CELL - 4, 7, 3); ctx.fillStyle = '#ef4444'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#991b1b'; ctx.stroke();
+  }
+  // ngôi sao vàng lấp lánh, tự vẽ (không lấy hình game khác)
+  function starPath(cx, cy, R, rot) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 ? R * 0.5 : R, a = rot - Math.PI / 2 + i * Math.PI / 5;
+      if (i === 0) ctx.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); else ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+    }
+    ctx.closePath();
+  }
+  function drawStar(cx, cy, t, R) {
+    cy += Math.sin(t * 3 + cx * 0.05) * 3;
+    const gl = ctx.createRadialGradient(cx, cy, 2, cx, cy, R * 1.9);
+    gl.addColorStop(0, 'rgba(255,236,140,0.75)'); gl.addColorStop(1, 'rgba(255,236,140,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(cx, cy, R * 1.9, 0, TAU); ctx.fill();
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(t * 1.4);
+    ctx.fillStyle = 'rgba(255,250,215,0.85)';
+    for (let k = 0; k < 4; k++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath(); ctx.moveTo(0, -R * 1.65); ctx.lineTo(2.2, -R * 0.7); ctx.lineTo(-2.2, -R * 0.7); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    starPath(cx, cy, R, Math.sin(t * 2) * 0.1);
+    const g = ctx.createLinearGradient(0, cy - R, 0, cy + R); g.addColorStop(0, '#fff4a8'); g.addColorStop(1, '#ffbf1a');
+    ctx.fillStyle = g; ctx.fill(); ctx.lineJoin = 'round'; ctx.lineWidth = 2.5; ctx.strokeStyle = '#e08a00'; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(cx - R * 0.25, cy - R * 0.3, R * 0.18, R * 0.1, -0.6, 0, TAU); ctx.fill();
+  }
+  function drawStart(x, y, t) {
+    const px = x + 9, base = y + CELL;
+    ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(px + 2, base - 1, 9, 3, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#6b4f2f'; ctx.fillRect(px, base - 34, 3, 34);
+    const wv = Math.sin(t * 5) * 2;
+    ctx.beginPath(); ctx.moveTo(px + 3, base - 34); ctx.quadraticCurveTo(px + 14, base - 36 + wv, px + 25, base - 29 + wv);
+    ctx.quadraticCurveTo(px + 14, base - 23 - wv, px + 3, base - 20); ctx.closePath();
+    ctx.fillStyle = '#22c55e'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#15803d'; ctx.stroke();
+  }
+  function drawObj(o, t, isPlay) {
+    const r = rectOf(o);
+    if (o.t === 'block') drawBlock(r.x, r.y, r.w, r.h);
+    else if (o.t === 'spike') drawSpikes(r.x, r.y, r.w, r.h);
+    else if (o.t === 'fire') drawFire(r.x, r.y, r.w, r.h, t);
+    else if (o.t === 'water') drawWater(r.x, r.y, r.w, r.h, t);
+    else if (o.t === 'spring') { const a = anim.get(o) || 0; drawSpring(r.x, r.y, a > 0 ? Math.sin(a / 0.35 * Math.PI) : 0); }
+    else if (o.t === 'start') drawStart(r.x, r.y, t);
+  }
+  function drawLevelScene(L, t, isPlay) {
+    for (const o of L.objs) if (o.t === 'water') drawObj(o, t, isPlay);
+    for (const o of L.objs) if (o.t === 'block') drawObj(o, t, isPlay);
+    for (const o of L.objs) if (o.t !== 'water' && o.t !== 'block' && o.t !== 'star') drawObj(o, t, isPlay);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = LW; ctx.strokeStyle = '#111';
+    for (const Ln of L.lines) {
+      if (Ln.length < 4) continue;
+      ctx.beginPath(); ctx.moveTo(Ln[0], Ln[1]);
+      for (let i = 2; i + 1 < Ln.length; i += 2) ctx.lineTo(Ln[i], Ln[i + 1]);
+      ctx.stroke();
+    }
+    let si = 0;
+    for (const o of L.objs) if (o.t === 'star') {
+      const idx = si++;
+      if (isPlay && L === level && got.has(idx)) continue;
+      drawStar((o.x + 0.5) * CELL, BAR + (o.y + 0.5) * CELL, t, 15);
+    }
+  }
+  function drawHero() {
+    const b = hero, C = CHAR3D[b.id] || CHAR3D.froggy, r = RV;
+    ctx.save();
+    const sx = b.ouchT > 0 ? Math.sin(clock * 60) * 3 : 0;
+    ctx.translate(b.x + sx, b.y + RC); // gốc ở CHÂN → nhún/giãn không làm hụt đất
+    ctx.scale(b.dir, 1); ctx.rotate(b.tilt * b.dir);
+    ctx.scale(1 - b.st * 0.55, 1 + b.st);
+    ctx.translate(0, -C.bottom * r);
+    if (b.ouchT > 0) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(clock * 18));
+    drawActor(b);
+    ctx.restore();
+  }
+
+  // ================= VẼ GIAO DIỆN =================
+  function text(s, x, y, size, col, align, weight) {
+    ctx.font = (weight || '800') + ' ' + size + 'px -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = col; ctx.fillText(s, x, y);
+  }
+  function button(x, y, w, h, fill, stroke, fn, layer) {
+    rr(x, y, w, h, 14); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = stroke; ctx.stroke();
+    if (fn) hit(x, y, w, h, fn, layer);
+  }
+  const TAB = { build: { col: '#f59e0b', dark: '#b45309', label: 'Build' }, draw: { col: '#334155', dark: '#0f172a', label: 'Draw' }, play: { col: '#22c55e', dark: '#15803d', label: 'Play' } };
+  function tabIcon(m, x, y, col) {
+    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (m === 'build') { rr(x - 10, y, 9, 9, 2); ctx.fill(); rr(x + 1, y, 9, 9, 2); ctx.fill(); rr(x - 4.5, y - 11, 9, 9, 2); ctx.fill(); }
+    else if (m === 'draw') { ctx.beginPath(); ctx.moveTo(x - 9, y + 9); ctx.lineTo(x - 7, y + 2); ctx.lineTo(x + 5, y - 10); ctx.lineTo(x + 10, y - 5); ctx.lineTo(x - 2, y + 7); ctx.closePath(); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo(x - 7, y - 10); ctx.lineTo(x + 10, y); ctx.lineTo(x - 7, y + 10); ctx.closePath(); ctx.fill(); }
+  }
+  function drawKindIcon(kind, x, y, s, t) { // món đồ thu nhỏ trong ô vuông cạnh s
+    ctx.save(); ctx.translate(x, y); const k = s / CELL; ctx.scale(k, k);
+    if (kind === 'block') drawBlock(0, 3, CELL, CELL - 3);
+    else if (kind === 'spike') drawSpikes(0, 0, CELL, CELL);
+    else if (kind === 'fire') drawFire(0, 0, CELL, CELL, t);
+    else if (kind === 'water') { ctx.save(); rr(0, 0, CELL, CELL, 5); ctx.clip(); drawWater(0, 0, CELL, CELL, t); ctx.restore(); }
+    else if (kind === 'spring') drawSpring(0, 0, 0);
+    else if (kind === 'star') drawStar(CELL / 2, CELL / 2, 0, 12);
+    else if (kind === 'start') drawStart(0, 0, t);
+    ctx.restore();
+  }
+  function drawTopBar() {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(0, 0, WW, BAR);
+    ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(0, BAR - 2, WW, 2);
+    let x = 8;
+    if (HOME) { // 🏠 về trang chủ (app mở từ icon iPad không có nút Back) — các tab dời sang phải
+      button(8, 6, 52, 52, '#f8fafc', '#cbd5e1', function() { noise('click'); location.href = '../'; });
+      ctx.fillStyle = '#475569'; ctx.beginPath();
+      ctx.moveTo(34, 17); ctx.lineTo(48, 31); ctx.lineTo(43, 31); ctx.lineTo(43, 46); ctx.lineTo(25, 46); ctx.lineTo(25, 31); ctx.lineTo(20, 31);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#f8fafc'; ctx.fillRect(31, 36, 6, 10);
+      x = 66;
+    }
+    for (const m of ['build', 'draw', 'play']) {
+      const on = mode === m, T = TAB[m];
+      button(x, 6, 104, 52, on ? T.col : '#ffffff', on ? T.dark : '#cbd5e1', function() { if (mode !== m) { noise('click'); setMode(m); } });
+      tabIcon(m, x + 24, 32, on ? '#fff' : T.col);
+      text(T.label, x + 66, 33, 20, on ? '#fff' : '#334155');
+      x += 110;
+    }
+    // giữa: tên màn đang chơi; Build có thêm nút "+ Map Expand" (thêm 1 màn hình, ẩn khi đã dài nhất)
+    const lname = save.cur < SAMPLES.length ? 'Level ' + (save.cur + 1) : 'My level ' + (save.cur - SAMPLES.length + 1);
+    if (mode === 'build' && level.cols < MAX_COLS) {
+      text(lname, 520, 33, 22, '#64748b');
+      button(628, 6, 190, 52, '#f8fafc', '#cbd5e1', makeLonger);
+      ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.strokeStyle = '#16a34a'; ctx.beginPath();
+      ctx.moveTo(636, 32); ctx.lineTo(660, 32); ctx.moveTo(648, 20); ctx.lineTo(648, 44); ctx.stroke();
+      text('Map Expand', 740, 33, 19, '#334155');
+    } else text(lname, 586, 33, 22, '#64748b');
+    // phải: baby đang chơi · chọn màn · loa
+    button(840, 6, 56, 52, '#f8fafc', '#cbd5e1', function() { overlay = 'pick'; noise('click'); });
+    const mini = makeActor(hero.id, 12); ctx.save(); ctx.translate(868, 33); drawActor(mini); ctx.restore();
+    button(902, 6, 64, 52, '#f8fafc', '#cbd5e1', function() { overlay = 'levels'; noise('click'); });
+    ctx.fillStyle = '#64748b';
+    for (let k = 0; k < 4; k++) { rr(918 + (k % 2) * 17, 15 + Math.floor(k / 2) * 17, 13, 13, 3); ctx.fill(); }
+    button(972, 6, 46, 52, '#f8fafc', '#cbd5e1', function() { save.mute = !save.mute; persist(); if (!save.mute) noise('click'); });
+    ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(982, 27); ctx.lineTo(988, 27); ctx.lineTo(996, 20); ctx.lineTo(996, 46); ctx.lineTo(988, 39); ctx.lineTo(982, 39); ctx.closePath(); ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = save.mute ? '#ef4444' : '#475569'; ctx.beginPath();
+    if (save.mute) { ctx.moveTo(1000, 27); ctx.lineTo(1010, 39); ctx.moveTo(1010, 27); ctx.lineTo(1000, 39); }
+    else { ctx.arc(997, 33, 8, -0.8, 0.8); ctx.moveTo(1005, 25); ctx.arc(997, 33, 12, -0.8, 0.8); }
+    ctx.stroke();
+  }
+  function drawControls() {
+    const held = { left: inp.left, right: inp.right, jump: false };
+    ptrs.forEach(p => { if (p.role === 'jump') held.jump = true; });
+    for (const k of ['left', 'right', 'jump']) {
+      const R = CTRL[k], on = held[k];
+      rr(R.x, R.y, R.w, R.h, 26); ctx.fillStyle = on ? '#cbd5e1' : '#f8fafc'; ctx.fill();
+      ctx.lineWidth = 4; ctx.strokeStyle = on ? '#475569' : '#cbd5e1'; ctx.stroke();
+      const cx = R.x + R.w / 2, cy = R.y + R.h / 2 - (k === 'jump' ? 10 : 0);
+      ctx.fillStyle = on ? '#0f172a' : '#334155'; ctx.beginPath();
+      if (k === 'left') { ctx.moveTo(cx + 18, cy - 28); ctx.lineTo(cx - 24, cy); ctx.lineTo(cx + 18, cy + 28); }
+      else if (k === 'right') { ctx.moveTo(cx - 18, cy - 28); ctx.lineTo(cx + 24, cy); ctx.lineTo(cx - 18, cy + 28); }
+      else { ctx.moveTo(cx - 30, cy + 14); ctx.lineTo(cx, cy - 24); ctx.lineTo(cx + 30, cy + 14); }
+      ctx.closePath(); ctx.fill();
+      if (k === 'jump') text('Jump', cx, cy + 36, 18, '#334155');
+    }
+    drawStar(462, 704, clock, 22);
+    text(got.size ? 'Got it!' : 'Get the star!', 494, 706, 28, '#334155', 'left');
+  }
+  function drawArrows() {
+    for (const k of ['scrollL', 'scrollR']) {
+      const R = ARW[k], can = k === 'scrollL' ? camX > 0.5 : camX < maxCam() - 0.5;
+      let held = false; ptrs.forEach(p => { if (p.role === k) held = true; });
+      rr(R.x, R.y, R.w, R.h, 22); ctx.fillStyle = held ? '#cbd5e1' : can ? '#f8fafc' : '#eef2f6'; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#cbd5e1'; ctx.stroke();
+      const cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+      ctx.fillStyle = can ? '#334155' : '#cbd5e1'; ctx.beginPath();
+      if (k === 'scrollL') { ctx.moveTo(cx + 14, cy - 22); ctx.lineTo(cx - 18, cy); ctx.lineTo(cx + 14, cy + 22); }
+      else { ctx.moveTo(cx - 14, cy - 22); ctx.lineTo(cx + 18, cy); ctx.lineTo(cx - 14, cy + 22); }
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  const KIND_LABEL = { block: 'Block', spike: 'Spikes', fire: 'Fire', water: 'Water', spring: 'Spring', star: 'Star', start: 'Start' };
+  // thanh dưới: đồ nghề theo mode (Build: ◀ các món Undo ▶ · Draw: ◀ Undo Clear ▶ · Play: nút đi/nhảy)
+  function drawBottomBar() {
+    ctx.fillStyle = 'rgba(255,255,255,0.93)'; ctx.fillRect(0, LVB, WW, WH - LVB);
+    ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(0, LVB, WW, 2);
+    if (mode === 'play') { drawControls(); return; }
+    drawArrows();
+    if (mode === 'build') {
+      for (let i = 0; i < PALETTE.length; i++) {
+        const kd = PALETTE[i], bx = 100 + i * 90, on = tool === kd;
+        button(bx, 652, 84, 104, on ? '#fde68a' : '#f8fafc', on ? '#d97706' : '#cbd5e1', function() {
+          tool = tool === kd ? null : kd; noise('click');
+          showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
+        });
+        drawKindIcon(kd, bx + 18, 662, 48, clock);
+        text(KIND_LABEL[kd], bx + 42, 734, 15, on ? '#92400e' : '#475569');
+      }
+      button(732, 652, 110, 104, undoStack.length ? '#f8fafc' : '#eef2f6', '#cbd5e1', undo);
+      undoIcon(787, 690, undoStack.length ? '#334155' : '#94a3b8');
+      text('Undo', 787, 734, 17, undoStack.length ? '#334155' : '#94a3b8');
+    } else {
+      const has = level.lines.length > 0;
+      button(352, 652, 150, 104, has ? '#f8fafc' : '#eef2f6', '#cbd5e1', undo);
+      undoIcon(427, 690, has ? '#334155' : '#94a3b8');
+      text('Undo', 427, 734, 18, has ? '#334155' : '#94a3b8');
+      button(522, 652, 150, 104, has ? '#f8fafc' : '#eef2f6', '#cbd5e1', function() {
+        if (level.lines.length) { level.lines = []; rebuild(); persist(); noise('click'); }
+      });
+      ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = has ? '#334155' : '#94a3b8'; ctx.beginPath();
+      ctx.moveTo(583, 680); ctx.lineTo(611, 708); ctx.moveTo(611, 680); ctx.lineTo(583, 708); ctx.stroke();
+      text('Clear', 597, 734, 18, has ? '#334155' : '#94a3b8');
+    }
+  }
+  function undoIcon(x, y, col) {
+    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y + 2, 14, Math.PI * 1.1, Math.PI * 2.35); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - 22, y - 4); ctx.lineTo(x - 8, y - 6); ctx.lineTo(x - 17, y + 7); ctx.closePath(); ctx.fill();
+  }
+  function drawSelection() {
+    if (!sel) return;
+    const r = rectOf(sel), k = KINDS[sel.t];
+    ctx.save(); ctx.setLineDash([7, 5]); ctx.lineWidth = 3; ctx.strokeStyle = '#2563eb';
+    rr(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 6); ctx.stroke(); ctx.restore();
+    if (k.rw || k.rh) {
+      const hp = handlePos(sel);
+      ctx.fillStyle = '#2563eb'; ctx.beginPath(); ctx.arc(hp.x, hp.y, 15, 0, TAU); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hp.x - 6, hp.y + 1); ctx.lineTo(hp.x + 6, hp.y + 1); ctx.moveTo(hp.x + 1, hp.y - 6); ctx.lineTo(hp.x + 1, hp.y + 6); ctx.stroke();
+    }
+    if (canDelete(sel)) {
+      const dp = delPos(sel);
+      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(dp.x, dp.y, 15, 0, TAU); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(dp.x - 5, dp.y - 5); ctx.lineTo(dp.x + 5, dp.y + 5); ctx.moveTo(dp.x + 5, dp.y - 5); ctx.lineTo(dp.x - 5, dp.y + 5); ctx.stroke();
+    }
+  }
+  function drawBackground(t) {
+    const g = ctx.createLinearGradient(0, BAR, 0, LVB); g.addColorStop(0, '#9adbe3'); g.addColorStop(1, '#70c5ce');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, WW, LVB);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    const CL = [[120, 150, 1], [430, 115, 0.8], [760, 170, 1.15], [960, 120, 0.7]];
+    for (const [cx0, cy, s] of CL) {
+      const cx = ((cx0 + t * 6 * s) % (WW + 200)) - 100;
+      ctx.beginPath(); ctx.arc(cx, cy, 26 * s, 0, TAU); ctx.arc(cx + 28 * s, cy - 10 * s, 32 * s, 0, TAU); ctx.arc(cx + 60 * s, cy, 24 * s, 0, TAU); ctx.fill();
+    }
+  }
+  function drawGrid() { // chỉ vẽ chấm lưới ở phần đang xem
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    const g0 = Math.max(1, Math.floor(camX / CELL)), g1 = Math.min(level.cols - 1, Math.ceil((camX + WW) / CELL));
+    for (let gy = 1; gy < ROWS; gy++) for (let gx = g0; gx <= g1; gx++) ctx.fillRect(gx * CELL - 1.5, BAR + gy * CELL - 1.5, 3, 3);
+  }
+  function drawParticles(dt) {
+    for (const p of particles) {
+      p.vy += (p.grav || 0) * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; if (p.vr) p.rot += p.vr * dt;
+      const k = Math.max(0, p.life / p.max);
+      ctx.globalAlpha = Math.min(1, k * 1.5);
+      if (p.kind === 'star') { starPath(p.x, p.y, p.size * (0.5 + k * 0.5), p.rot); ctx.fillStyle = p.col; ctx.fill(); }
+      else if (p.kind === 'confetti') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.col; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore(); }
+      else { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * k + 1, 0, TAU); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+    particles = particles.filter(p => p.life > 0);
+  }
+  function panel(x, y, w, h) {
+    ctx.fillStyle = 'rgba(15,23,42,0.45)'; ctx.fillRect(0, 0, WW, WH);
+    rr(x, y, w, h, 26); ctx.fillStyle = '#fffdf7'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#f59e0b'; ctx.stroke();
+    hit(x, y, w, h, function() {}, 1); // chạm vào trong khung không đóng khung
+  }
+  function closeX(x, y) {
+    ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU); ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#475569'; ctx.lineCap = 'round'; ctx.beginPath();
+    ctx.moveTo(x - 8, y - 8); ctx.lineTo(x + 8, y + 8); ctx.moveTo(x + 8, y - 8); ctx.lineTo(x - 8, y + 8); ctx.stroke();
+    hit(x - 26, y - 26, 52, 52, function() { overlay = null; noise('click'); }, 1);
+  }
+  function drawPick() {
+    panel(112, 120, 800, 470);
+    text('Pick your baby!', WW / 2, 172, 38, '#b45309');
+    closeX(872, 160);
+    for (let i = 0; i < CHARS.length; i++) {
+      const ch = CHARS[i], x = 152 + i * 184, y = 222, on = hero.id === ch.id;
+      button(x, y, 168, 320, on ? '#fef3c7' : '#ffffff', on ? '#f59e0b' : '#e2e8f0', function() {
+        setChar(ch.id); say(ch.id, 'hello'); overlay = null;
+      }, 1);
+      const a = makeActor(ch.id, 40); a.face = (Math.floor(clock * 0.7 + i) % 4 === 0) ? 'blink' : 'idle';
+      ctx.save(); ctx.translate(x + 84, y + 140 + Math.sin(clock * 2 + i) * 4); drawActor(a); ctx.restore();
+      text(ch.name, x + 84, y + 280, ch.name.length > 12 ? 17 : 21, '#334155');
+    }
+  }
+  const CARD = { x0: 150, y0: 142, w: 225, h: 170, gx: 24, gy: 12, ps: 0.2 };
+  function drawLevels() {
+    panel(72, 72, 880, 640);
+    text('Levels', WW / 2, 112, 34, '#b45309');
+    closeX(912, 112);
+    for (let i = 0; i < NSLOT; i++) {
+      const col = i % 3, row = Math.floor(i / 3), x = CARD.x0 + col * (CARD.w + CARD.gx), y = CARD.y0 + row * (CARD.h + CARD.gy), on = i === save.cur;
+      button(x, y, CARD.w, CARD.h, on ? '#fef3c7' : '#ffffff', on ? '#f59e0b' : '#e2e8f0', function() { noise('click'); overlay = null; loadSlot(i); }, 1);
+      const L = save.slots[i], pw = WW * CARD.ps, ph = ROWS * CELL * CARD.ps, px = x + (CARD.w - pw) / 2, py = y + 8;
+      ctx.save(); rr(px, py, pw, ph, 8); ctx.clip();
+      ctx.fillStyle = '#86d0d8'; ctx.fillRect(px, py, pw, ph);
+      ctx.translate(px, py - BAR * CARD.ps); ctx.scale(CARD.ps, CARD.ps);
+      drawLevelScene(L, 0, false);
+      ctx.restore();
+      text(i < SAMPLES.length ? 'Level ' + (i + 1) : 'My level ' + (i - SAMPLES.length + 1), x + CARD.w / 2, y + CARD.h - 14, 16, '#334155');
+      // ↺ làm lại từ đầu (hỏi lại trước khi xoá)
+      const rx = x + CARD.w - 18, ry = y + 20;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(rx, ry, 16, 0, TAU); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#94a3b8'; ctx.stroke();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#475569'; ctx.beginPath(); ctx.arc(rx, ry, 7, -0.3, 4.6); ctx.stroke();
+      ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(rx + 7, ry - 6); ctx.lineTo(rx + 11, ry + 1); ctx.lineTo(rx + 3, ry); ctx.closePath(); ctx.fill();
+      hit(rx - 20, ry - 20, 40, 40, function() { confirmSlot = i; overlay = 'confirm'; noise('click'); }, 1);
+    }
+  }
+  function drawConfirm() {
+    panel(262, 250, 500, 250);
+    text('Start this level over?', WW / 2, 312, 30, '#334155');
+    text(confirmSlot < SAMPLES.length ? 'It goes back to how it was at first.' : 'It goes back to an empty level.', WW / 2, 352, 18, '#64748b', 'center', '600');
+    button(312, 400, 180, 70, '#fee2e2', '#ef4444', function() {
+      save.slots[confirmSlot] = freshSlot(confirmSlot);
+      if (confirmSlot === save.cur) { level = save.slots[save.cur]; undoStack = []; setMode(mode); }
+      persist(); overlay = 'levels'; noise('click');
+    }, 1);
+    text('Yes', 402, 435, 24, '#b91c1c');
+    button(532, 400, 180, 70, '#f1f5f9', '#94a3b8', function() { overlay = 'levels'; noise('click'); }, 1);
+    text('No', 622, 435, 24, '#334155');
+  }
+  function drawWin() {
+    panel(232, 190, 560, 360);
+    for (let k = 0; k < 3; k++) drawStar(WW / 2 - 70 + k * 70, 250, clock + k, 22);
+    text('You got all the stars!', WW / 2, 318, 34, '#b45309');
+    text(praiseText, WW / 2, 362, 24, '#334155', 'center', '700');
+    const B = [['Play again', '#dcfce7', '#22c55e', function() { setMode('play'); overlay = null; }],
+               ['Edit', '#fef3c7', '#f59e0b', function() { overlay = null; setMode('build'); }],
+               ['Next', '#dbeafe', '#3b82f6', function() { overlay = null; loadSlot((save.cur + 1) % NSLOT); }]];
+    for (let k = 0; k < 3; k++) {
+      const bx = 262 + k * 172;
+      button(bx, 420, 156, 80, B[k][1], B[k][2], function() { noise('click'); B[k][3](); }, 1);
+      text(B[k][0], bx + 78, 460, 22, '#334155');
+    }
+  }
+
+  // ================= VÒNG LẶP =================
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
+    if (mode === 'play' && !overlay && !testHold) {
+      acc += dt; let n = 0;
+      while (acc >= DT && n < 8) { physStep(DT); acc -= DT; n++; }
+      if (n >= 8) acc = 0;
+    }
+    if (mode === 'play') { // camera theo baby: baby đứng ở ~40% bề ngang, trôi mượt
+      const tgt = clamp(hero.x - WW * 0.4, 0, maxCam());
+      camX += (tgt - camX) * Math.min(1, dt * 6);
+    } else if (!overlay) scrollStep(dt);
+    if (won && mode === 'play') { wonT += dt; if (wonT > 0.9 && !overlay) { overlay = 'win'; confettiBurst(); } }
+    animHero(dt, mode === 'play');
+    anim.forEach(function(v, k) { if (v - dt <= 0) anim.delete(k); else anim.set(k, v - dt); });
+    if (hintT > 0) hintT -= dt;
+    if (flash) { flash.t -= dt; if (flash.t <= 0) flash = null; }
+    if (shakeT > 0) shakeT -= dt;
+    render(dt);
+    requestAnimationFrame(frame);
+  }
+  function confettiBurst() {
+    const cols = ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#facc15'];
+    for (let i = 0; i < 70; i++) particles.push({ x: camX + WW / 2 + (Math.random() - 0.5) * 300, y: 200, vx: (Math.random() - 0.5) * 600, vy: -200 - Math.random() * 400,
+      life: 2, max: 2, col: cols[i % cols.length], size: 10, kind: 'confetti', grav: 700, rot: Math.random() * TAU, vr: (Math.random() - 0.5) * 12 });
+  }
+  function render(dt) {
+    hits = [];
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#5bb3bd'; ctx.fillRect(0, 0, W, H);
+    const shx = shakeT > 0 ? (Math.random() - 0.5) * 6 : 0;
+    ctx.setTransform(DPR * SC, 0, 0, DPR * SC, DPR * (OX + shx * SC), DPR * OY);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, WH); ctx.clip();
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, LVB); ctx.clip(); // màn chơi: không vẽ lấn xuống thanh dưới
+    drawBackground(clock);            // trời + mây đứng yên
+    ctx.save(); ctx.translate(-camX, 0); // mọi thứ trong màn dài trôi theo camX
+    if (mode === 'build') drawGrid();
+    drawLevelScene(level, clock, mode === 'play');
+    drawHero();
+    drawParticles(dt);
+    if (mode === 'build') drawSelection();
+    if (mode === 'draw') {
+      // noDraw đang chớp đỏ (vừa vẽ đụng)
+      anim.forEach(function(v, z) { if (z && z.r) { ctx.fillStyle = 'rgba(239,68,68,' + (0.35 * v / 0.5) + ')'; rr(z.r.x - 4, z.r.y - 4, z.r.w + 8, z.r.h + 8, 8); ctx.fill(); } });
+    }
+    ctx.restore();
+    ctx.restore();
+    drawBottomBar();
+    if (hintT > 0 && !overlay) {
+      ctx.globalAlpha = Math.min(1, hintT);
+      ctx.font = '700 22px -apple-system, "Segoe UI", sans-serif';
+      const tw = ctx.measureText(hintText).width + 36;
+      rr(WW / 2 - tw / 2, BAR + 12, tw, 44, 22); ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+      text(hintText, WW / 2, BAR + 35, 22, '#334155', 'center', '700');
+      ctx.globalAlpha = 1;
+    }
+    if (flash) {
+      ctx.globalAlpha = Math.min(1, flash.t * 2);
+      ctx.font = '800 20px -apple-system, "Segoe UI", sans-serif';
+      const tw = ctx.measureText(flash.text).width + 28, fx = clamp(flash.x, tw / 2 + 8, WW - tw / 2 - 8), fy = clamp(flash.y - 46, BAR + 24, LVB - 24);
+      rr(fx - tw / 2, fy - 18, tw, 36, 18); ctx.fillStyle = '#fee2e2'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ef4444'; ctx.stroke();
+      text(flash.text, fx, fy, 20, '#b91c1c');
+      ctx.globalAlpha = 1;
+    }
+    drawTopBar();
+    if (overlay === 'pick') drawPick();
+    else if (overlay === 'levels') drawLevels();
+    else if (overlay === 'confirm') drawConfirm();
+    else if (overlay === 'win') drawWin();
+    ctx.restore();
+    // iPad đứng → nhắc xoay ngang (chữ nằm ở dải trống phía trên)
+    if (H > W * 1.1 && OY > 40) {
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      text('Turn the iPad sideways for a bigger screen', W / 2, OY / 2, Math.min(22, W / 24), 'rgba(255,255,255,0.95)', 'center', '700');
+    }
+  }
+
+  // ================= KIỂM THỬ (?test) — gọi vào CHÍNH code game, không chép lại logic =================
+  if (TEST) {
+    window.__g = {
+      get: function() { return { mode: mode, overlay: overlay, slot: save.cur, char: hero.id, tool: tool, sel: sel ? clone(sel) : null,
+        hero: { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, grounded: hero.grounded, ouchT: hero.ouchT, face: hero.face },
+        got: got.size, total: starObjs.length, won: won, ouches: ouches, camX: camX, cols: level.cols, maxCam: maxCam(),
+        lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME }; },
+      level: function() { return clone(level); },
+      setLevel: function(L) { normLevel(L); save.slots[save.cur] = L; level = L; persist(); setMode(mode); },
+      setCam: setCam, longer: makeLonger,
+      toScreenWorld: function(x, y) { const b = c.getBoundingClientRect(); return [b.left + OX + (x - camX) * SC, b.top + OY + y * SC]; },
+      setMode: setMode, loadSlot: loadSlot, setChar: setChar,
+      stroke: function(pts) { // vẽ y như ngón tay: begin → extend từng điểm → end
+        if (mode !== 'draw') setMode('draw');
+        if (!beginStroke(pts[0], pts[1])) return -1;
+        for (let i = 2; i + 1 < pts.length; i += 2) { extendStroke(pts[i], pts[i + 1]); if (!stroke) break; }
+        endStroke(); return level.lines.length; },
+      hold: function(on) { testHold = !!on; },
+      input: function(o) { if ('left' in o) keys.left = !!o.left; if ('right' in o) keys.right = !!o.right; syncHold(); if (o.jump) inp.jumpPressed = true; },
+      step: function(n) { for (let i = 0; i < n; i++) physStep(DT); },
+      // chạy tới khi thắng: ctl(state) trả về {left,right,jump} mỗi khung 1/120s
+      run: function(ctlSrc, maxSteps) {
+        const ctl = new Function('s', ctlSrc);
+        for (let i = 0; i < maxSteps; i++) {
+          const s = { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, g: hero.grounded, got: got.size, i: i, ouch: hero.ouchT > 0 };
+          const o = ctl(s) || {};
+          keys.left = !!o.left; keys.right = !!o.right; syncHold(); if (o.jump) inp.jumpPressed = true;
+          physStep(DT);
+          if (won) return { won: true, steps: i, ouches: ouches, got: got.size };
+        }
+        return { won: false, steps: maxSteps, ouches: ouches, got: got.size, x: hero.x, y: hero.y };
+      },
+      toScreen: function(x, y) { const b = c.getBoundingClientRect(); return [b.left + OX + x * SC, b.top + OY + y * SC]; },
+      sfx: function() { return SFX.log.slice(); },
+      sprites: function() { return { frog: frogReady, chicken: !!friendReady.chicken, babyfrog: !!friendReady.babyfrog, pillow: !!friendReady.pillow }; },
+      stored: function() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } },
+    };
+  }
+
+  resize(); rebuild(); respawn();
+  setMode(save.cur < SAMPLES.length ? 'draw' : 'build');
+  if (!save.picked && !TEST) overlay = 'pick';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
