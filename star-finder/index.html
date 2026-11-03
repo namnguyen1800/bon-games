@@ -395,7 +395,7 @@
   let mode = 'build';           // 'build' | 'draw' | 'play'
   let camX = 0;
   let overlay = null;           // null | 'pick' | 'levels' | 'win' | 'confirm'
-  let confirmSlot = -1;
+  let confirmSlot = -1, confirmFrom = 'levels'; // khung hỏi lại mở từ khung Levels (↺ trên thẻ) hay từ nút ↺ trên thanh trên
   let clock = 0, hintT = 0, hintText = '', flash = null, shakeT = 0;
   let tool = null, sel = null, drag = null, undoStack = [];
   let stroke = null;            // nét đang vẽ (mảng điểm phẳng)
@@ -1103,10 +1103,18 @@
       text(T.label, x + 66, 33, 20, on ? '#fff' : '#334155');
       x += 110;
     }
+    // ↺ làm lại level đang làm — chỉ ở Build/Draw (lúc Play không có, khỏi lỡ tay)
+    let nameX = 520;
+    if (mode !== 'play') {
+      const R = resetRect();
+      button(R.x, R.y, R.w, R.h, '#f8fafc', '#cbd5e1', askReset);
+      resetIcon(R.x + R.w / 2, 32, '#475569', 1.5);
+      nameX = (R.x + R.w + 628) / 2;
+    }
     // giữa: tên màn đang chơi; Build có thêm nút "+ Map Expand" (thêm 1 màn hình, ẩn khi đã dài nhất)
     const lname = save.cur < SAMPLES.length ? 'Level ' + (save.cur + 1) : 'My level ' + (save.cur - SAMPLES.length + 1);
     if (mode === 'build' && level.cols < MAX_COLS) {
-      text(lname, 520, 33, 22, '#64748b');
+      text(lname, nameX, 33, 22, '#64748b');
       button(628, 6, 190, 52, '#f8fafc', '#cbd5e1', makeLonger);
       ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.strokeStyle = '#16a34a'; ctx.beginPath();
       ctx.moveTo(636, 32); ctx.lineTo(660, 32); ctx.moveTo(648, 20); ctx.lineTo(648, 44); ctx.stroke();
@@ -1287,8 +1295,15 @@
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(rx, ry, 16, 0, TAU); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#94a3b8'; ctx.stroke();
       ctx.lineWidth = 3; ctx.strokeStyle = '#475569'; ctx.beginPath(); ctx.arc(rx, ry, 7, -0.3, 4.6); ctx.stroke();
       ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(rx + 7, ry - 6); ctx.lineTo(rx + 11, ry + 1); ctx.lineTo(rx + 3, ry); ctx.closePath(); ctx.fill();
-      hit(rx - 20, ry - 20, 40, 40, function() { confirmSlot = i; overlay = 'confirm'; noise('click'); }, 1);
+      hit(rx - 20, ry - 20, 40, 40, function() { confirmSlot = i; confirmFrom = 'levels'; overlay = 'confirm'; noise('click'); }, 1);
     }
+  }
+  // nút ↺ trên thanh trên: làm lại level ĐANG làm từ đầu (Nam chọn 11-02: Bon tự bấm, kiểu chỉ có hình ↺) — luôn hỏi lại trước khi xoá
+  function resetRect() { return { x: (HOME ? 66 : 8) + 3 * 110 + 2, y: 6, w: 52, h: 52 }; } // ngay sau 3 tab Build/Draw/Play
+  function askReset() { confirmSlot = save.cur; confirmFrom = 'bar'; overlay = 'confirm'; noise('click'); }
+  function resetIcon(cx, cy, col, s) { // ↺ giống nút trên thẻ level, phóng to s lần
+    ctx.lineWidth = 3 * s; ctx.lineCap = 'round'; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 7 * s, -0.3, 4.6); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cx + 7 * s, cy - 6 * s); ctx.lineTo(cx + 11 * s, cy + 1 * s); ctx.lineTo(cx + 3 * s, cy); ctx.closePath(); ctx.fill();
   }
   function drawConfirm() {
     panel(262, 250, 500, 250);
@@ -1297,10 +1312,11 @@
     button(312, 400, 180, 70, '#fee2e2', '#ef4444', function() {
       save.slots[confirmSlot] = freshSlot(confirmSlot);
       if (confirmSlot === save.cur) { level = save.slots[save.cur]; undoStack = []; setMode(mode); }
-      persist(); overlay = 'levels'; noise('click');
+      persist(); noise('click');
+      if (confirmFrom === 'bar') { overlay = null; showHint('Fresh start!'); } else overlay = 'levels';
     }, 1);
     text('Yes', 402, 435, 24, '#b91c1c');
-    button(532, 400, 180, 70, '#f1f5f9', '#94a3b8', function() { overlay = 'levels'; noise('click'); }, 1);
+    button(532, 400, 180, 70, '#f1f5f9', '#94a3b8', function() { overlay = confirmFrom === 'bar' ? null : 'levels'; noise('click'); }, 1);
     text('No', 622, 435, 24, '#334155');
   }
   function drawWin() {
@@ -1408,7 +1424,7 @@
         lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME,
         bumps: bumps, wingsGot: gotWing.size, praise: praiseText,
         enemies: enemies.map(e => ({ x: e.x, y: e.y, dir: e.dir, n: e.n, rc: e.rc, id: e.id, gone: e.gone, grounded: e.grounded, walk: e.walk })) }; },
-      ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI) }; },
+      ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI), reset: resetRect() }; },
       level: function() { return clone(level); },
       setLevel: function(L) { normLevel(L); save.slots[save.cur] = L; level = L; persist(); setMode(mode); },
       setCam: setCam, longer: makeLonger,
