@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Bon's Number Memory</title>
+<style>
+  /* Game 3 của Bon: nhớ số. Toàn chữ/nút/danh sách → nút HTML thật (khác 2 game cũ vẽ hết lên canvas); chỉ bạn hỏi vẽ trên canvas nhỏ.
+     Bố cục: cột trái = bạn hỏi + bảng / câu hỏi / điểm · cột phải = nút to (Nam chơi iPad tay phải). Màn < 600px: nút xuống đáy. */
+  :root { color-scheme: light; --sky-top: #9adbe3; --sky: #70c5ce; --ink: #1f3b40; --edge: #2e6b73; --card: #ffffff;
+          --yes: #22c55e; --no: #3b82f6; --go: #f59e0b; --right: #16a34a; --wrong: #dc2626; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: linear-gradient(var(--sky-top), var(--sky)); color: var(--ink); font-family: -apple-system, "Segoe UI", sans-serif;
+         -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+  #app { height: 100%; display: flex; flex-direction: column; gap: 8px;
+         padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  button { font: inherit; color: inherit; border: 4px solid var(--edge); border-radius: 18px; background: var(--card); cursor: pointer;
+           box-shadow: 0 5px 0 rgba(46,107,115,0.5); touch-action: manipulation; }
+  button:active { transform: translateY(4px); box-shadow: 0 1px 0 rgba(46,107,115,0.5); }
+  button:disabled { opacity: 0.35; cursor: default; }
+  /* thanh trên */
+  #top { display: flex; align-items: center; gap: 10px; }
+  #homeBtn, #muteBtn { width: 56px; height: 56px; font-size: 28px; border-radius: 16px; flex: none; }
+  #faceBtn { width: 64px; height: 56px; padding: 0; border-radius: 16px; flex: none; display: flex; align-items: center; justify-content: center; }
+  #faceCv { width: 52px; height: 48px; }
+  #lvTitle { flex: 1; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 var(--edge); white-space: nowrap; }
+  /* hàng level: ◀ + 10 số (điện thoại 5) + ▶ */
+  #levelRow { display: flex; justify-content: center; gap: 6px; }
+  #levelRow button { min-width: 50px; height: 50px; padding: 0 4px; font-size: 22px; font-weight: 800; border-width: 3px; border-radius: 12px;
+                     box-shadow: 0 3px 0 rgba(46,107,115,0.5); }
+  #levelRow .lv.on { background: #fde68a; border-color: #b45309; }
+  /* sân chơi */
+  #stage { flex: 1; min-height: 0; display: flex; gap: 14px; }
+  #left { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; } /* min-height 0: không thì khung tự phình theo nội dung, chỗ bị cắt lọt ra ngoài */
+  #leftIn { margin: auto 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0; }
+  #right { width: clamp(200px, 30%, 300px); display: flex; flex-direction: column; justify-content: center; gap: 18px; }
+  #right button { width: 100%; min-height: 120px; font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+  #startBtn, #nextBtn { background: var(--go); }
+  #yesBtn { background: var(--yes); }
+  #noBtn { background: var(--no); }
+  #right #againBtn { background: var(--card); color: var(--ink); text-shadow: none; } /* #right để thắng màu chữ trắng của "#right button" */
+  #right #againBtn, #right #nextBtn { font-size: 30px; white-space: nowrap; }
+  /* bạn hỏi + bong bóng chữ */
+  #host { display: flex; align-items: center; gap: 6px; }
+  #hostCv { width: 130px; height: 130px; flex: none; }
+  #bubble { background: #fff; border: 4px solid var(--edge); border-radius: 22px; padding: 10px 18px; font-size: 26px; font-weight: 800; max-width: 420px; }
+  /* bảng số */
+  .cells { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; max-width: 660px; }
+  .cell { min-width: 84px; height: 96px; padding: 0 10px; display: flex; align-items: center; justify-content: center;
+          background: #fff; border: 4px solid var(--edge); border-radius: 18px; font-size: 52px; font-weight: 900; }
+  /* câu hỏi: số cũ trượt ra / số mới trượt vào (CSS transition → trình duyệt phát transitionend, game + test đều dựa vào đó) */
+  #askNum { font-size: 150px; font-weight: 900; color: #fff; text-shadow: 0 6px 0 var(--edge); line-height: 1.1;
+            transition: transform 0.15s ease, opacity 0.15s ease; }
+  #askNum.leaving { transform: translateX(-80px); opacity: 0; }
+  #askNum.entering { transform: translateX(80px); opacity: 0; transition: none; }
+  /* điểm */
+  #leftResult { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #scoreRow { display: flex; align-items: center; gap: 14px; }
+  #score { font-size: 64px; font-weight: 900; color: #fff; text-shadow: 0 4px 0 var(--edge); }
+  #stars { font-size: 40px; letter-spacing: 2px; }
+  #app[data-state="result"] #hostCv { width: 90px; height: 90px; } /* màn điểm nhiều thứ → bạn hỏi nhỏ lại cho vừa 1 màn */
+  #resBoard { gap: 8px; }
+  #resBoard .cell { min-width: 62px; height: 62px; padding: 0 6px; font-size: 32px; border-width: 3px; border-radius: 14px; }
+  #asked { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 10px; } /* 5 câu xếp 2 cột → 3 hàng */
+  #asked .row { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.92); border-radius: 14px; padding: 2px 14px; font-size: 28px; font-weight: 900; }
+  #asked .num { min-width: 84px; text-align: right; }
+  #asked .chip { font-size: 18px; padding: 4px 10px; border-radius: 10px; color: #fff; }
+  #asked .chip.yes { background: var(--yes); }
+  #asked .chip.no { background: var(--no); }
+  #asked .mark { font-size: 34px; min-width: 30px; text-align: center; }
+  #asked .mark.right { color: var(--right); }
+  #asked .mark.wrong { color: var(--wrong); }
+  /* màn chọn người hỏi */
+  #pick { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,0.5); }
+  #pick .panel { width: 100%; max-width: 760px; background: #fffdf7; border: 5px solid var(--go); border-radius: 26px; padding: 18px; text-align: center; }
+  #pick h2 { font-size: 34px; color: #b45309; margin-bottom: 12px; }
+  #pickTiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  #pick .pickTile { width: 160px; padding: 8px 6px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 20px; font-weight: 800; }
+  #pick .pickTile canvas { width: 130px; height: 130px; }
+  #pick .pickTile.on { background: #fef3c7; border-color: #f59e0b; }
+  /* điện thoại: nút xuống đáy, đứng ngang hàng */
+  @media (max-width: 599px) {
+    #stage { flex-direction: column; gap: 10px; }
+    #right { width: 100%; flex-direction: row; gap: 10px; }
+    #right button { flex: 1; min-height: 96px; font-size: 30px; }
+    #right #againBtn, #right #nextBtn { font-size: 22px; }
+    #app[data-state="result"] #hostCv { width: 72px; height: 72px; }
+    #levelRow { gap: 4px; }
+    #levelRow button { min-width: 48px; height: 48px; font-size: 20px; }
+    #lvTitle { font-size: 24px; }
+    #hostCv { width: 96px; height: 96px; }
+    #bubble { font-size: 20px; padding: 8px 12px; }
+    .cell { min-width: 64px; height: 76px; font-size: 38px; }
+    #askNum { font-size: 110px; }
+    #score { font-size: 48px; }
+    #stars { font-size: 30px; }
+    #resBoard .cell { min-width: 52px; height: 52px; font-size: 24px; }
+    #asked .row { font-size: 22px; padding: 2px 8px; gap: 8px; }
+    #asked .num { min-width: 60px; }
+    #asked .chip { font-size: 15px; padding: 3px 6px; }
+    #pick .pickTile { width: 140px; }
+  }
+</style>
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
+<meta name="theme-color" content="#70c5ce">
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <button id="homeBtn" aria-label="Home">🏠</button>
+    <div id="lvTitle">Level 1</div>
+    <button id="faceBtn" aria-label="Who asks"><canvas id="faceCv"></canvas></button>
+    <button id="muteBtn" aria-label="Sound">🔊</button>
+  </header>
+  <nav id="levelRow"></nav>
+  <main id="stage">
+    <section id="left"><div id="leftIn">
+      <div id="host"><canvas id="hostCv"></canvas><div id="bubble">Remember these numbers!</div></div>
+      <div id="board" class="cells"></div>
+      <div id="askNum" hidden></div>
+      <div id="result" hidden>
+        <div id="leftResult">
+          <div id="scoreRow"><span id="score"></span><span id="stars"></span></div>
+          <div id="resBoard" class="cells"></div>
+          <div id="asked"></div>
+        </div>
+      </div>
+    </div></section>
+    <section id="right">
+      <button id="startBtn">Start</button>
+      <button id="yesBtn" hidden>YES</button>
+      <button id="noBtn" hidden>NO</button>
+      <button id="againBtn" hidden>Play again</button>
+      <button id="nextBtn" hidden>Next level ▶</button>
+    </section>
+  </main>
+</div>
+<div id="pick" hidden><div class="panel"><h2>Who asks?</h2><div id="pickTiles"></div></div></div>
+<!-- hình 4 baby dùng chung với game Flappy (Blender nặn → embed_sprites.py) -->
+<script src="froggy3d/sprites.js"></script>
+<script src="friends3d/sprites.js"></script>
+<!-- tiếng kêu 4 baby (friends3d/build_sounds.py) -->
+<script src="friends3d/sounds.js"></script>
+<script>
+(function(){
+  'use strict';
+  // Game 3 của Bon: hiện vài số → Bon tự xem rồi bấm Start → bảng biến mất → hỏi 5 câu "số này có trên bảng không" (YES/NO)
+  // → hết 5 câu mới hiện điểm + sao + bảng cũ + từng câu ✓/✗. Level do Nam tự đổi (Next level / hàng số level), game không tự lên.
+  // Chữ trong game = tiếng Anh (trừ tên "Gối chút chút"). Plan: ~/.claude/plans/m-nh-mu-n-t-o-th-m-zesty-feather.md
+  const TEST = /[?&]test/.test(location.search);
+  const HOME = location.protocol !== 'file:'; // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu
+  const TAU = Math.PI * 2;
+  const $ = function(id) { return document.getElementById(id); };
+
+  const CHARS = [
+    { id: 'froggy',   name: 'Froggy' },
+    { id: 'chicken',  name: 'Chicken Banana' },
+    { id: 'babyfrog', name: 'Baby Froggy' },
+    { id: 'pillow',   name: 'Gối chút chút' },
+  ];
+
+  // ================= LEVEL =================
+  // Bậc thang: không cột nào giảm từ level này sang level sau (mốc thử — Bon chơi rồi chỉnh).
+  // [số ô, số nhỏ nhất, số lớn nhất, câu No "giống" số trên bảng, bảng không xếp thứ tự, kéo dài mấy level]
+  const STEPS = [
+    [3, 1, 9, 0, 0, 3], [4, 1, 9, 0, 0, 3], [5, 1, 9, 0, 0, 3],
+    [5, 1, 20, 0, 0, 3], [6, 1, 20, 0, 0, 3],
+    [6, 10, 99, 0, 0, 4], [7, 10, 99, 0, 0, 4], [7, 10, 99, 1, 0, 4], [7, 10, 99, 1, 1, 4],
+    [7, 100, 999, 1, 1, 4], [8, 100, 999, 1, 1, 4], [9, 100, 999, 1, 1, 5], [10, 100, 999, 1, 1, 6],
+  ];
+  const LEVELS = [];
+  STEPS.forEach(function(s) { for (let i = 0; i < s[5]; i++) LEVELS.push({ n: s[0], lo: s[1], hi: s[2], alike: !!s[3], mixed: !!s[4] }); });
+  const MAX_LEVEL = LEVELS.length; // 50
+  const ROUND_Q = 5;               // lượt nào cũng hỏi 5 câu → điểm luôn tính trên 5
+
+  // ================= LƯU TRÊN MÁY =================
+  // Lưu bị chặn / trình duyệt tự xoá → game vẫn chạy, lần sau về Level 1 + hỏi chọn bạn lại. Tắt giữa lượt → mở lại ra bảng mới cùng level.
+  const SAVE_KEY = 'bon_numbermemory_v1';
+  const save = { level: 1, char: 'froggy', picked: false, mute: false };
+  (function loadSave() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!s) return;
+      if (Number.isInteger(s.level) && s.level >= 1 && s.level <= MAX_LEVEL) save.level = s.level;
+      if (CHARS.some(function(c) { return c.id === s.char; })) save.char = s.char;
+      save.picked = !!s.picked; save.mute = !!s.mute;
+    } catch (e) {}
+  })();
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+  let askedPersist = false;
+  function askPersist() { // xin trình duyệt đừng tự xoá dữ liệu (Safari không hứa, nhưng có báo là giúp được)
+    if (askedPersist) return; askedPersist = true;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); } catch (e) {}
+  }
+
+  // Khối chép nguyên từ draw_run.html (từ "HÌNH 4 BABY" tới hết khối SFX) — dựa vào 3 tên bên ngoài: ctx, TAU, save.mute.
+  let ctx = null; // canvas đang vẽ: bạn hỏi / nút mặt bạn / màn chọn — gán trước mỗi lần vẽ (drawOn)
+
+  // ================= HÌNH 4 BABY (chép cách vẽ của flappy_bon_3d.html) =================
+  const FROG_IMG = {}; let frogReady = false;
+  (function() {
+    const src = window.FROG_SPRITES || {}, keys = Object.keys(src); let left = keys.length;
+    for (const k of keys) { const im = new Image(); im.onload = function() { if (--left === 0) frogReady = true; }; im.src = src[k]; FROG_IMG[k] = im; }
+  })();
+  const FROG_FRAME = 3.4, FROG_CAMZ = 0.15;
+  const FRIEND_IMG = {}, FRIEND_META = {}, friendReady = {};
+  (function() {
+    const src = window.FRIEND_SPRITES || {};
+    for (const id of Object.keys(src)) {
+      FRIEND_IMG[id] = {}; FRIEND_META[id] = src[id].meta; friendReady[id] = false;
+      const keys = Object.keys(src[id].img); let left = keys.length;
+      for (const k of keys) { const im = new Image(); im.onload = function() { if (--left === 0) friendReady[id] = true; }; im.src = src[id].img[k]; FRIEND_IMG[id][k] = im; }
+    }
+  })();
+  function is3D(id) { return id === 'froggy' ? frogReady : !!friendReady[id]; }
+  function part(b, name, x, z, ang) {
+    const im = FRIEND_IMG[b.id][name], m = FRIEND_META[b.id][name];
+    if (!im || !m) return;
+    const r = b.r, sz = m[0] * r;
+    ctx.save(); ctx.translate(x * r, -z * r); if (ang) ctx.rotate(ang);
+    ctx.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz);
+    ctx.restore();
+  }
+  function faceFrame(b) { return FRIEND_IMG[b.id][b.face] ? b.face : 'idle'; }
+  function drawFrog(b) {
+    const r = b.r, sz = FROG_FRAME * r, im = FROG_IMG[b.face] || FROG_IMG.idle;
+    ctx.drawImage(im, -sz / 2, -sz / 2 - FROG_CAMZ * r, sz, sz);
+  }
+  function drawChicken(b) {
+    const r = b.r, lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    for (let s = -1; s <= 1; s += 2) part(b, 'leg', s * 0.3, -0.9, Math.sin(b.leg + (s > 0 ? Math.PI : 0)) * 0.9 * (0.15 + lift));
+    part(b, faceFrame(b), 0, 0, 0);
+    const petals = [ { base: Math.PI / 2 - 0.95, side: -1 }, { base: Math.PI / 2 - 0.32, side: -1 },
+                     { base: Math.PI / 2 + 0.32, side: 1 },  { base: Math.PI / 2 + 0.95, side: 1 } ];
+    ctx.save(); ctx.translate(0, 0.55 * r);
+    for (let i = 0; i < 4; i++) part(b, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, petals[i].base + petals[i].side * b.skirt[i] * 1.45 - Math.PI / 2);
+    ctx.restore();
+    part(b, 'hat', 0, 1.02 + b.hat * 0.55, -b.hat * 0.25);
+  }
+  function drawBabyFrog(b) {
+    part(b, faceFrame(b), 0, 0, 0);
+    part(b, 'cup', 0.02, -0.32, -b.skirt[0] * 0.55 + (b.skirt[1] - b.skirt[0]) * 0.8);
+    const crown = Math.max(-0.15, b.hat);
+    part(b, 'crown', 0, 0.84 + crown * 0.6, -crown * 0.3);
+  }
+  const PILLOW_POSE = { shock: ['tense', 0.78, 1.2], ouch: ['tense', 0.78, 1.2], panic: ['tense', 0.78, 1.2],
+                        phew: ['sag', 1.16, 0.8], wink: ['sag', 1.16, 0.8], fall: ['puff', 1, 1] };
+  function drawPillow(b) {
+    const up = i => Math.max(0, b.skirt[i]);
+    const lift = Math.max(0, (b.skirt[0] + b.skirt[3]) / 2);
+    const P = (FRIEND_IMG.pillow && PILLOW_POSE[b.face] && FRIEND_IMG.pillow[PILLOW_POSE[b.face][0]]) ? PILLOW_POSE[b.face] : ['idle', 1, 1];
+    const flap = Math.sin(b.wing) * 0.35 * (1 - Math.min(1, lift));
+    const C = [['cornerTL', -1, 1, 0], ['cornerTR', 1, 1, 3], ['cornerBL', -1, -1, 1], ['cornerBR', 1, -1, 2]];
+    for (const [name, sx, sz, i] of C) part(b, name, sx * 0.98 * P[1], sz * 0.56 * P[2], -sx * (flap * (sz > 0 ? 1 : 0.6) + up(i) * 0.9));
+    part(b, P[0], 0, 0, 0);
+  }
+  const FALLBACK_COL = { froggy: '#5fb85a', chicken: '#f5f0e6', babyfrog: '#9bd68e', pillow: '#f7c6d9' };
+  function drawActor(b) { // gốc toạ độ = tâm hình
+    if (!is3D(b.id)) {
+      ctx.fillStyle = FALLBACK_COL[b.id] || '#ccc'; ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(b.r * 0.35, -b.r * 0.2, b.r * 0.12, 0, TAU); ctx.arc(-b.r * 0.1, -b.r * 0.2, b.r * 0.12, 0, TAU); ctx.fill();
+      return;
+    }
+    if (b.id === 'froggy') drawFrog(b);
+    else if (b.id === 'chicken') drawChicken(b);
+    else if (b.id === 'babyfrog') drawBabyFrog(b);
+    else drawPillow(b);
+  }
+  function makeActor(id, r) {
+    return { id: id, r: r, face: 'idle', skirt: [0, 0, 0, 0], skirtV: [0, 0, 0, 0], hat: 0, hatV: 0, leg: 0, wing: 0 };
+  }
+
+  // ================= TIẾNG (chép khối SFX của Flappy, gọn lại) =================
+  const SFX = { ctx: null, buf: {}, mouth: null, log: [] };
+  (function loadSounds() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { SFX.ctx = new AC(); } catch (e) { return; }
+    const src = window.FRIEND_SOUNDS || {};
+    for (const id of Object.keys(src)) {
+      SFX.buf[id] = {};
+      for (const k of Object.keys(src[id])) decodeOne(id, k, null);
+    }
+  })();
+  function decodeOne(id, k, cb) {
+    const raw = window.FRIEND_SOUNDS && window.FRIEND_SOUNDS[id] && window.FRIEND_SOUNDS[id][k];
+    if (!raw || !SFX.ctx) return;
+    const bin = atob(raw.split(',')[1]), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    SFX.ctx.decodeAudioData(arr.buffer, function(buf) { SFX.buf[id][k] = buf; if (cb) cb(buf); },
+      function(e) { SFX.log.push({ id: 'decodeErr', key: id + ':' + k }); });
+  }
+  function sfxUnlock() { if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
+  function sfxNow() { return SFX.ctx ? SFX.ctx.currentTime : 0; }
+  // dur = chỉ phát đoạn đầu (clip "scream" là 7 tiếng hét nối nhau — lấy 1 tiếng)
+  function say(id, key, dur) {
+    SFX.log.push({ id: id, key: key, t: performance.now() });
+    if (!SFX.ctx || save.mute) return;
+    const go = function(buf) {
+      if (SFX.mouth) { try { SFX.mouth.stop(); } catch (e) {} }
+      const s = SFX.ctx.createBufferSource(); s.buffer = buf; s.connect(SFX.ctx.destination);
+      if (dur) s.start(0, 0, Math.min(dur, buf.duration)); else s.start();
+      SFX.mouth = s;
+    };
+    if (SFX.buf[id] && SFX.buf[id][key]) go(SFX.buf[id][key]); else decodeOne(id, key, go);
+  }
+  function tone(freq, dur, type, vol, slideTo, delay) {
+    if (!SFX.ctx || save.mute) return;
+    const t = sfxNow() + (delay || 0), o = SFX.ctx.createOscillator(), g = SFX.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(SFX.ctx.destination); o.start(t); o.stop(t + dur);
+  }
+  const NOISE = {
+    jump:  () => tone(320, 0.1, 'triangle', 0.16, 520),
+    ding:  () => { tone(880, 0.12, 'sine', 0.13); tone(1320, 0.22, 'sine', 0.09, 0, 0.06); },
+    boing: () => { tone(180, 0.28, 'sine', 0.2, 620); tone(360, 0.2, 'triangle', 0.06, 900, 0.03); },
+    win:   () => { tone(660, 0.2, 'triangle', 0.14); tone(880, 0.2, 'triangle', 0.14, 0, 0.13); tone(1100, 0.45, 'triangle', 0.14, 0, 0.26); },
+    place: () => tone(520, 0.06, 'square', 0.05, 380),
+    nope:  () => tone(220, 0.14, 'square', 0.05, 160),
+    click: () => tone(700, 0.04, 'triangle', 0.08),
+  };
+  function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); if (NOISE[k]) NOISE[k](); }
+
+  // ================= RA ĐỀ =================
+  // 5 câu khác nhau, 2–3 câu đáp YES (bấm 1 nút hoài không đúng hết). Level "giống": mọi câu NO = 1 số trên bảng đổi CHỮ SỐ CUỐI ±1/±2.
+  function ri(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  function shuffle(x) { for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = x[i]; x[i] = x[j]; x[j] = t; } return x; }
+  function ascending(b) { return b.every(function(v, i) { return i === 0 || b[i - 1] < v; }); }
+  let forced = []; // chỉ ?test: hàng đợi bảng ép, makeRound thật lấy trước khi tự rút
+  function drawBoard(L) {
+    if (forced.length) return forced.shift().slice();
+    const set = new Set();
+    while (set.size < L.n) set.add(ri(L.lo, L.hi));
+    return Array.from(set);
+  }
+  // số "giống": tính theo chữ số nên luôn cùng chục với số gốc (43 → 41/42/44/45; 347 → 345…349), không trùng bảng, trong khoảng
+  function alikeLures(board, lo, hi) {
+    const on = new Set(board), out = new Set();
+    for (const b of board) {
+      const last = b % 10;
+      for (const d of [-2, -1, 1, 2]) {
+        const v = b + d;
+        if (last + d < 0 || last + d > 9 || v < lo || v > hi || on.has(v)) continue;
+        out.add(v);
+      }
+    }
+    return Array.from(out);
+  }
+  function makeRound(lv) {
+    const L = LEVELS[lv - 1];
+    let board, lures, draws = 0;
+    do { // bảng lấp kín 1 chục (vd 100…109) → không đủ số "giống" → rút bảng lại (trần 100 lần chỉ để chống treo; bốc ngẫu nhiên đo 0 lần phải rút)
+      board = drawBoard(L).sort(function(a, b) { return a - b; }); draws++;
+      lures = L.alike ? alikeLures(board, L.lo, L.hi) : null;
+    } while (L.alike && lures.length < 3 && draws < 100);
+    if (L.mixed) { let g = 0; do shuffle(board); while (ascending(board) && ++g < 50); }
+    const yesN = ri(2, 3), noN = ROUND_Q - yesN;
+    const yes = shuffle(board.slice()).slice(0, yesN);
+    let no;
+    if (L.alike) no = shuffle(lures).slice(0, noN);
+    else {
+      const on = new Set(board), pool = [];
+      for (let v = L.lo; v <= L.hi; v++) if (!on.has(v)) pool.push(v);
+      no = shuffle(pool).slice(0, noN);
+    }
+    const questions = shuffle(yes.map(function(v) { return { v: v, ans: true }; }).concat(no.map(function(v) { return { v: v, ans: false }; })));
+    return { level: lv, board: board, questions: questions, draws: draws };
+  }
+
+  // ================= LƯỢT CHƠI =================
+  // state: 'board' (xem bảng) → 'ask' (5 câu) → 'result' (điểm). Màn chọn người hỏi là lớp phủ (pickOpen).
+  let state = 'board', round = null, answers = [], qi = 0, pickOpen = false, lvPage = 0;
+  // Hợp đồng nhận chạm (mốc thử): mỗi câu nhận đúng 1 chạm; chỉ nhận khi số đã đứng yên ≥ 0,2 giây sau chuyển cảnh.
+  // readyAt lấy từ chính transitionend + 200ms; Infinity = đang khoá.
+  let readyAt = Infinity, onLeft = null, leaveTimer = 0, settleTimer = 0;
+  const host = makeActor(save.char, 30), face = makeActor(save.char, 12);
+  let hostFace = 'idle', hostFaceT = 0, cheerT = 0;
+
+  function setLevel(n) { save.level = Math.max(1, Math.min(MAX_LEVEL, n)); persist(); }
+  function pageSize() { return window.innerWidth < 600 ? 5 : 10; }
+  function cells(el, nums) {
+    el.textContent = '';
+    for (const v of nums) { const d = document.createElement('div'); d.className = 'cell'; d.textContent = v; el.appendChild(d); }
+  }
+  function newRound() {
+    clearTimeout(leaveTimer); clearTimeout(settleTimer); onLeft = null;
+    round = makeRound(save.level); answers = []; qi = 0; readyAt = Infinity; state = 'board';
+    lvPage = Math.floor((save.level - 1) / pageSize());
+    cells($('board'), round.board);
+    $('bubble').textContent = 'Remember these numbers!';
+    const a = $('askNum'); a.classList.remove('leaving', 'entering');
+    render();
+  }
+  function render() { // bật/tắt từng phần theo state (không dựng lại bảng số)
+    const s = state;
+    $('app').dataset.state = s;
+    $('board').hidden = s !== 'board';
+    $('askNum').hidden = s !== 'ask';
+    $('result').hidden = s !== 'result';
+    $('startBtn').hidden = s !== 'board';
+    $('yesBtn').hidden = $('noBtn').hidden = s !== 'ask';
+    $('againBtn').hidden = s !== 'result';
+    $('nextBtn').hidden = s !== 'result' || save.level >= MAX_LEVEL;
+    $('levelRow').hidden = $('faceBtn').hidden = s === 'ask'; // đang hỏi thì ẩn — khỏi lỡ tay mất bài
+    $('homeBtn').hidden = !HOME;
+    $('lvTitle').textContent = 'Level ' + save.level;
+    $('muteBtn').textContent = save.mute ? '🔇' : '🔊';
+    levelRow();
+  }
+  function levelRow() {
+    const row = $('levelRow'), size = pageSize(), pages = Math.ceil(MAX_LEVEL / size);
+    lvPage = Math.max(0, Math.min(pages - 1, lvPage));
+    row.textContent = '';
+    const add = function(label, cls, fn, off) {
+      const b = document.createElement('button'); b.textContent = label; b.className = cls; b.disabled = !!off;
+      b.addEventListener('click', fn); row.appendChild(b); return b;
+    };
+    add('◀', 'arrow', function() { lvPage--; levelRow(); }, lvPage === 0).id = 'lvPrev';
+    for (let n = lvPage * size + 1; n <= Math.min(MAX_LEVEL, (lvPage + 1) * size); n++) {
+      add(String(n), 'lv' + (n === save.level ? ' on' : ''), function() { noise('click'); setLevel(n); newRound(); }).dataset.lv = n;
+    }
+    add('▶', 'arrow', function() { lvPage++; levelRow(); }, lvPage === pages - 1).id = 'lvNext';
+  }
+
+  function start() {
+    if (state !== 'board' || pickOpen) return;
+    noise('ding'); askPersist();
+    state = 'ask'; qi = 0; answers = [];
+    render();
+    showQuestion(true);
+  }
+  function showQuestion(first) {
+    const el = $('askNum');
+    readyAt = Infinity;
+    const enter = function() {
+      const v = round.questions[qi].v;
+      el.textContent = v + '?';
+      $('bubble').textContent = 'Did you see ' + v + '?';
+      el.classList.remove('leaving'); el.classList.add('entering');
+      void el.offsetWidth; // trình duyệt nhận vị trí xuất phát trước, bỏ class sau → số trượt vào
+      el.classList.remove('entering');
+      clearTimeout(settleTimer); settleTimer = setTimeout(settled, 700); // phòng khi trình duyệt không chạy chuyển cảnh
+    };
+    if (first) { enter(); return; }
+    el.classList.add('leaving');
+    onLeft = enter;
+    clearTimeout(leaveTimer); leaveTimer = setTimeout(left, 500);
+  }
+  function left() { if (onLeft) { const f = onLeft; onLeft = null; clearTimeout(leaveTimer); f(); } }
+  function settled() { clearTimeout(settleTimer); if (state === 'ask' && readyAt === Infinity && !onLeft) readyAt = performance.now() + 200; }
+  $('askNum').addEventListener('transitionend', function(e) {
+    if (e.propertyName !== 'transform') return;
+    if (this.classList.contains('leaving')) left(); else settled();
+  });
+  function answer(yes, force) {
+    if (state !== 'ask' || pickOpen) return false;
+    if (!force && performance.now() < readyAt) return false; // chạm sớm (đang chuyển câu / chưa đứng yên đủ 0,2 giây) bị bỏ
+    readyAt = Infinity;
+    answers.push(!!yes);
+    noise('click');
+    hostFace = 'wink'; hostFaceT = 0.3;
+    if (answers.length >= ROUND_Q) { finish(); return true; }
+    qi++;
+    showQuestion(false);
+    return true;
+  }
+  function finish() {
+    state = 'result'; readyAt = Infinity;
+    const right = round.questions.map(function(q, i) { return answers[i] === q.ans; });
+    const score = right.filter(Boolean).length;
+    $('score').textContent = score + '/' + ROUND_Q;
+    const st = $('stars'); st.textContent = '';
+    for (let i = 0; i < score; i++) { const s = document.createElement('span'); s.className = 'star'; s.textContent = '⭐'; st.appendChild(s); } // chỉ sao đã được, không sao xám
+    $('bubble').textContent = score === ROUND_Q ? 'Perfect!' : score >= 3 ? 'Great job!' : 'Good try!';
+    cells($('resBoard'), round.board); // đúng thứ tự lúc đầu
+    const list = $('asked'); list.textContent = '';
+    round.questions.forEach(function(q, i) {
+      const row = document.createElement('div'); row.className = 'row';
+      const num = document.createElement('span'); num.className = 'num'; num.textContent = q.v + '?';
+      const chip = document.createElement('span'); chip.className = 'chip ' + (answers[i] ? 'yes' : 'no'); chip.textContent = answers[i] ? 'YES' : 'NO';
+      const mark = document.createElement('span'); mark.className = 'mark ' + (right[i] ? 'right' : 'wrong'); mark.textContent = right[i] ? '✓' : '✗';
+      row.append(num, chip, mark); list.appendChild(row);
+    });
+    say(save.char, 'pass1'); // cùng 1 kiểu mừng mọi điểm
+    cheerT = 1.2; hostFace = 'wink'; hostFaceT = 1.2;
+    render();
+  }
+
+  // ================= CHỌN NGƯỜI HỎI =================
+  const tiles = [];
+  (function buildPick() {
+    for (const ch of CHARS) {
+      const b = document.createElement('button'); b.className = 'pickTile'; b.dataset.id = ch.id;
+      const cv = document.createElement('canvas'), nm = document.createElement('span'); nm.textContent = ch.name;
+      b.append(cv, nm); $('pickTiles').appendChild(b);
+      b.addEventListener('click', function() { choose(ch.id); });
+      tiles.push({ el: b, cv: cv, actor: makeActor(ch.id, 30) });
+    }
+  })();
+  function openPick() {
+    pickOpen = true; $('pick').hidden = false;
+    for (const t of tiles) t.el.classList.toggle('on', t.actor.id === save.char);
+  }
+  function choose(id) {
+    save.char = id; save.picked = true; persist(); askPersist();
+    say(id, 'hello');
+    pickOpen = false; $('pick').hidden = true;
+  }
+
+  // ================= VẼ BẠN HỎI (canvas nhỏ) =================
+  // khung cao h → bán kính r = h / K: gà có mũ cao nên K lớn (vẽ nhỏ hơn), 3 bạn kia thấp người nên vẽ to hơn cho rõ mặt
+  const FIT_K = { froggy: 3.3, chicken: 4.4, babyfrog: 3.0, pillow: 3.4 };
+  function drawOn(cv, a, lift) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return; // đang ẩn
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    a.r = h / (FIT_K[a.id] || 4.4);
+    ctx.translate(w / 2, h * 0.58 - (lift || 0) * h);
+    drawActor(a);
+  }
+  let last = performance.now(), clock = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now; clock += dt;
+    if (hostFaceT > 0) hostFaceT -= dt;
+    if (cheerT > 0) cheerT -= dt;
+    const blink = (clock % 3.2) < 0.14;
+    host.id = face.id = save.char;
+    host.face = hostFaceT > 0 ? hostFace : (blink ? 'blink' : 'idle');
+    drawOn($('hostCv'), host, cheerT > 0 ? Math.abs(Math.sin(clock * 9)) * 0.12 : Math.sin(clock * 2) * 0.015);
+    face.face = 'idle'; drawOn($('faceCv'), face, 0);
+    if (pickOpen) tiles.forEach(function(t, i) {
+      t.actor.face = (clock + i * 0.8) % 3.2 < 0.14 ? 'blink' : 'idle';
+      drawOn(t.cv, t.actor, Math.sin(clock * 2 + i) * 0.02);
+    });
+    requestAnimationFrame(frame);
+  }
+
+  // ================= NÚT =================
+  document.addEventListener('pointerdown', sfxUnlock, true); // iOS: tiếng chỉ chạy sau cú chạm đầu
+  document.addEventListener('keydown', sfxUnlock, true);
+  $('startBtn').addEventListener('click', start);
+  $('yesBtn').addEventListener('click', function() { answer(true); });
+  $('noBtn').addEventListener('click', function() { answer(false); });
+  $('againBtn').addEventListener('click', function() { noise('click'); newRound(); });
+  $('nextBtn').addEventListener('click', function() { noise('click'); setLevel(save.level + 1); newRound(); });
+  $('faceBtn').addEventListener('click', function() { if (state !== 'ask') openPick(); });
+  $('muteBtn').addEventListener('click', function() { save.mute = !save.mute; persist(); render(); if (!save.mute) noise('click'); });
+  $('homeBtn').addEventListener('click', function() { location.href = '../'; });
+  let lastSize = pageSize();
+  window.addEventListener('resize', function() { const s = pageSize(); if (s !== lastSize) { lastSize = s; lvPage = Math.floor((save.level - 1) / s); levelRow(); } });
+
+  // ================= KIỂM THỬ (?test) — gọi vào CHÍNH code game, không chép lại logic =================
+  if (TEST) {
+    window.__g = {
+      get: function() {
+        return { state: state, level: save.level, board: round.board.slice(), questions: round.questions.map(function(q) { return { v: q.v, ans: q.ans }; }),
+                 answers: answers.slice(), char: save.char, home: HOME, locked: performance.now() < readyAt, readyAt: readyAt, draws: round.draws,
+                 picked: save.picked, mute: save.mute, pick: pickOpen };
+      },
+      LEVELS: LEVELS, makeRound: makeRound, alikeLures: alikeLures,
+      forceBoards: function(list) { forced = list.map(function(b) { return b.slice(); }); },
+      setLevel: function(n) { setLevel(n); newRound(); },
+      answer: function(yn, force) { return answer(yn === 'yes' || yn === true, force); },
+      openPick: openPick,
+      homeBtnRect: function() { const b = $('homeBtn'); if (b.hidden) return null; const r = b.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; },
+      sprites: function() { return { frog: frogReady, chicken: !!friendReady.chicken, babyfrog: !!friendReady.babyfrog, pillow: !!friendReady.pillow }; },
+      sfx: function() { return SFX.log.slice(); },
+      stored: function() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } },
+    };
+  }
+
+  newRound();
+  if (!save.picked && !TEST) openPick();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
