@@ -43,6 +43,8 @@
   const HOME = location.protocol !== 'file:'; // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu
   const GRAV = 1800, MOVE = 230, ACC_G = 2400, ACC_A = 1500, JUMP = 660, SPRING_V = 1080, MAXFALL = 1100;
   const RC = 20, RV = 21, LW = 8, COYOTE = 0.1, JBUF = 0.12, DT = 1 / 120;
+  // enemy (bạn khác của Bon đi tuần): tốc độ đi · cú hất lùi khi baby đụng vào (mốc thử, chỉnh sau khi Bon chơi)
+  const ENEMY_V = 80, KNOCK_VX = 420, KNOCK_VY = 380;
   const TAU = Math.PI * 2;
 
   const CHARS = [
@@ -60,17 +62,19 @@
   };
 
   // ================= MÓN ĐỒ =================
-  // rw/rh = kéo dài ngang / dọc được trong Build
+  // rw/rh = kéo dài ngang / dọc được trong Build · sq = chỉ to/nhỏ VUÔNG, tối đa sq ô (enemy: Nam chốt "kích thước" = cỡ con enemy, 11-02)
   const KINDS = {
     block:  { w: 2, h: 1, rw: true,  rh: true,  hz: false },
     spike:  { w: 3, h: 1, rw: true,  rh: false, hz: true },
     fire:   { w: 3, h: 1, rw: true,  rh: false, hz: true },
     water:  { w: 4, h: 2, rw: true,  rh: true,  hz: true },
     spring: { w: 1, h: 1, rw: false, rh: false, hz: false },
+    wing:   { w: 1, h: 1, rw: false, rh: false, hz: false },
+    enemy:  { w: 1, h: 1, rw: true,  rh: true,  hz: false, sq: 3 },
     star:   { w: 1, h: 1, rw: false, rh: false, hz: false },
     start:  { w: 1, h: 1, rw: false, rh: false, hz: false },
   };
-  const PALETTE = ['block', 'spike', 'fire', 'water', 'spring', 'star', 'start'];
+  const PALETTE = ['block', 'spike', 'fire', 'water', 'spring', 'wing', 'enemy', 'star', 'start'];
 
   // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
   const SAMPLES = [
@@ -87,7 +91,11 @@
   ];
   const N_MY = 6;
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
-  function norm(o) { const k = KINDS[o.t]; if (!o.w) o.w = k.w; if (!o.h) o.h = k.h; if (!k.rw) o.w = 1; if (!k.rh) o.h = k.h; return o; }
+  function norm(o) {
+    const k = KINDS[o.t]; if (!o.w) o.w = k.w; if (!o.h) o.h = k.h; if (!k.rw) o.w = 1; if (!k.rh) o.h = k.h;
+    if (k.sq) o.w = o.h = clamp(Math.round(Math.max(o.w, o.h)), 1, k.sq);
+    return o;
+  }
   // chuẩn hoá 1 màn (kể cả màn lưu từ bản thử cũ): có cols, không còn mực, đúng 1 star — nhiều star thì giữ star xa nhất (star cuối đường)
   function normLevel(L) {
     L.cols = clamp(Math.round((L.cols || COLS) / COLS) * COLS, COLS, MAX_COLS);
@@ -258,6 +266,9 @@
     place: () => tone(520, 0.06, 'square', 0.05, 380),
     nope:  () => tone(220, 0.14, 'square', 0.05, 160),
     click: () => tone(700, 0.04, 'triangle', 0.08),
+    wing:  () => { tone(660, 0.1, 'sine', 0.12, 990); tone(990, 0.18, 'sine', 0.08, 1480, 0.08); },
+    flap:  () => { tone(480, 0.09, 'triangle', 0.12, 880); tone(720, 0.1, 'sine', 0.06, 1250, 0.05); },
+    bump:  () => { tone(150, 0.16, 'sine', 0.22, 70); tone(420, 0.08, 'triangle', 0.06, 260, 0.02); },
   };
   function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); if (NOISE[k]) NOISE[k](); }
 
@@ -290,19 +301,94 @@
   function maxCam() { return Math.max(0, levelW() - WW); }
   function setCam(x) { camX = clamp(x, 0, maxCam()); }
 
-  let solids = [], hazards = [], springs = [], starObjs = [], noDraw = [];
+  let solids = [], hazards = [], springs = [], starObjs = [], wingObjs = [], noDraw = [];
+  let enemies = []; // con enemy đang đi trong Play (tạo lại từ level.objs mỗi lần rebuild / baby về Start)
   function rebuild() {
-    solids = []; hazards = []; springs = []; starObjs = []; noDraw = [];
+    solids = []; hazards = []; springs = []; starObjs = []; wingObjs = []; noDraw = [];
     for (const o of level.objs) {
       const r = rectOf(o);
       if (o.t === 'block') solids.push({ k: 'r', x: r.x, y: r.y, w: r.w, h: r.h });
       else if (KINDS[o.t].hz) { hazards.push({ o: o, hit: hazardHit(o) }); noDraw.push({ t: o.t, r: hazardVis(o) }); }
       else if (o.t === 'spring') springs.push({ o: o, box: springBox(o) });
       else if (o.t === 'star') starObjs.push(o);
+      else if (o.t === 'wing') wingObjs.push(o);
       else if (o.t === 'start') noDraw.push({ t: 'start', r: { x: r.x - 4, y: r.y - 14, w: r.w + 8, h: r.h + 14 } });
     }
     for (const L of level.lines) for (let i = 0; i + 3 < L.length; i += 2)
       solids.push({ k: 's', ax: L[i], ay: L[i + 1], bx: L[i + 2], by: L[i + 3] });
+    spawnEnemies();
+  }
+
+  // ================= ENEMY: bạn khác của Bon đi qua đi lại =================
+  // con thứ k = bạn thứ k trong 3 bạn KHÁC baby đang chơi (đổi baby → enemy đổi theo)
+  function enemyId(k) { const others = CHARS.filter(ch => ch.id !== hero.id); return others[k % others.length].id; }
+  function enemyFromObj(o, k, L) { // L = màn chứa con này (ô Levels vẽ cả màn khác)
+    const n = o.w, st = (L || level).objs.find(q => q.t === 'start');
+    const e = Object.assign(makeActor(enemyId(k), RV * n), {
+      o: o, k: k, n: n, rc: RC * n, vx: 0, vy: 0, grounded: false, gn: [0, -1], walk: true, stuckT: 0, gone: false,
+      blinkT: 1 + k * 0.7, blinkOn: 0, winkT: 0 });
+    e.x = (o.x + n / 2) * CELL; e.y = BAR + (o.y + n) * CELL - e.rc - 1;
+    e.dir = st && (st.x + 0.5) * CELL > e.x ? 1 : -1; // đi về phía chỗ xuất phát của baby trước
+    return e;
+  }
+  function spawnEnemies() {
+    enemies = []; let k = 0;
+    for (const o of level.objs) if (o.t === 'enemy') enemies.push(enemyFromObj(o, k++));
+  }
+  // dưới chân phía trước (hướng d) có đất / nét vẽ không — dò 1 cột dọc từ ngang hông xuống hơi dưới chân
+  function groundAhead(e, d) {
+    const px = e.x + d * e.rc * 0.7, foot = e.y + e.rc, y0 = foot - e.rc, y1 = foot + Math.max(20, e.rc * 0.9);
+    for (const s of solids) {
+      if (s.k === 'r') { if (px >= s.x && px <= s.x + s.w && s.y <= y1 && s.y + s.h >= y0) return true; continue; }
+      const lo = Math.min(s.ax, s.bx) - LW, hi = Math.max(s.ax, s.bx) + LW;
+      if (px < lo || px > hi) continue;
+      const dx = s.bx - s.ax;
+      if (Math.abs(dx) < 1) { if (Math.max(s.ay, s.by) >= y0 && Math.min(s.ay, s.by) <= y1) return true; continue; }
+      const yy = s.ay + (s.by - s.ay) * clamp((px - s.ax) / dx, 0, 1);
+      if (yy >= y0 - LW && yy <= y1 + LW) return true;
+    }
+    return false;
+  }
+  function hazardAhead(e, d) { // gai/lửa/nước ngay phía trước (đang đứng sẵn trong đó thì thôi, để khỏi quay tại chỗ)
+    for (const h of hazards) if (circleRect(e.x + d * 6, e.y, e.rc, h.hit) && !circleRect(e.x, e.y, e.rc, h.hit)) return true;
+    return false;
+  }
+  function canGo(e, d) {
+    const nx = e.x + d * (e.rc + 2);
+    return nx > 0 && nx < levelW() && groundAhead(e, d) && !hazardAhead(e, d);
+  }
+  function enemyStep(e, dt) {
+    if (e.gone) return;
+    if (e.grounded) {
+      // đụng tường / dốc quá đứng (đi mà không nhích) → quay đầu; tới mép đất / gặp gai-lửa-nước → quay đầu;
+      // 2 bên đều không đi được (chỗ đứng chỉ vừa 1 ô) → đứng yên
+      if (e.stuckT > 0.15) { e.dir = -e.dir; e.stuckT = 0; }
+      else if (!canGo(e, e.dir) && canGo(e, -e.dir)) e.dir = -e.dir;
+      e.walk = canGo(e, e.dir);
+      const nx = e.gn[0], ny = e.gn[1], tx = -ny, ty = nx, v = e.walk ? e.dir * ENEMY_V : 0;
+      e.vx = v * tx - nx * 40; e.vy = v * ty - ny * 40;
+    } else {
+      e.vx = approach(e.vx, 0, ACC_A * dt);
+      e.vy = Math.min(MAXFALL, e.vy + GRAV * dt);
+    }
+    const x0 = e.x;
+    e.x += e.vx * dt; e.y += e.vy * dt;
+    e.x = clamp(e.x, e.rc, levelW() - e.rc);
+    if (e.y < BAR + e.rc) { e.y = BAR + e.rc; if (e.vy < 0) e.vy = 0; }
+    const hit = collide(e);
+    if (hit.ground) { e.grounded = true; e.gn = hit.ground; } else e.grounded = false;
+    if (e.y > LVB + 60) { e.gone = true; return; } // rớt khỏi màn (đặt trên hố) → biến mất
+    if (e.grounded && e.walk) e.stuckT = (e.x - x0) * e.dir < ENEMY_V * dt * 0.3 ? e.stuckT + dt : 0;
+    else e.stuckT = 0;
+  }
+  function animEnemies(dt, playing) {
+    for (const e of enemies) {
+      e.blinkT -= dt; if (e.blinkT <= 0) { e.blinkOn = 0.13; e.blinkT = 2 + Math.random() * 2.5; }
+      e.blinkOn -= dt; e.winkT -= dt;
+      if (playing && e.walk && e.grounded) e.leg += dt * 10;
+      e.wing += dt * 3;
+      e.face = e.winkT > 0 ? 'wink' : e.blinkOn > 0 ? 'blink' : 'idle';
+    }
   }
 
   // ================= TRẠNG THÁI =================
@@ -314,6 +400,7 @@
   let tool = null, sel = null, drag = null, undoStack = [];
   let stroke = null;            // nét đang vẽ (mảng điểm phẳng)
   let got = new Set(), won = false, wonT = 0, ouches = 0, praiseText = '';
+  let gotWing = new Set(), bumps = 0; // wing đã nhặt (hiện lại khi baby về Start) · số lần bị enemy hất (không tính là thua)
   let particles = [];
   const anim = new Map();       // lò xo nhún: object → thời gian còn lại (không lưu vào file)
   const inp = { left: false, right: false, jumpPressed: false };
@@ -322,14 +409,17 @@
 
   const hero = Object.assign(makeActor(save.char, RV), {
     x: 0, y: 0, vx: 0, vy: 0, grounded: false, gn: [0, -1], coyote: 0, jbuf: 0, dir: 1,
-    ouchT: 0, rode: false, usedSpring: false, st: 0, stV: 0, blinkT: 2, blinkOn: 0,
-    winkT: 0, flapT: 0, landT: 0, tilt: 0 });
+    ouchT: 0, rode: false, usedSpring: false, usedWing: false, st: 0, stV: 0, blinkT: 2, blinkOn: 0,
+    winkT: 0, flapT: 0, landT: 0, tilt: 0, hasWing: false, airJump: false, hurtT: 0, knockT: 0 });
 
   function startObj() { return level.objs.find(o => o.t === 'start'); }
+  // về chỗ xuất phát: mất cánh (wing trên màn hiện lại), enemy về chỗ cũ — như chơi lại màn từ đầu
   function respawn() {
     const s = startObj() || { x: 2, y: 19 };
     hero.x = (s.x + 0.5) * CELL; hero.y = BAR + (s.y + 1) * CELL - RC - 1;
     hero.vx = 0; hero.vy = 0; hero.grounded = false; hero.coyote = 0; hero.jbuf = 0; hero.ouchT = 0;
+    hero.hasWing = false; hero.airJump = false; hero.hurtT = 0; hero.knockT = 0;
+    gotWing = new Set(); spawnEnemies();
   }
   function showHint(t) { hintText = t; hintT = 4; }
   function setMode(m) {
@@ -337,7 +427,7 @@
     if (overlay === 'win') overlay = null; // đổi mode / đổi màn thì khung khen tự đóng
     mode = m; sel = null; drag = null;
     rebuild(); respawn();
-    got = new Set(); won = false; wonT = 0; ouches = 0; hero.rode = false; hero.usedSpring = false;
+    got = new Set(); won = false; wonT = 0; ouches = 0; bumps = 0; hero.rode = false; hero.usedSpring = false; hero.usedWing = false;
     inp.left = inp.right = inp.jumpPressed = false; ptrs.forEach(p => { p.role = null; });
     if (m === 'play') setCam(hero.x - WW * 0.4); else setCam(camX);
     if (m === 'build') showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
@@ -349,29 +439,30 @@
     undoStack = []; tool = null; camX = 0;
     setMode(i < SAMPLES.length ? 'draw' : 'build');
   }
-  function setChar(id) { save.char = id; save.picked = true; hero.id = id; persist(); }
+  function setChar(id) { save.char = id; save.picked = true; hero.id = id; for (const e of enemies) e.id = enemyId(e.k); persist(); }
 
   // ================= PLAY: vật lý =================
-  function collide(b) {
+  function collide(b) { // b.rc = bán kính va chạm (enemy to/nhỏ); baby không có → RC
+    const R = b.rc || RC;
     let ground = null, onLine = false;
     for (let it = 0; it < 3; it++) {
       let any = false;
       for (const s of solids) {
         let px, py, rad;
         if (s.k === 'r') {
-          px = clamp(b.x, s.x, s.x + s.w); py = clamp(b.y, s.y, s.y + s.h); rad = RC;
+          px = clamp(b.x, s.x, s.x + s.w); py = clamp(b.y, s.y, s.y + s.h); rad = R;
           if (px === b.x && py === b.y) { // tâm lọt hẳn vào khối → đẩy ra cạnh gần nhất
             const dl = b.x - s.x, dr = s.x + s.w - b.x, dtp = b.y - s.y, db = s.y + s.h - b.y, m = Math.min(dl, dr, dtp, db);
-            if (m === dtp) { b.y = s.y - RC; if (b.vy > 0) b.vy = 0; ground = [0, -1]; }
-            else if (m === db) { b.y = s.y + s.h + RC; if (b.vy < 0) b.vy = 0; }
-            else if (m === dl) { b.x = s.x - RC; if (b.vx > 0) b.vx = 0; }
-            else { b.x = s.x + s.w + RC; if (b.vx < 0) b.vx = 0; }
+            if (m === dtp) { b.y = s.y - R; if (b.vy > 0) b.vy = 0; ground = [0, -1]; }
+            else if (m === db) { b.y = s.y + s.h + R; if (b.vy < 0) b.vy = 0; }
+            else if (m === dl) { b.x = s.x - R; if (b.vx > 0) b.vx = 0; }
+            else { b.x = s.x + s.w + R; if (b.vx < 0) b.vx = 0; }
             any = true; continue;
           }
         } else {
           const ex = s.bx - s.ax, ey = s.by - s.ay, L2 = ex * ex + ey * ey;
           const tt = L2 > 0 ? clamp(((b.x - s.ax) * ex + (b.y - s.ay) * ey) / L2, 0, 1) : 0;
-          px = s.ax + ex * tt; py = s.ay + ey * tt; rad = RC + LW / 2;
+          px = s.ax + ex * tt; py = s.ay + ey * tt; rad = R + LW / 2;
         }
         const dx = b.x - px, dy = b.y - py, d2 = dx * dx + dy * dy;
         if (d2 >= rad * rad) continue;
@@ -409,7 +500,7 @@
     }
     if (got.size === starObjs.length) {
       won = true; wonT = 0;
-      praiseText = hero.rode ? 'Your bridge worked!' : hero.usedSpring ? 'What a spring jump!' : 'You found every star!';
+      praiseText = hero.rode ? 'Your bridge worked!' : hero.usedWing ? 'Nice flying!' : hero.usedSpring ? 'What a spring jump!' : 'You found every star!';
       say(hero.id, 'pass1'); setTimeout(function() { noise('win'); }, 250);
     }
   }
@@ -417,7 +508,11 @@
   function physStep(dt) {
     const b = hero;
     if (b.ouchT > 0) { b.ouchT -= dt; if (b.ouchT <= 0) respawn(); return; }
-    const dirIn = won ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+    for (const e of enemies) enemyStep(e, dt);
+    if (b.hurtT > 0) b.hurtT -= dt;
+    if (b.knockT > 0) b.knockT -= dt;
+    // đang bị hất lùi → nút đi tạm không ăn, để cú hất thấy rõ
+    const dirIn = (won || b.knockT > 0) ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (dirIn) b.dir = dirIn;
     if (inp.jumpPressed) { inp.jumpPressed = false; if (!won) b.jbuf = JBUF; }
     if (b.jbuf > 0) b.jbuf -= dt;
@@ -428,12 +523,20 @@
       const vt = approach(b.vx * tx + b.vy * ty, dirIn * MOVE, ACC_G * dt);
       b.vx = vt * tx - nx * 40; b.vy = vt * ty - ny * 40;
     } else {
-      b.vx = approach(b.vx, dirIn * MOVE, ACC_A * dt);
+      if (b.knockT <= 0) b.vx = approach(b.vx, dirIn * MOVE, ACC_A * dt);
       b.vy = Math.min(MAXFALL, b.vy + GRAV * dt);
     }
     // nhảy: bấm sớm một chút vẫn tính (jbuf), hụt mép rồi vẫn kịp nhảy (coyote)
     if (b.jbuf > 0 && (b.grounded || b.coyote > 0)) {
       b.vy = -JUMP; b.jbuf = 0; b.coyote = 0; b.grounded = false; b.flapT = 0.3; noise('jump');
+    } else if (b.jbuf > 0 && b.airJump) {
+      // có cánh: đang trên trời bấm Jump = nhảy thêm 1 cú (Nam chọn "nhảy thêm 1 lần", 11-02); chạm đất mới có lại
+      b.vy = -JUMP; b.jbuf = 0; b.airJump = false; b.flapT = 0.45; b.usedWing = true; noise('flap');
+      for (let i = 0; i < 8; i++) {
+        const a = Math.PI * (0.15 + 0.7 * Math.random());
+        particles.push({ x: b.x + (Math.random() - 0.5) * 24, y: b.y + 10, vx: Math.cos(a) * 90 * (Math.random() < 0.5 ? -1 : 1), vy: Math.sin(a) * 120,
+          life: 0.55, max: 0.55, col: '#ffffff', size: 4 + Math.random() * 3, kind: 'dot', grav: 200 });
+      }
     }
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.x < RC) { b.x = RC; if (b.vx < 0) b.vx = 0; }
@@ -445,6 +548,7 @@
       b.grounded = true; b.gn = hit.ground; b.coyote = COYOTE;
       if (!wasG && impact > 300) b.landT = 0.16;
       if (hit.line) b.rode = true;
+      if (b.hasWing) b.airJump = true;
     } else b.grounded = false;
     // lò xo: không cứng — chạm vào từ trên/ngang là bật lên
     for (const sp of springs) {
@@ -453,12 +557,42 @@
         anim.set(sp.o, 0.35); noise('boing');
       }
     }
+    // đụng enemy → bị hất lùi ra xa nó (KHÔNG về Start, không tính thua — Nam chốt 10-27)
+    if (b.hurtT <= 0 && !won) for (const e of enemies) {
+      if (e.gone) continue;
+      const dx = b.x - e.x, dy = b.y - e.y, rr2 = RC + e.rc - 4;
+      if (dx * dx + dy * dy < rr2 * rr2) { bump(e, dx); break; }
+    }
     for (const h of hazards) if (circleRect(b.x, b.y, RC - 2, h.hit)) { ouch(h.o.t); return; }
     if (b.y > LVB + 60) { ouch('fall'); return; }
     for (let i = 0; i < starObjs.length; i++) {
       if (got.has(i)) continue;
       const s = starObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
       if ((b.x - cx) * (b.x - cx) + (b.y - cy) * (b.y - cy) < (RC + 16) * (RC + 16)) collect(i);
+    }
+    for (let i = 0; i < wingObjs.length; i++) {
+      if (gotWing.has(i)) continue;
+      const s = wingObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
+      if ((b.x - cx) * (b.x - cx) + (b.y - cy) * (b.y - cy) < (RC + 16) * (RC + 16)) pickWing(i);
+    }
+  }
+  function bump(e, dx) {
+    const b = hero, s = dx > 0.5 ? 1 : dx < -0.5 ? -1 : -b.dir;
+    b.vx = s * KNOCK_VX; b.vy = -KNOCK_VY; b.grounded = false; b.coyote = 0; b.jbuf = 0;
+    b.hurtT = 0.7; b.knockT = 0.3; bumps++; shakeT = 0.12; e.winkT = 0.5;
+    noise('bump'); say(b.id, 'dizzy', 0.8);
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
+      particles.push({ x: b.x - s * RC * 0.8, y: b.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120, life: 0.45, max: 0.45, col: '#fde68a', size: 6, kind: 'star', grav: 0, rot: a, vr: 5 });
+    }
+  }
+  function pickWing(i) {
+    const b = hero, s = wingObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
+    gotWing.add(i); b.hasWing = true; if (!b.grounded) b.airJump = true;
+    noise('wing'); showHint('Tap Jump again in the air!');
+    for (let k = 0; k < 10; k++) {
+      const a = k / 10 * TAU;
+      particles.push({ x: cx, y: cy, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140, life: 0.5, max: 0.5, col: '#ffffff', size: 5, kind: 'dot', grav: 0 });
     }
   }
 
@@ -487,6 +621,7 @@
     if (playing) {
       if (b.ouchT > 0) f = 'ouch';
       else if (won) f = 'phew';
+      else if (b.hurtT > 0.2) f = 'dizzy'; // vừa bị enemy hất (mặt choáng như gag "Dizzy~" bên Flappy)
       else if (b.winkT > 0) f = 'wink';
       else if (!b.grounded && b.vy < -150) f = 'flap';
       else if (!b.grounded && b.vy > 650) f = 'panic';
@@ -573,6 +708,7 @@
     }
     const o = { t: tool, x: gx, y: gy, w: k.w, h: k.h };
     fitObj(o); level.objs.push(o); sel = o; pushUndo(before); afterEdit(); noise('place');
+    if (tool === 'enemy') showHint('Drag the blue dot to make it bigger');
   }
   function afterEdit() { rebuild(); respawn(); persist(); }
   function buildDown(id, x, y) {
@@ -600,8 +736,9 @@
       if (nx !== o.x || ny !== o.y) { o.x = nx; o.y = ny; drag.changed = true; rebuild(); respawn(); }
     } else {
       const r = rectOf(o);
-      const nw = k.rw ? clamp(Math.round((x - r.x) / CELL), 1, level.cols - o.x) : o.w;
-      const nh = k.rh ? clamp(Math.round((y - r.y) / CELL), 1, ROWS - o.y) : o.h;
+      let nw = k.rw ? clamp(Math.round((x - r.x) / CELL), 1, level.cols - o.x) : o.w;
+      let nh = k.rh ? clamp(Math.round((y - r.y) / CELL), 1, ROWS - o.y) : o.h;
+      if (k.sq) nw = nh = clamp(Math.round(Math.max((x - r.x) / CELL, (y - r.y) / CELL)), 1, Math.min(k.sq, level.cols - o.x, ROWS - o.y));
       if (nw !== o.w || nh !== o.h) { o.w = nw; o.h = nh; drag.changed = true; rebuild(); }
     }
   }
@@ -816,6 +953,30 @@
     ctx.fillStyle = g; ctx.fill(); ctx.lineJoin = 'round'; ctx.lineWidth = 2.5; ctx.strokeStyle = '#e08a00'; ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(cx - R * 0.25, cy - R * 0.3, R * 0.18, R * 0.1, -0.6, 0, TAU); ctx.fill();
   }
+  // 1 cánh trắng tự vẽ: gốc ở (0,0), chĩa sang TRÁI-lên; mép dưới là 3 lớp lông
+  function drawWing(L, ang) {
+    ctx.save(); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-L * 0.25, -L * 0.55, -L * 0.7, -L * 0.78, -L, -L * 0.62);
+    ctx.quadraticCurveTo(-L * 0.98, -L * 0.26, -L * 0.74, -L * 0.24);
+    ctx.quadraticCurveTo(-L * 0.72, -L * 0.02, -L * 0.48, -L * 0.05);
+    ctx.quadraticCurveTo(-L * 0.42, L * 0.16, -L * 0.18, L * 0.1);
+    ctx.quadraticCurveTo(-L * 0.06, L * 0.08, 0, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.lineWidth = Math.max(2, L * 0.08); ctx.lineJoin = 'round'; ctx.strokeStyle = '#64748b'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-L * 0.2, -L * 0.12); ctx.quadraticCurveTo(-L * 0.5, -L * 0.42, -L * 0.82, -L * 0.48);
+    ctx.lineWidth = Math.max(1.2, L * 0.05); ctx.strokeStyle = '#b6c2d4'; ctx.stroke();
+    ctx.restore();
+  }
+  function drawWingItem(cx, cy, t, s) { // món Wing trên màn: đôi cánh dựng chữ V lơ lửng, đập nhẹ, có quầng sáng
+    cy += Math.sin(t * 3 + cx * 0.05) * 3;
+    const gl = ctx.createRadialGradient(cx, cy, 2, cx, cy, s * 1.7);
+    gl.addColorStop(0, 'rgba(255,255,255,0.95)'); gl.addColorStop(0.55, 'rgba(255,248,214,0.55)'); gl.addColorStop(1, 'rgba(255,248,214,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(cx, cy, s * 1.7, 0, TAU); ctx.fill();
+    const f = Math.sin(t * 6) * 0.15;
+    for (const sd of [-1, 1]) { ctx.save(); ctx.translate(cx + sd * 1.5, cy + s * 0.45); ctx.scale(-sd, 1); drawWing(s, 0.42 + f); ctx.restore(); }
+  }
   function drawStart(x, y, t) {
     const px = x + 9, base = y + CELL;
     ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(px + 2, base - 1, 9, 3, 0, 0, TAU); ctx.fill();
@@ -845,13 +1006,24 @@
       for (let i = 2; i + 1 < Ln.length; i += 2) ctx.lineTo(Ln[i], Ln[i + 1]);
       ctx.stroke();
     }
-    let si = 0;
-    for (const o of L.objs) if (o.t === 'star') {
-      const idx = si++;
-      if (isPlay && L === level && got.has(idx)) continue;
-      drawStar((o.x + 0.5) * CELL, BAR + (o.y + 0.5) * CELL, t, 15);
+    let si = 0, wi = 0, ei = 0;
+    for (const o of L.objs) {
+      if (o.t === 'star') {
+        const idx = si++;
+        if (isPlay && L === level && got.has(idx)) continue;
+        drawStar((o.x + 0.5) * CELL, BAR + (o.y + 0.5) * CELL, t, 15);
+      } else if (o.t === 'wing') {
+        const idx = wi++;
+        if (isPlay && L === level && gotWing.has(idx)) continue;
+        drawWingItem((o.x + 0.5) * CELL, BAR + (o.y + 0.5) * CELL, t, 20);
+      } else if (o.t === 'enemy') {
+        const k = ei++;
+        if (isPlay && L === level) continue; // đang chơi: con enemy đang đi được vẽ riêng (drawEnemies)
+        drawEnemy(enemyFromObj(o, k, L), false); // Build/Draw/ô Levels: đứng yên ở chỗ đặt
+      }
     }
   }
+  function drawEnemies() { for (const e of enemies) if (!e.gone) drawEnemy(e, e.walk && e.grounded); }
   function drawHero() {
     const b = hero, C = CHAR3D[b.id] || CHAR3D.froggy, r = RV;
     ctx.save();
@@ -860,8 +1032,26 @@
     ctx.scale(b.dir, 1); ctx.rotate(b.tilt * b.dir);
     ctx.scale(1 - b.st * 0.55, 1 + b.st);
     ctx.translate(0, -C.bottom * r);
-    if (b.ouchT > 0) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(clock * 18));
+    if (b.ouchT > 0 || b.hurtT > 0) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(clock * 18));
+    if (b.hasWing) { // đôi cánh sau lưng: đập mạnh lúc vừa nhảy thêm; đã dùng cú nhảy thêm thì mờ đi (chạm đất mới sáng lại)
+      const flap = Math.sin(b.wing) * 0.25 + (b.flapT > 0 ? Math.sin(b.flapT * 40) * 0.45 : 0);
+      ctx.save(); if (!b.airJump && !b.grounded) ctx.globalAlpha *= 0.5;
+      for (const sd of [-1, 1]) { ctx.save(); ctx.translate(sd * r * 0.4, -r * 0.05); ctx.scale(-sd, 1); drawWing(r * 1.5, 0.3 + flap); ctx.restore(); }
+      ctx.restore();
+    }
     drawActor(b);
+    ctx.restore();
+  }
+  // enemy: đứng ở chân, quay mặt theo hướng đi; bóng đỏ nhạt dưới chân để Bon biết đây là "người gác", không phải baby của mình
+  function drawEnemy(e, walking) {
+    const C = CHAR3D[e.id] || CHAR3D.froggy;
+    ctx.save(); ctx.translate(e.x, e.y + e.rc);
+    ctx.fillStyle = 'rgba(220,38,38,0.28)'; ctx.beginPath(); ctx.ellipse(0, -2, e.rc * 0.95, e.rc * 0.22, 0, 0, TAU); ctx.fill();
+    ctx.scale(e.dir, 1);
+    const bob = walking ? Math.abs(Math.sin(e.leg)) * 0.06 : 0;
+    ctx.scale(1 - bob * 0.5, 1 + bob);
+    ctx.translate(0, -C.bottom * e.r);
+    drawActor(e);
     ctx.restore();
   }
 
@@ -888,6 +1078,8 @@
     else if (kind === 'fire') drawFire(0, 0, CELL, CELL, t);
     else if (kind === 'water') { ctx.save(); rr(0, 0, CELL, CELL, 5); ctx.clip(); drawWater(0, 0, CELL, CELL, t); ctx.restore(); }
     else if (kind === 'spring') drawSpring(0, 0, 0);
+    else if (kind === 'wing') drawWingItem(CELL / 2, CELL / 2 - 3, t, 15);
+    else if (kind === 'enemy') { const a = makeActor(enemyId(0), 11.5); ctx.translate(CELL / 2, CELL / 2 + 2); drawActor(a); }
     else if (kind === 'star') drawStar(CELL / 2, CELL / 2, 0, 12);
     else if (kind === 'start') drawStart(0, 0, t);
     ctx.restore();
@@ -964,7 +1156,9 @@
       ctx.closePath(); ctx.fill();
     }
   }
-  const KIND_LABEL = { block: 'Block', spike: 'Spikes', fire: 'Fire', water: 'Water', spring: 'Spring', star: 'Star', start: 'Start' };
+  const KIND_LABEL = { block: 'Block', spike: 'Spikes', fire: 'Fire', water: 'Water', spring: 'Spring', wing: 'Wing', enemy: 'Enemy', star: 'Star', start: 'Start' };
+  // thanh dưới Build: 9 món + Undo vừa 1 hàng giữa 2 nút ◀ ▶ (◀ hết ở x=92, ▶ bắt đầu ở x=932)
+  const PAL_UI = { x0: 100, step: 80, w: 74, y: 652, h: 104, undoX: 822, undoW: 102 };
   // thanh dưới: đồ nghề theo mode (Build: ◀ các món Undo ▶ · Draw: ◀ Undo Clear ▶ · Play: nút đi/nhảy)
   function drawBottomBar() {
     ctx.fillStyle = 'rgba(255,255,255,0.93)'; ctx.fillRect(0, LVB, WW, WH - LVB);
@@ -972,18 +1166,20 @@
     if (mode === 'play') { drawControls(); return; }
     drawArrows();
     if (mode === 'build') {
+      const P = PAL_UI;
       for (let i = 0; i < PALETTE.length; i++) {
-        const kd = PALETTE[i], bx = 100 + i * 90, on = tool === kd;
-        button(bx, 652, 84, 104, on ? '#fde68a' : '#f8fafc', on ? '#d97706' : '#cbd5e1', function() {
+        const kd = PALETTE[i], bx = P.x0 + i * P.step, on = tool === kd;
+        button(bx, P.y, P.w, P.h, on ? '#fde68a' : '#f8fafc', on ? '#d97706' : '#cbd5e1', function() {
           tool = tool === kd ? null : kd; noise('click');
           showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
         });
-        drawKindIcon(kd, bx + 18, 662, 48, clock);
-        text(KIND_LABEL[kd], bx + 42, 734, 15, on ? '#92400e' : '#475569');
+        drawKindIcon(kd, bx + (P.w - 46) / 2, 662, 46, clock);
+        text(KIND_LABEL[kd], bx + P.w / 2, 734, 15, on ? '#92400e' : '#475569');
       }
-      button(732, 652, 110, 104, undoStack.length ? '#f8fafc' : '#eef2f6', '#cbd5e1', undo);
-      undoIcon(787, 690, undoStack.length ? '#334155' : '#94a3b8');
-      text('Undo', 787, 734, 17, undoStack.length ? '#334155' : '#94a3b8');
+      const ux = P.undoX + P.undoW / 2;
+      button(P.undoX, P.y, P.undoW, P.h, undoStack.length ? '#f8fafc' : '#eef2f6', '#cbd5e1', undo);
+      undoIcon(ux, 690, undoStack.length ? '#334155' : '#94a3b8');
+      text('Undo', ux, 734, 17, undoStack.length ? '#334155' : '#94a3b8');
     } else {
       const has = level.lines.length > 0;
       button(352, 652, 150, 104, has ? '#f8fafc' : '#eef2f6', '#cbd5e1', undo);
@@ -1137,6 +1333,7 @@
     } else if (!overlay) scrollStep(dt);
     if (won && mode === 'play') { wonT += dt; if (wonT > 0.9 && !overlay) { overlay = 'win'; confettiBurst(); } }
     animHero(dt, mode === 'play');
+    animEnemies(dt, mode === 'play');
     anim.forEach(function(v, k) { if (v - dt <= 0) anim.delete(k); else anim.set(k, v - dt); });
     if (hintT > 0) hintT -= dt;
     if (flash) { flash.t -= dt; if (flash.t <= 0) flash = null; }
@@ -1161,6 +1358,7 @@
     ctx.save(); ctx.translate(-camX, 0); // mọi thứ trong màn dài trôi theo camX
     if (mode === 'build') drawGrid();
     drawLevelScene(level, clock, mode === 'play');
+    if (mode === 'play') drawEnemies();
     drawHero();
     drawParticles(dt);
     if (mode === 'build') drawSelection();
@@ -1204,9 +1402,13 @@
   if (TEST) {
     window.__g = {
       get: function() { return { mode: mode, overlay: overlay, slot: save.cur, char: hero.id, tool: tool, sel: sel ? clone(sel) : null,
-        hero: { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, grounded: hero.grounded, ouchT: hero.ouchT, face: hero.face },
+        hero: { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, grounded: hero.grounded, ouchT: hero.ouchT, face: hero.face,
+                hasWing: hero.hasWing, airJump: hero.airJump, hurtT: hero.hurtT },
         got: got.size, total: starObjs.length, won: won, ouches: ouches, camX: camX, cols: level.cols, maxCam: maxCam(),
-        lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME }; },
+        lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME,
+        bumps: bumps, wingsGot: gotWing.size, praise: praiseText,
+        enemies: enemies.map(e => ({ x: e.x, y: e.y, dir: e.dir, n: e.n, rc: e.rc, id: e.id, gone: e.gone, grounded: e.grounded, walk: e.walk })) }; },
+      ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI) }; },
       level: function() { return clone(level); },
       setLevel: function(L) { normLevel(L); save.slots[save.cur] = L; level = L; persist(); setMode(mode); },
       setCam: setCam, longer: makeLonger,
