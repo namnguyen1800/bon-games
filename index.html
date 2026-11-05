@@ -17,6 +17,7 @@
   :root { color-scheme: light; --sky-top: #9adbe3; --sky: #70c5ce; --ink: #1f3b40; --card: #ffffff; --edge: #2e6b73; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { min-height: 100%; }
+  html { background: var(--sky); } /* trang dài hơn màn: phần kéo xuống vẫn màu trời */
   body {
     background: linear-gradient(var(--sky-top), var(--sky)) fixed; color: var(--ink);
     font-family: -apple-system, "Segoe UI", sans-serif;
@@ -31,6 +32,7 @@
     background: var(--card); border: 5px solid var(--edge); border-radius: 28px; overflow: hidden;
     box-shadow: 0 8px 0 rgba(46,107,115,0.55); transition: transform 0.08s;
   }
+  @media (min-width: 900px) { .game { flex: 0 1 315px; } } /* màn rộng: mọi ô cùng cỡ, ô lẻ ở hàng cuối không phình to */
   .game:active { transform: translateY(5px); box-shadow: 0 3px 0 rgba(46,107,115,0.55); }
   .game img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--sky); }
   .game span { display: block; text-align: center; font-size: clamp(26px, 4.5vw, 36px); font-weight: 900; padding: 14px 10px 18px; }
@@ -42,6 +44,7 @@
   <a class="game" href="flying-babies/"><img src="tile-flying-babies.jpg" alt=""><span>Flying Babies</span></a>
   <a class="game" href="star-finder/"><img src="tile-star-finder.jpg" alt=""><span>Star Finder</span></a>
   <a class="game" href="number-memory/"><img src="tile-number-memory.jpg" alt=""><span>Number Memory</span></a>
+  <a class="game" href="fishtank/"><img src="tile-fishtank.jpg" alt=""><span>Bon's Fishtank</span></a>
 </main>
 </body>
 </html>
