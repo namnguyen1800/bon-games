@@ -37,11 +37,43 @@
   #leftIn { margin: auto 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0; }
   #right { width: clamp(200px, 30%, 300px); display: flex; flex-direction: column; justify-content: center; gap: 18px; }
   #right button { width: 100%; min-height: 120px; font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,0.2); }
-  #startBtn, #nextBtn { background: var(--go); }
+  #startBtn, #nextBtn, #playBtn { background: var(--go); }
   #yesBtn { background: var(--yes); }
   #noBtn { background: var(--no); }
-  #right #againBtn { background: var(--card); color: var(--ink); text-shadow: none; } /* #right để thắng màu chữ trắng của "#right button" */
-  #right #againBtn, #right #nextBtn { font-size: 30px; white-space: nowrap; }
+  #right #againBtn, #right #editBtn { background: var(--card); color: var(--ink); text-shadow: none; } /* #right để thắng màu chữ trắng của "#right button" */
+  #right #againBtn, #right #nextBtn, #right #editBtn { font-size: 30px; white-space: nowrap; }
+  /* Bon level: nút ⭐ trên hàng level (chữ "Bon" chỉ hiện khi màn rộng — iPad dọc/điện thoại không đủ chỗ) */
+  #levelRow .bon { background: #fde68a; border-color: #b45309; padding: 0 10px; white-space: nowrap; }
+  #levelRow .bon.on { background: var(--go); color: #fff; }
+  @media (max-width: 899px) { #levelRow .bonWord { display: none; } }
+  /* màn đặt bài */
+  #setup { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 14px; }
+  #setup .group { display: flex; flex-direction: column; gap: 2px; }
+  #setup .label { font-size: 24px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 var(--edge); margin-left: 4px; }
+  #setup .slots { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 14px 6px 6px; }
+  #setup .slot { position: relative; min-width: 84px; height: 84px; padding: 0 12px; display: flex; align-items: center; justify-content: center;
+                 background: #fff; border: 4px solid var(--edge); border-radius: 18px; font-size: 44px; font-weight: 900; cursor: pointer; }
+  #setup .slot.q { background: #eff6ff; }
+  #setup .slot.empty { color: #9ca3af; }
+  #setup .slot.sel { border-color: var(--go); box-shadow: 0 0 0 5px #fde68a; }
+  #setup .slot.dup { background: #fee2e2; border-color: var(--wrong); }
+  #setup .slot .x { position: absolute; top: -12px; right: -10px; width: 32px; height: 32px; padding: 0; border-width: 3px; border-radius: 50%;
+                    font-size: 17px; font-weight: 900; display: flex; align-items: center; justify-content: center; box-shadow: none; }
+  #setup .plus { width: 84px; height: 84px; font-size: 48px; font-weight: 900; background: #fde68a; border-color: #b45309; }
+  #setup .rowLine { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  #setup .toggle { display: flex; }
+  #setup .toggle button { height: 60px; padding: 0 18px; font-size: 24px; font-weight: 900; border-radius: 0; box-shadow: 0 4px 0 rgba(46,107,115,0.5); }
+  #setup .toggle button:first-child { border-radius: 16px 0 0 16px; }
+  #setup .toggle button:last-child { border-radius: 0 16px 16px 0; border-left: none; }
+  #setup .toggle button.on { background: var(--edge); color: #fff; }
+  #setup .stepper { display: flex; align-items: center; gap: 8px; }
+  #setup .stepper button { width: 60px; height: 60px; font-size: 26px; font-weight: 900; }
+  #setup .stepper .val { min-width: 70px; text-align: center; font-size: 44px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 var(--edge); }
+  /* bàn phím số (nút HTML, không dùng ô nhập → iPad không bật bàn phím của nó) */
+  #right #pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #right #pad button { min-height: 0; height: 66px; font-size: 34px; color: var(--ink); text-shadow: none; border-radius: 14px; box-shadow: 0 4px 0 rgba(46,107,115,0.5); }
+  #right #pad .del { background: #fee2e2; }
+  #right #pad .nx { background: #dbeafe; font-size: 28px; }
   /* bạn hỏi + bong bóng chữ */
   #host { display: flex; align-items: center; gap: 6px; }
   #hostCv { width: 130px; height: 130px; flex: none; }
@@ -59,7 +91,7 @@
   #leftResult { display: flex; flex-direction: column; align-items: center; gap: 10px; }
   #scoreRow { display: flex; align-items: center; gap: 14px; }
   #score { font-size: 64px; font-weight: 900; color: #fff; text-shadow: 0 4px 0 var(--edge); }
-  #stars { font-size: 40px; letter-spacing: 2px; }
+  #stars { font-size: 40px; letter-spacing: 2px; max-width: 440px; } /* Bon level tới 20 câu → sao xuống dòng */
   #app[data-state="result"] #hostCv { width: 90px; height: 90px; } /* màn điểm nhiều thứ → bạn hỏi nhỏ lại cho vừa 1 màn */
   #resBoard { gap: 8px; }
   #resBoard .cell { min-width: 62px; height: 62px; padding: 0 6px; font-size: 32px; border-width: 3px; border-radius: 14px; }
@@ -85,7 +117,22 @@
     #stage { flex-direction: column; gap: 10px; }
     #right { width: 100%; flex-direction: row; gap: 10px; }
     #right button { flex: 1; min-height: 96px; font-size: 30px; }
-    #right #againBtn, #right #nextBtn { font-size: 22px; }
+    #right #againBtn, #right #nextBtn, #right #editBtn { font-size: 22px; }
+    /* màn đặt bài điện thoại: bàn phím + Play xếp dọc ở đáy, mọi thứ nhỏ lại */
+    #app[data-state="setup"] #right { flex-direction: column; gap: 8px; }
+    #app[data-state="setup"] #right #playBtn { flex: none; min-height: 60px; font-size: 26px; }
+    #right #pad { gap: 6px; }
+    #right #pad button { flex: none; height: 44px; font-size: 24px; border-width: 3px; }
+    #setup { gap: 8px; }
+    #setup .label { font-size: 20px; }
+    #setup .slots { gap: 10px; padding-top: 12px; }
+    #setup .slot, #setup .plus { min-width: 56px; height: 56px; font-size: 30px; border-width: 3px; }
+    #setup .plus { width: 56px; }
+    #setup .slot .x { width: 28px; height: 28px; font-size: 14px; top: -11px; right: -8px; }
+    #setup .toggle button { height: 50px; font-size: 20px; padding: 0 12px; }
+    #setup .stepper button { width: 50px; height: 50px; }
+    #setup .stepper .val { font-size: 34px; min-width: 50px; }
+    #stars { max-width: 300px; }
     #app[data-state="result"] #hostCv { width: 72px; height: 72px; }
     #levelRow { gap: 4px; }
     #levelRow button { min-width: 48px; height: 48px; font-size: 20px; }
@@ -124,6 +171,24 @@
   <main id="stage">
     <section id="left"><div id="leftIn">
       <div id="host"><canvas id="hostCv"></canvas><div id="bubble">Remember these numbers!</div></div>
+      <!-- Bon level (Nam 11-09): người nhà tự đặt bảng + số câu, câu hỏi random hoặc tự bấm -->
+      <div id="setup" hidden>
+        <div class="group">
+          <div class="label">Numbers</div>
+          <div class="slots" id="numSlots"></div>
+        </div>
+        <div class="group">
+          <div class="rowLine">
+            <div class="label">Questions</div>
+            <div class="toggle"><button id="modeRandom">🎲 Random</button><button id="modePick">✋ I choose</button></div>
+            <div class="stepper" id="stepper"><button id="qMinus" aria-label="Fewer">◀</button><div class="val" id="qVal">5</div><button id="qPlus" aria-label="More">▶</button></div>
+          </div>
+        </div>
+        <div class="group" id="pickGroup" hidden>
+          <div class="label">Ask these numbers</div>
+          <div class="slots" id="qSlots"></div>
+        </div>
+      </div>
       <div id="board" class="cells"></div>
       <div id="askNum" hidden></div>
       <div id="result" hidden>
@@ -135,11 +200,14 @@
       </div>
     </div></section>
     <section id="right">
+      <div id="pad" hidden></div>
+      <button id="playBtn" hidden>Play ▶</button>
       <button id="startBtn">Start</button>
       <button id="yesBtn" hidden>YES</button>
       <button id="noBtn" hidden>NO</button>
       <button id="againBtn" hidden>Play again</button>
       <button id="nextBtn" hidden>Next level ▶</button>
+      <button id="editBtn" hidden>✏️ Edit</button>
     </section>
   </main>
 </div>
@@ -194,7 +262,12 @@
   // ================= LƯU TRÊN MÁY =================
   // Lưu bị chặn / trình duyệt tự xoá → game vẫn chạy, lần sau về Level 1 + hỏi chọn bạn lại. Tắt giữa lượt → mở lại ra bảng mới cùng level.
   const SAVE_KEY = 'bon_numbermemory_v1';
-  const save = { level: 1, char: 'froggy', picked: false, mute: false };
+  // Bon level: số lưu dạng CHUỖI chữ số (dài tới 12 chữ số, không lo làm tròn), không số 0 đứng đầu.
+  const C_MAXSLOT = 20, C_MAXQ = 20, C_MAXLEN = 12;
+  function okNum(v) { return typeof v === 'string' && /^[1-9][0-9]{0,11}$/.test(v); }
+  function okSlot(v) { return v === '' || okNum(v); }
+  const save = { level: 1, char: 'froggy', picked: false, mute: false, inCustom: false,
+                 custom: { board: ['12', '5', '347'], mode: 'random', q: 5, picks: [''] } };
   (function loadSave() {
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
@@ -202,6 +275,14 @@
       if (Number.isInteger(s.level) && s.level >= 1 && s.level <= MAX_LEVEL) save.level = s.level;
       if (CHARS.some(function(c) { return c.id === s.char; })) save.char = s.char;
       save.picked = !!s.picked; save.mute = !!s.mute;
+      const c = s.custom; // dữ liệu lưu hỏng ở chỗ nào thì bỏ đúng chỗ đó, game vẫn mở
+      if (c && typeof c === 'object') {
+        if (Array.isArray(c.board) && c.board.length >= 1 && c.board.length <= C_MAXSLOT && c.board.every(okSlot)) save.custom.board = c.board.slice();
+        if (Array.isArray(c.picks) && c.picks.length >= 1 && c.picks.length <= C_MAXQ && c.picks.every(okSlot)) save.custom.picks = c.picks.slice();
+        if (c.mode === 'random' || c.mode === 'pick') save.custom.mode = c.mode;
+        if (Number.isInteger(c.q) && c.q >= 1 && c.q <= C_MAXQ) save.custom.q = c.q;
+      }
+      save.inCustom = s.inCustom === true;
     } catch (e) {}
   })();
   function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
@@ -392,6 +473,35 @@
     return { level: lv, board: board, questions: questions, draws: draws };
   }
 
+  // ---- Bon level: bảng do người nhà đặt ----
+  // Ô trống + số trùng tự bỏ (giữ thứ tự người đặt gõ). "I choose": hỏi đúng các số đã gõ, đáp án = số đó có trên bảng.
+  // "Random": khoảng nửa YES (lẻ thì random thêm 1), YES lấy số trên bảng (câu nhiều hơn ô → lặp số);
+  // NO = số ngẫu nhiên cùng số chữ số với 1 ô trên bảng, không trùng bảng, không trùng nhau; hết chỗ (vd bảng đủ 1…9) → dài hơn 1 chữ số.
+  function customBoard(cfg) { const out = []; for (const v of cfg.board) if (okNum(v) && out.indexOf(v) < 0) out.push(v); return out; }
+  function randDigits(len) { let s = String(ri(1, 9)); while (s.length < len) s += String(ri(0, 9)); return s; }
+  function makeCustomRound(cfg) {
+    const board = customBoard(cfg);
+    let questions;
+    if (cfg.mode === 'pick') {
+      questions = cfg.picks.filter(okNum).map(function(v) { return { v: v, ans: board.indexOf(v) >= 0 }; });
+    } else {
+      const n = cfg.q, yesN = Math.floor(n / 2) + (n % 2 ? ri(0, 1) : 0), yes = [];
+      let pool = [];
+      while (yes.length < yesN) { if (!pool.length) pool = shuffle(board.slice()); yes.push(pool.pop()); }
+      const taken = new Set(board), no = [];
+      for (let g = 0; no.length < n - yesN && g < 20000; g++) {
+        const len = board[ri(0, board.length - 1)].length + (g >= 2000 ? 1 : 0), v = randDigits(len);
+        if (!taken.has(v)) { taken.add(v); no.push(v); }
+      }
+      questions = shuffle(yes.map(function(v) { return { v: v, ans: true }; }).concat(no.map(function(v) { return { v: v, ans: false }; })));
+    }
+    return { level: 0, custom: true, board: board, questions: questions, draws: 1 };
+  }
+  function customReady() {
+    const c = save.custom;
+    return customBoard(c).length > 0 && (c.mode !== 'pick' || c.picks.some(okNum));
+  }
+
   // ================= LƯỢT CHƠI =================
   // state: 'board' (xem bảng) → 'ask' (5 câu) → 'result' (điểm). Màn chọn người hỏi là lớp phủ (pickOpen).
   let state = 'board', round = null, answers = [], qi = 0, pickOpen = false, lvPage = 0;
@@ -401,15 +511,16 @@
   const host = makeActor(save.char, 30), face = makeActor(save.char, 12);
   let hostFace = 'idle', hostFaceT = 0, cheerT = 0;
 
-  function setLevel(n) { save.level = Math.max(1, Math.min(MAX_LEVEL, n)); persist(); }
-  function pageSize() { return window.innerWidth < 600 ? 5 : 10; }
+  function setLevel(n) { save.level = Math.max(1, Math.min(MAX_LEVEL, n)); save.inCustom = false; persist(); }
+  function pageSize() { return window.innerWidth < 600 ? 4 : 10; } // điện thoại 4 (11-09: thêm nút ⭐ Bon, 5 ô không còn vừa ở ô ≥48px)
   function cells(el, nums) {
     el.textContent = '';
     for (const v of nums) { const d = document.createElement('div'); d.className = 'cell'; d.textContent = v; el.appendChild(d); }
   }
   function newRound() {
     clearTimeout(leaveTimer); clearTimeout(settleTimer); onLeft = null;
-    round = makeRound(save.level); answers = []; qi = 0; readyAt = Infinity; state = 'board';
+    // Bon level chỉ ra đề khi bảng có ≥1 số (nút Play đã chặn; lúc mở game với bảng trống thì lấy đề level thường làm nền, openSetup che ngay)
+    round = save.inCustom && customReady() ? makeCustomRound(save.custom) : makeRound(save.level); answers = []; qi = 0; readyAt = Infinity; state = 'board';
     lvPage = Math.floor((save.level - 1) / pageSize());
     cells($('board'), round.board);
     $('bubble').textContent = 'Remember these numbers!';
@@ -422,14 +533,18 @@
     $('board').hidden = s !== 'board';
     $('askNum').hidden = s !== 'ask';
     $('result').hidden = s !== 'result';
+    $('setup').hidden = $('pad').hidden = $('playBtn').hidden = s !== 'setup';
+    $('host').hidden = s === 'setup'; // màn đặt bài cần chỗ cho ô số
     $('startBtn').hidden = s !== 'board';
     $('yesBtn').hidden = $('noBtn').hidden = s !== 'ask';
     $('againBtn').hidden = s !== 'result';
-    $('nextBtn').hidden = s !== 'result' || save.level >= MAX_LEVEL;
+    $('nextBtn').hidden = s !== 'result' || save.inCustom || save.level >= MAX_LEVEL;
+    $('editBtn').hidden = s !== 'result' || !save.inCustom;
     $('levelRow').hidden = $('faceBtn').hidden = s === 'ask'; // đang hỏi thì ẩn — khỏi lỡ tay mất bài
     $('homeBtn').hidden = !HOME;
-    $('lvTitle').textContent = 'Level ' + save.level;
+    $('lvTitle').textContent = save.inCustom ? 'Bon level' : 'Level ' + save.level;
     $('muteBtn').textContent = save.mute ? '🔇' : '🔊';
+    if (s === 'setup') drawSetup();
     levelRow();
   }
   function levelRow() {
@@ -440,9 +555,11 @@
       const b = document.createElement('button'); b.textContent = label; b.className = cls; b.disabled = !!off;
       b.addEventListener('click', fn); row.appendChild(b); return b;
     };
+    const bon = add('⭐', 'bon' + (save.inCustom ? ' on' : ''), function() { noise('click'); openSetup(); });
+    bon.id = 'bonBtn'; const w = document.createElement('span'); w.className = 'bonWord'; w.textContent = ' Bon'; bon.appendChild(w);
     add('◀', 'arrow', function() { lvPage--; levelRow(); }, lvPage === 0).id = 'lvPrev';
     for (let n = lvPage * size + 1; n <= Math.min(MAX_LEVEL, (lvPage + 1) * size); n++) {
-      add(String(n), 'lv' + (n === save.level ? ' on' : ''), function() { noise('click'); setLevel(n); newRound(); }).dataset.lv = n;
+      add(String(n), 'lv' + (n === save.level && !save.inCustom ? ' on' : ''), function() { noise('click'); setLevel(n); newRound(); }).dataset.lv = n;
     }
     add('▶', 'arrow', function() { lvPage++; levelRow(); }, lvPage === pages - 1).id = 'lvNext';
   }
@@ -484,7 +601,7 @@
     answers.push(!!yes);
     noise('click');
     hostFace = 'wink'; hostFaceT = 0.3;
-    if (answers.length >= ROUND_Q) { finish(); return true; }
+    if (answers.length >= round.questions.length) { finish(); return true; }
     qi++;
     showQuestion(false);
     return true;
@@ -492,11 +609,11 @@
   function finish() {
     state = 'result'; readyAt = Infinity;
     const right = round.questions.map(function(q, i) { return answers[i] === q.ans; });
-    const score = right.filter(Boolean).length;
-    $('score').textContent = score + '/' + ROUND_Q;
+    const score = right.filter(Boolean).length, total = round.questions.length;
+    $('score').textContent = score + '/' + total;
     const st = $('stars'); st.textContent = '';
     for (let i = 0; i < score; i++) { const s = document.createElement('span'); s.className = 'star'; s.textContent = '⭐'; st.appendChild(s); } // chỉ sao đã được, không sao xám
-    $('bubble').textContent = score === ROUND_Q ? 'Perfect!' : score >= 3 ? 'Great job!' : 'Good try!';
+    $('bubble').textContent = score === total ? 'Perfect!' : score >= total * 0.6 ? 'Great job!' : 'Good try!'; // 5 câu: ≥3 như cũ
     cells($('resBoard'), round.board); // đúng thứ tự lúc đầu
     const list = $('asked'); list.textContent = '';
     round.questions.forEach(function(q, i) {
@@ -510,6 +627,89 @@
     cheerT = 1.2; hostFace = 'wink'; hostFaceT = 1.2;
     render();
   }
+
+  // ================= BON LEVEL: MÀN ĐẶT BÀI =================
+  // sel = ô đang nhận số từ bàn phím: list 'board' (hàng Numbers) hoặc 'picks' (hàng câu hỏi của "I choose")
+  let sel = { list: 'board', i: -1 };
+  function slotList(name) { return name === 'board' ? save.custom.board : save.custom.picks; }
+  function slotCap(name) { return name === 'board' ? C_MAXSLOT : C_MAXQ; }
+  function openSetup() {
+    clearTimeout(leaveTimer); clearTimeout(settleTimer); onLeft = null; readyAt = Infinity;
+    save.inCustom = true; persist();
+    state = 'setup';
+    sel = save.custom.mode === 'pick' ? { list: 'picks', i: save.custom.picks.length - 1 } : { list: 'board', i: save.custom.board.length - 1 };
+    render();
+  }
+  function slotEl(name, i, v, dup) {
+    const L = slotList(name), d = document.createElement('div');
+    d.className = 'slot' + (name === 'picks' ? ' q' : '') + (v === '' ? ' empty' : '') + (sel.list === name && sel.i === i ? ' sel' : '') + (dup ? ' dup' : '');
+    d.dataset.list = name; d.dataset.i = i;
+    d.appendChild(document.createTextNode(v === '' ? '?' : v));
+    d.addEventListener('click', function() { sel = { list: name, i: i }; drawSetup(); });
+    if (L.length > 1) { // còn 1 ô thì không cho bỏ (bảng / câu hỏi không được trống trơn)
+      const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.setAttribute('aria-label', 'Remove');
+      x.addEventListener('click', function(e) { e.stopPropagation(); noise('click'); L.splice(i, 1); if (sel.list === name) sel.i = Math.min(sel.i, L.length - 1); persist(); drawSetup(); });
+      d.appendChild(x);
+    }
+    return d;
+  }
+  function plusEl(name) {
+    const L = slotList(name), p = document.createElement('button'); p.className = 'plus'; p.textContent = '+'; p.dataset.list = name;
+    p.addEventListener('click', function() { noise('click'); L.push(''); sel = { list: name, i: L.length - 1 }; persist(); drawSetup(); });
+    return p;
+  }
+  function drawSetup() {
+    const c = save.custom, seen = {}, dup = {};
+    c.board.forEach(function(v) { if (v === '') return; if (seen[v]) dup[v] = 1; seen[v] = 1; });
+    const ns = $('numSlots'); ns.textContent = '';
+    c.board.forEach(function(v, i) { ns.appendChild(slotEl('board', i, v, !!dup[v])); });
+    if (c.board.length < C_MAXSLOT) ns.appendChild(plusEl('board'));
+    $('modeRandom').classList.toggle('on', c.mode === 'random');
+    $('modePick').classList.toggle('on', c.mode === 'pick');
+    $('stepper').hidden = c.mode !== 'random'; // "I choose": bấm bao nhiêu ô câu hỏi = hỏi bấy nhiêu câu
+    $('qVal').textContent = c.q;
+    $('qMinus').disabled = c.q <= 1; $('qPlus').disabled = c.q >= C_MAXQ;
+    $('pickGroup').hidden = c.mode !== 'pick';
+    const qs = $('qSlots'); qs.textContent = '';
+    if (c.mode === 'pick') {
+      c.picks.forEach(function(v, i) { qs.appendChild(slotEl('picks', i, v, false)); });
+      if (c.picks.length < C_MAXQ) qs.appendChild(plusEl('picks'));
+    }
+    $('playBtn').disabled = !customReady();
+    const on = document.querySelector('#setup .slot.sel'); // ô đang gõ luôn nằm trong chỗ thấy (bảng dài phải kéo)
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+  function padKey(k) {
+    if (state !== 'setup') return;
+    const L = slotList(sel.list), cap = slotCap(sel.list);
+    noise('click');
+    if (k === '→') { // sang ô kế; đang ở ô cuối thì thêm ô mới
+      if (sel.i >= L.length - 1 && L.length < cap) L.push('');
+      sel.i = Math.min(sel.i + 1, L.length - 1);
+    } else {
+      if (sel.i < 0 || sel.i >= L.length) sel.i = L.length - 1;
+      let v = L[sel.i];
+      if (k === '⌫') v = v.slice(0, -1);
+      else if (!(k === '0' && v === '') && v.length < C_MAXLEN) v += k; // không cho số bắt đầu bằng 0
+      L[sel.i] = v;
+    }
+    persist(); drawSetup();
+  }
+  (function buildPad() {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '→']) {
+      const b = document.createElement('button'); b.textContent = k; b.dataset.key = k;
+      if (k === '⌫') { b.className = 'del'; b.setAttribute('aria-label', 'Delete'); }
+      if (k === '→') { b.className = 'nx'; b.setAttribute('aria-label', 'Next box'); }
+      b.addEventListener('click', function() { padKey(k); });
+      $('pad').appendChild(b);
+    }
+  })();
+  $('modeRandom').addEventListener('click', function() { noise('click'); save.custom.mode = 'random'; if (sel.list === 'picks') sel = { list: 'board', i: save.custom.board.length - 1 }; persist(); drawSetup(); });
+  $('modePick').addEventListener('click', function() { noise('click'); save.custom.mode = 'pick'; sel = { list: 'picks', i: save.custom.picks.length - 1 }; persist(); drawSetup(); });
+  $('qMinus').addEventListener('click', function() { noise('click'); save.custom.q = Math.max(1, save.custom.q - 1); persist(); drawSetup(); });
+  $('qPlus').addEventListener('click', function() { noise('click'); save.custom.q = Math.min(C_MAXQ, save.custom.q + 1); persist(); drawSetup(); });
+  $('playBtn').addEventListener('click', function() { if (state !== 'setup' || !customReady()) return; noise('ding'); askPersist(); newRound(); });
+  $('editBtn').addEventListener('click', function() { noise('click'); openSetup(); });
 
   // ================= CHỌN NGƯỜI HỎI =================
   const tiles = [];
@@ -584,7 +784,8 @@
                  answers: answers.slice(), char: save.char, home: HOME, locked: performance.now() < readyAt, readyAt: readyAt, draws: round.draws,
                  picked: save.picked, mute: save.mute, pick: pickOpen };
       },
-      LEVELS: LEVELS, makeRound: makeRound, alikeLures: alikeLures,
+      LEVELS: LEVELS, makeRound: makeRound, alikeLures: alikeLures, makeCustomRound: makeCustomRound,
+      custom: function() { return JSON.parse(JSON.stringify(save.custom)); }, inCustom: function() { return save.inCustom; },
       forceBoards: function(list) { forced = list.map(function(b) { return b.slice(); }); },
       setLevel: function(n) { setLevel(n); newRound(); },
       answer: function(yn, force) { return answer(yn === 'yes' || yn === true, force); },
@@ -597,6 +798,7 @@
   }
 
   newRound();
+  if (save.inCustom) openSetup(); // lần trước đang ở Bon level → mở lại màn đặt bài với bảng đã đặt
   if (!save.picked && !TEST) openPick();
   requestAnimationFrame(frame);
 })();
