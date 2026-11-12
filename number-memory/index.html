@@ -50,6 +50,21 @@
   #setup { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 14px; }
   #setup .group { display: flex; flex-direction: column; gap: 2px; }
   #setup .label { font-size: 24px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 var(--edge); margin-left: 4px; }
+  /* 11-11 (Nam): nhiều Bon level → hàng ⭐1 ⭐2 … + ; nút 🗑 xoá hết số của Bon level đang mở (hỏi lại trước) */
+  #bonTabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #bonTabs button { min-width: 64px; height: 54px; padding: 0 12px; font-size: 22px; font-weight: 900; border-width: 3px; border-radius: 14px;
+                    background: #fde68a; border-color: #b45309; box-shadow: 0 3px 0 rgba(46,107,115,0.5); }
+  #bonTabs button.on { background: var(--go); color: #fff; box-shadow: 0 0 0 4px #fff; }
+  #bonTabs .add { min-width: 54px; background: #fff; font-size: 30px; }
+  #setup .label.withBtn { display: flex; align-items: center; gap: 12px; }
+  #resetBtn { width: 52px; height: 52px; padding: 0; font-size: 26px; border-width: 3px; border-radius: 14px; background: #fee2e2; border-color: var(--wrong);
+              color: var(--ink); text-shadow: none; box-shadow: 0 3px 0 rgba(220,38,38,0.4); }
+  #confirm { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,0.5); }
+  #confirm .panel { background: #fffdf7; border: 5px solid var(--wrong); border-radius: 26px; padding: 20px 26px; text-align: center; }
+  #confirm h2 { font-size: 34px; margin-bottom: 16px; }
+  #confirm .btns { display: flex; gap: 20px; justify-content: center; }
+  #confirm button { width: 120px; height: 90px; font-size: 46px; font-weight: 900; }
+  #confirmYes { background: #fee2e2; border-color: var(--wrong); color: var(--wrong); }
   #setup .slots { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 14px 6px 6px; }
   #setup .slot { position: relative; min-width: 84px; height: 84px; padding: 0 12px; display: flex; align-items: center; justify-content: center;
                  background: #fff; border: 4px solid var(--edge); border-radius: 18px; font-size: 44px; font-weight: 900; cursor: pointer; }
@@ -89,21 +104,23 @@
   #askNum.entering { transform: translateX(80px); opacity: 0; transition: none; }
   /* điểm */
   #leftResult { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-  #scoreRow { display: flex; align-items: center; gap: 14px; }
-  #score { font-size: 64px; font-weight: 900; color: #fff; text-shadow: 0 4px 0 var(--edge); }
-  #stars { font-size: 40px; letter-spacing: 2px; max-width: 440px; } /* Bon level tới 20 câu → sao xuống dòng */
+  /* 11-11 (Nam chọn mẫu A): điểm to trong khung trắng, mỗi câu 1 thẻ to — xanh = đúng ✓, đỏ = sai ✗ */
+  #scoreRow { display: flex; align-items: center; gap: 18px; max-width: 100%; background: #fff; border: 5px solid var(--edge); border-radius: 28px;
+              padding: 4px 26px; box-shadow: 0 6px 0 rgba(46,107,115,0.4); }
+  #score { font-size: 92px; font-weight: 900; line-height: 1.05; color: var(--ink); white-space: nowrap; }
+  #score .got { color: var(--right); }
+  #stars { display: flex; flex-wrap: wrap; font-size: 50px; max-width: 330px; line-height: 1.1; } /* flex: span thường không chịu xuống dòng → sao tràn khỏi khung (ảnh 11-11) */
+  #stars.many { font-size: 28px; } /* Bon level nhiều câu → sao nhỏ lại, xuống dòng */
   #app[data-state="result"] #hostCv { width: 90px; height: 90px; } /* màn điểm nhiều thứ → bạn hỏi nhỏ lại cho vừa 1 màn */
   #resBoard { gap: 8px; }
   #resBoard .cell { min-width: 62px; height: 62px; padding: 0 6px; font-size: 32px; border-width: 3px; border-radius: 14px; }
-  #asked { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 10px; } /* 5 câu xếp 2 cột → 3 hàng */
-  #asked .row { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.92); border-radius: 14px; padding: 2px 14px; font-size: 28px; font-weight: 900; }
-  #asked .num { min-width: 84px; text-align: right; }
-  #asked .chip { font-size: 18px; padding: 4px 10px; border-radius: 10px; color: #fff; }
-  #asked .chip.yes { background: var(--yes); }
-  #asked .chip.no { background: var(--no); }
-  #asked .mark { font-size: 34px; min-width: 30px; text-align: center; }
-  #asked .mark.right { color: var(--right); }
-  #asked .mark.wrong { color: var(--wrong); }
+  #asked { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 720px; }
+  #asked .row { min-width: 110px; padding: 6px 10px 9px; border: 5px solid; border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #fff; }
+  #asked .row.right { background: var(--right); border-color: #0f6b31; }
+  #asked .row.wrong { background: var(--wrong); border-color: #8f1414; }
+  #asked .num { font-size: 38px; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,0.25); }
+  #asked .mark { font-size: 40px; font-weight: 900; line-height: 1; }
+  #asked .chip { font-size: 16px; font-weight: 900; padding: 3px 9px; border-radius: 9px; background: rgba(255,255,255,0.95); color: var(--ink); }
   /* màn chọn người hỏi */
   #pick { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,0.5); }
   #pick .panel { width: 100%; max-width: 760px; background: #fffdf7; border: 5px solid var(--go); border-radius: 26px; padding: 18px; text-align: center; }
@@ -141,12 +158,18 @@
     #bubble { font-size: 20px; padding: 8px 12px; }
     .cell { min-width: 64px; height: 76px; font-size: 38px; }
     #askNum { font-size: 110px; }
-    #score { font-size: 48px; }
-    #stars { font-size: 30px; }
+    #scoreRow { padding: 2px 16px; gap: 10px; border-width: 4px; }
+    #score { font-size: 60px; }
+    #stars { font-size: 32px; max-width: 170px; }
+    #stars.many { font-size: 22px; }
     #resBoard .cell { min-width: 52px; height: 52px; font-size: 24px; }
-    #asked .row { font-size: 22px; padding: 2px 8px; gap: 8px; }
-    #asked .num { min-width: 60px; }
-    #asked .chip { font-size: 15px; padding: 3px 6px; }
+    #asked { gap: 8px; }
+    #asked .row { min-width: 78px; padding: 4px 6px 7px; border-width: 4px; border-radius: 16px; }
+    #asked .num { font-size: 26px; }
+    #asked .mark { font-size: 28px; }
+    #asked .chip { font-size: 13px; padding: 2px 6px; }
+    #bonTabs button { min-width: 52px; height: 50px; font-size: 20px; padding: 0 8px; }
+    #resetBtn { width: 48px; height: 48px; font-size: 24px; }
     #pick .pickTile { width: 140px; }
   }
 </style>
@@ -173,8 +196,9 @@
       <div id="host"><canvas id="hostCv"></canvas><div id="bubble">Remember these numbers!</div></div>
       <!-- Bon level (Nam 11-09): người nhà tự đặt bảng + số câu, câu hỏi random hoặc tự bấm -->
       <div id="setup" hidden>
+        <div id="bonTabs"></div>
         <div class="group">
-          <div class="label">Numbers</div>
+          <div class="label withBtn">Numbers <button id="resetBtn" aria-label="Erase all numbers">🗑️</button></div>
           <div class="slots" id="numSlots"></div>
         </div>
         <div class="group">
@@ -212,6 +236,7 @@
   </main>
 </div>
 <div id="pick" hidden><div class="panel"><h2>Who asks?</h2><div id="pickTiles"></div></div></div>
+<div id="confirm" hidden><div class="panel"><h2>🗑️ Erase all numbers?</h2><div class="btns"><button id="confirmYes" aria-label="Yes, erase">✓</button><button id="confirmNo" aria-label="No, keep">✗</button></div></div></div>
 <!-- hình 4 baby dùng chung với game Flappy (Blender nặn → embed_sprites.py) -->
 <script src="froggy3d/sprites.js"></script>
 <script src="friends3d/sprites.js"></script>
@@ -262,12 +287,24 @@
   // ================= LƯU TRÊN MÁY =================
   // Lưu bị chặn / trình duyệt tự xoá → game vẫn chạy, lần sau về Level 1 + hỏi chọn bạn lại. Tắt giữa lượt → mở lại ra bảng mới cùng level.
   const SAVE_KEY = 'bon_numbermemory_v1';
-  // Bon level: số lưu dạng CHUỖI chữ số (dài tới 12 chữ số, không lo làm tròn), không số 0 đứng đầu.
-  const C_MAXSLOT = 20, C_MAXQ = 20, C_MAXLEN = 12;
-  function okNum(v) { return typeof v === 'string' && /^[1-9][0-9]{0,11}$/.test(v); }
+  // Bon level: số lưu dạng CHUỖI chữ số (dài tới 12 chữ số, không lo làm tròn).
+  // 11-11 (Nam): cho số 0 và số bắt đầu bằng 0 ("05" khác "5") · nhiều Bon level (⭐1 ⭐2 …) · không giới hạn số ô / số câu.
+  // C_MAXQ 999 chỉ để dữ liệu lưu hỏng không làm treo máy (phải bấm ▶ gần 1000 lần mới chạm), không phải giới hạn chơi.
+  const C_MAXLEN = 12, C_MAXQ = 999;
+  function okNum(v) { return typeof v === 'string' && /^[0-9]{1,12}$/.test(v); }
   function okSlot(v) { return v === '' || okNum(v); }
+  function newBonLevel(board) { return { board: board || [''], mode: 'random', q: 5, picks: [''] }; }
+  function fixLevel(c) { // dữ liệu lưu hỏng ở chỗ nào thì bỏ đúng chỗ đó, phần còn lại giữ
+    const L = newBonLevel(['12', '5', '347']);
+    if (Array.isArray(c.board) && c.board.length >= 1 && c.board.every(okSlot)) L.board = c.board.slice();
+    if (Array.isArray(c.picks) && c.picks.length >= 1 && c.picks.every(okSlot)) L.picks = c.picks.slice();
+    if (c.mode === 'random' || c.mode === 'pick') L.mode = c.mode;
+    if (Number.isInteger(c.q) && c.q >= 1 && c.q <= C_MAXQ) L.q = c.q;
+    return L;
+  }
   const save = { level: 1, char: 'froggy', picked: false, mute: false, inCustom: false,
-                 custom: { board: ['12', '5', '347'], mode: 'random', q: 5, picks: [''] } };
+                 customs: [newBonLevel(['12', '5', '347'])], cur: 0 };
+  function C() { return save.customs[save.cur]; } // Bon level đang mở
   (function loadSave() {
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
@@ -275,13 +312,10 @@
       if (Number.isInteger(s.level) && s.level >= 1 && s.level <= MAX_LEVEL) save.level = s.level;
       if (CHARS.some(function(c) { return c.id === s.char; })) save.char = s.char;
       save.picked = !!s.picked; save.mute = !!s.mute;
-      const c = s.custom; // dữ liệu lưu hỏng ở chỗ nào thì bỏ đúng chỗ đó, game vẫn mở
-      if (c && typeof c === 'object') {
-        if (Array.isArray(c.board) && c.board.length >= 1 && c.board.length <= C_MAXSLOT && c.board.every(okSlot)) save.custom.board = c.board.slice();
-        if (Array.isArray(c.picks) && c.picks.length >= 1 && c.picks.length <= C_MAXQ && c.picks.every(okSlot)) save.custom.picks = c.picks.slice();
-        if (c.mode === 'random' || c.mode === 'pick') save.custom.mode = c.mode;
-        if (Number.isInteger(c.q) && c.q >= 1 && c.q <= C_MAXQ) save.custom.q = c.q;
-      }
+      const isObj = function(c) { return !!c && typeof c === 'object' && !Array.isArray(c); };
+      if (Array.isArray(s.customs)) { const list = s.customs.filter(isObj).map(fixLevel); if (list.length) save.customs = list; }
+      else if (isObj(s.custom)) save.customs = [fixLevel(s.custom)]; // bản trước 11-11 chỉ có 1 Bon level → thành ⭐1, không mất bài
+      if (Number.isInteger(s.cur) && s.cur >= 0 && s.cur < save.customs.length) save.cur = s.cur;
       save.inCustom = s.inCustom === true;
     } catch (e) {}
   })();
@@ -476,9 +510,11 @@
   // ---- Bon level: bảng do người nhà đặt ----
   // Ô trống + số trùng tự bỏ (giữ thứ tự người đặt gõ). "I choose": hỏi đúng các số đã gõ, đáp án = số đó có trên bảng.
   // "Random": khoảng nửa YES (lẻ thì random thêm 1), YES lấy số trên bảng (câu nhiều hơn ô → lặp số);
-  // NO = số ngẫu nhiên cùng số chữ số với 1 ô trên bảng, không trùng bảng, không trùng nhau; hết chỗ (vd bảng đủ 1…9) → dài hơn 1 chữ số.
+  // NO = số ngẫu nhiên cùng số chữ số với 1 ô trên bảng, không trùng bảng, không trùng nhau; hết chỗ (vd bảng đủ 1…9) → dài thêm 1 chữ số
+  // mỗi 2000 lần thử (11-11: không giới hạn số câu → có thể phải dài thêm nhiều lần).
+  // NO bắt đầu bằng 0 (vd 07) CHỈ khi ô bảng được lấy làm mẫu cũng bắt đầu bằng 0 — không thì câu có số 0 đầu lộ ngay là câu bẫy.
   function customBoard(cfg) { const out = []; for (const v of cfg.board) if (okNum(v) && out.indexOf(v) < 0) out.push(v); return out; }
-  function randDigits(len) { let s = String(ri(1, 9)); while (s.length < len) s += String(ri(0, 9)); return s; }
+  function randDigits(len, lead0) { let s = lead0 ? '0' : String(ri(1, 9)); while (s.length < len) s += String(ri(0, 9)); return s; }
   function makeCustomRound(cfg) {
     const board = customBoard(cfg);
     let questions;
@@ -489,8 +525,9 @@
       let pool = [];
       while (yes.length < yesN) { if (!pool.length) pool = shuffle(board.slice()); yes.push(pool.pop()); }
       const taken = new Set(board), no = [];
-      for (let g = 0; no.length < n - yesN && g < 20000; g++) {
-        const len = board[ri(0, board.length - 1)].length + (g >= 2000 ? 1 : 0), v = randDigits(len);
+      for (let g = 0; no.length < n - yesN && g < 200000; g++) {
+        const b = board[ri(0, board.length - 1)], up = Math.floor(g / 2000);
+        const v = up ? randDigits(b.length + up, false) : randDigits(b.length, b.length > 1 && b[0] === '0');
         if (!taken.has(v)) { taken.add(v); no.push(v); }
       }
       questions = shuffle(yes.map(function(v) { return { v: v, ans: true }; }).concat(no.map(function(v) { return { v: v, ans: false }; })));
@@ -498,7 +535,7 @@
     return { level: 0, custom: true, board: board, questions: questions, draws: 1 };
   }
   function customReady() {
-    const c = save.custom;
+    const c = C();
     return customBoard(c).length > 0 && (c.mode !== 'pick' || c.picks.some(okNum));
   }
 
@@ -520,7 +557,7 @@
   function newRound() {
     clearTimeout(leaveTimer); clearTimeout(settleTimer); onLeft = null;
     // Bon level chỉ ra đề khi bảng có ≥1 số (nút Play đã chặn; lúc mở game với bảng trống thì lấy đề level thường làm nền, openSetup che ngay)
-    round = save.inCustom && customReady() ? makeCustomRound(save.custom) : makeRound(save.level); answers = []; qi = 0; readyAt = Infinity; state = 'board';
+    round = save.inCustom && customReady() ? makeCustomRound(C()) : makeRound(save.level); answers = []; qi = 0; readyAt = Infinity; state = 'board';
     lvPage = Math.floor((save.level - 1) / pageSize());
     cells($('board'), round.board);
     $('bubble').textContent = 'Remember these numbers!';
@@ -542,7 +579,7 @@
     $('editBtn').hidden = s !== 'result' || !save.inCustom;
     $('levelRow').hidden = $('faceBtn').hidden = s === 'ask'; // đang hỏi thì ẩn — khỏi lỡ tay mất bài
     $('homeBtn').hidden = !HOME;
-    $('lvTitle').textContent = save.inCustom ? 'Bon level' : 'Level ' + save.level;
+    $('lvTitle').textContent = save.inCustom ? 'Bon level ' + (save.cur + 1) : 'Level ' + save.level;
     $('muteBtn').textContent = save.mute ? '🔇' : '🔊';
     if (s === 'setup') drawSetup();
     levelRow();
@@ -610,18 +647,20 @@
     state = 'result'; readyAt = Infinity;
     const right = round.questions.map(function(q, i) { return answers[i] === q.ans; });
     const score = right.filter(Boolean).length, total = round.questions.length;
-    $('score').textContent = score + '/' + total;
-    const st = $('stars'); st.textContent = '';
+    const sc = $('score'); sc.textContent = '';
+    const got = document.createElement('span'); got.className = 'got'; got.textContent = score; // số câu đúng tô xanh
+    sc.append(got, '/' + total);
+    const st = $('stars'); st.textContent = ''; st.classList.toggle('many', score > 5);
     for (let i = 0; i < score; i++) { const s = document.createElement('span'); s.className = 'star'; s.textContent = '⭐'; st.appendChild(s); } // chỉ sao đã được, không sao xám
     $('bubble').textContent = score === total ? 'Perfect!' : score >= total * 0.6 ? 'Great job!' : 'Good try!'; // 5 câu: ≥3 như cũ
     cells($('resBoard'), round.board); // đúng thứ tự lúc đầu
     const list = $('asked'); list.textContent = '';
-    round.questions.forEach(function(q, i) {
-      const row = document.createElement('div'); row.className = 'row';
+    round.questions.forEach(function(q, i) { // mỗi câu 1 thẻ: số đã hỏi · ✓/✗ to · Bon đã bấm gì
+      const row = document.createElement('div'); row.className = 'row ' + (right[i] ? 'right' : 'wrong');
       const num = document.createElement('span'); num.className = 'num'; num.textContent = q.v + '?';
-      const chip = document.createElement('span'); chip.className = 'chip ' + (answers[i] ? 'yes' : 'no'); chip.textContent = answers[i] ? 'YES' : 'NO';
-      const mark = document.createElement('span'); mark.className = 'mark ' + (right[i] ? 'right' : 'wrong'); mark.textContent = right[i] ? '✓' : '✗';
-      row.append(num, chip, mark); list.appendChild(row);
+      const mark = document.createElement('span'); mark.className = 'mark'; mark.textContent = right[i] ? '✓' : '✗';
+      const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = 'Bon: ' + (answers[i] ? 'YES' : 'NO');
+      row.append(num, mark, chip); list.appendChild(row);
     });
     say(save.char, 'pass1'); // cùng 1 kiểu mừng mọi điểm
     cheerT = 1.2; hostFace = 'wink'; hostFaceT = 1.2;
@@ -631,14 +670,26 @@
   // ================= BON LEVEL: MÀN ĐẶT BÀI =================
   // sel = ô đang nhận số từ bàn phím: list 'board' (hàng Numbers) hoặc 'picks' (hàng câu hỏi của "I choose")
   let sel = { list: 'board', i: -1 };
-  function slotList(name) { return name === 'board' ? save.custom.board : save.custom.picks; }
-  function slotCap(name) { return name === 'board' ? C_MAXSLOT : C_MAXQ; }
+  function slotList(name) { return name === 'board' ? C().board : C().picks; }
+  function selStart() { const c = C(); return c.mode === 'pick' ? { list: 'picks', i: c.picks.length - 1 } : { list: 'board', i: c.board.length - 1 }; }
   function openSetup() {
     clearTimeout(leaveTimer); clearTimeout(settleTimer); onLeft = null; readyAt = Infinity;
     save.inCustom = true; persist();
     state = 'setup';
-    sel = save.custom.mode === 'pick' ? { list: 'picks', i: save.custom.picks.length - 1 } : { list: 'board', i: save.custom.board.length - 1 };
+    sel = selStart();
     render();
+  }
+  function pickBonLevel(i) { save.cur = i; sel = selStart(); persist(); render(); } // render đổi luôn tiêu đề "Bon level N"
+  function drawTabs() { // hàng ⭐1 ⭐2 … + (không giới hạn số Bon level; nhiều thì xuống dòng)
+    const t = $('bonTabs'); t.textContent = '';
+    save.customs.forEach(function(_, i) {
+      const b = document.createElement('button'); b.className = 'tab' + (i === save.cur ? ' on' : ''); b.textContent = '⭐' + (i + 1); b.dataset.i = i;
+      b.addEventListener('click', function() { noise('click'); pickBonLevel(i); });
+      t.appendChild(b);
+    });
+    const p = document.createElement('button'); p.className = 'add'; p.id = 'bonAdd'; p.textContent = '+'; p.setAttribute('aria-label', 'New Bon level');
+    p.addEventListener('click', function() { noise('click'); save.customs.push(newBonLevel()); pickBonLevel(save.customs.length - 1); });
+    t.appendChild(p);
   }
   function slotEl(name, i, v, dup) {
     const L = slotList(name), d = document.createElement('div');
@@ -659,11 +710,12 @@
     return p;
   }
   function drawSetup() {
-    const c = save.custom, seen = {}, dup = {};
+    const c = C(), seen = {}, dup = {};
+    drawTabs();
     c.board.forEach(function(v) { if (v === '') return; if (seen[v]) dup[v] = 1; seen[v] = 1; });
     const ns = $('numSlots'); ns.textContent = '';
     c.board.forEach(function(v, i) { ns.appendChild(slotEl('board', i, v, !!dup[v])); });
-    if (c.board.length < C_MAXSLOT) ns.appendChild(plusEl('board'));
+    ns.appendChild(plusEl('board'));
     $('modeRandom').classList.toggle('on', c.mode === 'random');
     $('modePick').classList.toggle('on', c.mode === 'pick');
     $('stepper').hidden = c.mode !== 'random'; // "I choose": bấm bao nhiêu ô câu hỏi = hỏi bấy nhiêu câu
@@ -673,7 +725,7 @@
     const qs = $('qSlots'); qs.textContent = '';
     if (c.mode === 'pick') {
       c.picks.forEach(function(v, i) { qs.appendChild(slotEl('picks', i, v, false)); });
-      if (c.picks.length < C_MAXQ) qs.appendChild(plusEl('picks'));
+      qs.appendChild(plusEl('picks'));
     }
     $('playBtn').disabled = !customReady();
     const on = document.querySelector('#setup .slot.sel'); // ô đang gõ luôn nằm trong chỗ thấy (bảng dài phải kéo)
@@ -681,16 +733,16 @@
   }
   function padKey(k) {
     if (state !== 'setup') return;
-    const L = slotList(sel.list), cap = slotCap(sel.list);
+    const L = slotList(sel.list);
     noise('click');
     if (k === '→') { // sang ô kế; đang ở ô cuối thì thêm ô mới
-      if (sel.i >= L.length - 1 && L.length < cap) L.push('');
+      if (sel.i >= L.length - 1) L.push('');
       sel.i = Math.min(sel.i + 1, L.length - 1);
     } else {
       if (sel.i < 0 || sel.i >= L.length) sel.i = L.length - 1;
       let v = L[sel.i];
       if (k === '⌫') v = v.slice(0, -1);
-      else if (!(k === '0' && v === '') && v.length < C_MAXLEN) v += k; // không cho số bắt đầu bằng 0
+      else if (v.length < C_MAXLEN) v += k; // 11-11: số 0 gõ được ở mọi chỗ, kể cả đầu số (0, 05, 007)
       L[sel.i] = v;
     }
     persist(); drawSetup();
@@ -704,10 +756,17 @@
       $('pad').appendChild(b);
     }
   })();
-  $('modeRandom').addEventListener('click', function() { noise('click'); save.custom.mode = 'random'; if (sel.list === 'picks') sel = { list: 'board', i: save.custom.board.length - 1 }; persist(); drawSetup(); });
-  $('modePick').addEventListener('click', function() { noise('click'); save.custom.mode = 'pick'; sel = { list: 'picks', i: save.custom.picks.length - 1 }; persist(); drawSetup(); });
-  $('qMinus').addEventListener('click', function() { noise('click'); save.custom.q = Math.max(1, save.custom.q - 1); persist(); drawSetup(); });
-  $('qPlus').addEventListener('click', function() { noise('click'); save.custom.q = Math.min(C_MAXQ, save.custom.q + 1); persist(); drawSetup(); });
+  $('modeRandom').addEventListener('click', function() { noise('click'); C().mode = 'random'; if (sel.list === 'picks') sel = { list: 'board', i: C().board.length - 1 }; persist(); drawSetup(); });
+  $('modePick').addEventListener('click', function() { noise('click'); C().mode = 'pick'; sel = { list: 'picks', i: C().picks.length - 1 }; persist(); drawSetup(); });
+  $('qMinus').addEventListener('click', function() { noise('click'); C().q = Math.max(1, C().q - 1); persist(); drawSetup(); });
+  $('qPlus').addEventListener('click', function() { noise('click'); C().q = Math.min(C_MAXQ, C().q + 1); persist(); drawSetup(); });
+  // 🗑 xoá hết số (bảng + câu tự chọn) của Bon level đang mở — hỏi lại trước (Nam 11-11), kiểu hỏi + số câu giữ nguyên
+  $('resetBtn').addEventListener('click', function() { if (state !== 'setup') return; noise('click'); $('confirm').hidden = false; });
+  $('confirmYes').addEventListener('click', function() {
+    noise('click'); const c = C(); c.board = ['']; c.picks = ['']; sel = selStart(); persist();
+    $('confirm').hidden = true; drawSetup();
+  });
+  $('confirmNo').addEventListener('click', function() { noise('click'); $('confirm').hidden = true; });
   $('playBtn').addEventListener('click', function() { if (state !== 'setup' || !customReady()) return; noise('ding'); askPersist(); newRound(); });
   $('editBtn').addEventListener('click', function() { noise('click'); openSetup(); });
 
@@ -785,7 +844,8 @@
                  picked: save.picked, mute: save.mute, pick: pickOpen };
       },
       LEVELS: LEVELS, makeRound: makeRound, alikeLures: alikeLures, makeCustomRound: makeCustomRound,
-      custom: function() { return JSON.parse(JSON.stringify(save.custom)); }, inCustom: function() { return save.inCustom; },
+      custom: function() { return JSON.parse(JSON.stringify(C())); }, inCustom: function() { return save.inCustom; },
+      customs: function() { return JSON.parse(JSON.stringify(save.customs)); }, cur: function() { return save.cur; },
       forceBoards: function(list) { forced = list.map(function(b) { return b.slice(); }); },
       setLevel: function(n) { setLevel(n); newRound(); },
       answer: function(yn, force) { return answer(yn === 'yes' || yn === true, force); },
