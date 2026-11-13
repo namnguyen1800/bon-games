@@ -1017,7 +1017,8 @@
   let last = performance.now();
   function frame(now) {
     const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now; clock += dt;
-    fpsAcc += raw; fpsN++; // đếm khung hình bằng thời gian THẬT (dt bị chặn trần 0,05s cho luật chơi → dùng nó thì số không bao giờ xuống dưới 20) if (fpsAcc >= 0.5) { fpsShow = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; const el = $('fpsN'); el.textContent = Math.round(fpsShow); el.style.color = fpsShow >= 50 ? '#4ade80' : fpsShow >= 30 ? '#fbbf24' : '#f87171'; if (ready) qualityTick(fpsShow); }
+    // đếm khung hình bằng thời gian THẬT (dt bị chặn trần 0,05s cho luật chơi → dùng nó thì số không bao giờ xuống dưới 20)
+    fpsAcc += raw; fpsN++; if (fpsAcc >= 0.5) { fpsShow = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; const el = $('fpsN'); el.textContent = Math.round(fpsShow); el.style.color = fpsShow >= 50 ? '#4ade80' : fpsShow >= 30 ? '#fbbf24' : '#f87171'; if (ready) qualityTick(fpsShow); }
     if (ready) {
       if (!GALLERY && (!won || S.wonT < 0.9)) sim.update(dt);
       for (const e of sim.drain()) onEvent(e);
