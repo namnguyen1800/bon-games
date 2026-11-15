@@ -10,6 +10,9 @@
     -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; touch-action: none; font-family: -apple-system, "Segoe UI", sans-serif; }
   canvas { display: block; touch-action: none; }
+  /* khung vẽ 3D: nằm DƯỚI khung 2D, chỉ phủ đúng màn chơi; mọi cú chạm vẫn vào khung 2D */
+  #gl { position: fixed; left: 0; top: 0; display: none; pointer-events: none; }
+  #c { position: relative; z-index: 1; }
 </style>
 <link rel="manifest" href="../manifest.json">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
@@ -21,6 +24,7 @@
 <meta name="robots" content="noindex, nofollow">
 </head>
 <body>
+<canvas id="gl"></canvas>
 <canvas id="c"></canvas>
 <!-- hình 4 baby dùng chung với game Flappy (Blender nặn → embed_sprites.py) -->
 <script src="froggy3d/sprites.js"></script>
@@ -45,6 +49,8 @@
   const RC = 20, RV = 21, LW = 8, COYOTE = 0.1, JBUF = 0.12, DT = 1 / 120;
   // enemy (bạn khác của Bon đi tuần): tốc độ đi · cú hất lùi khi baby đụng vào (mốc thử, chỉnh sau khi Bon chơi)
   const ENEMY_V = 80, KNOCK_VX = 420, KNOCK_VY = 380;
+  // bơi (11-13, Nam: "everybody can swim"): số chép từ bản mẫu Nam đã chơi — chìm chậm · bơi ngang · Jump = quạt lên · sát mặt nước Jump = phóng khỏi nước
+  const SWIM_GRAV = 320, SWIM_MAXFALL = 150, SWIM_MOVE = 150, SWIM_UP = 330, SWIM_EXIT = 560;
   const TAU = Math.PI * 2;
 
   const CHARS = [
@@ -67,7 +73,7 @@
     block:  { w: 2, h: 1, rw: true,  rh: true,  hz: false },
     spike:  { w: 3, h: 1, rw: true,  rh: false, hz: true },
     fire:   { w: 3, h: 1, rw: true,  rh: false, hz: true },
-    water:  { w: 4, h: 2, rw: true,  rh: true,  hz: true },
+    water:  { w: 4, h: 2, rw: true,  rh: true,  hz: false }, // nước không làm đau nữa: ai cũng bơi được
     spring: { w: 1, h: 1, rw: false, rh: false, hz: false },
     wing:   { w: 1, h: 1, rw: false, rh: false, hz: false },
     enemy:  { w: 1, h: 1, rw: true,  rh: true,  hz: false, sq: 3 },
@@ -79,7 +85,7 @@
   // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
   const SAMPLES = [
     { name: 'Level 1', cols: 32, lines: [], objs: [
-      { t: 'block', x: 0, y: 16, w: 12, h: 2 }, { t: 'water', x: 12, y: 16, w: 6, h: 2 }, { t: 'block', x: 18, y: 16, w: 14, h: 2 },
+      { t: 'block', x: 0, y: 16, w: 12, h: 2 }, { t: 'spike', x: 12, y: 17, w: 6, h: 1 }, { t: 'block', x: 18, y: 16, w: 14, h: 2 }, // hố gai (trước 11-13 là hồ nước; Nam chọn đổi khi cho bơi)
       { t: 'start', x: 2, y: 15 }, { t: 'star', x: 27, y: 15 } ] },
     { name: 'Level 2', cols: 32, lines: [], objs: [
       { t: 'block', x: 0, y: 16, w: 32, h: 2 }, { t: 'spike', x: 10, y: 15, w: 6, h: 1 }, { t: 'spring', x: 21, y: 15 },
@@ -123,11 +129,15 @@
   // v3 (10-27): thêm cols, bỏ mực, 1 star/màn — đọc được save v1/v2 của bản thử, KHÔNG thay ô nào (màn đã xếp/sửa vẫn còn)
   let save = { v: 3, cur: 0, char: 'froggy', mute: false, picked: false, slots: [] };
   for (let i = 0; i < NSLOT; i++) save.slots.push(freshSlot(i));
+  // Màn mẫu 1 đang lưu mà các món còn Y NGUYÊN như bản mẫu cũ (có hồ nước) → đổi theo bản mẫu mới (hố gai), giữ nét đã vẽ. Đã sửa món nào thì để yên.
+  const OLD_L1 = '[["block",0,16,12,2],["water",12,16,6,2],["block",18,16,14,2],["start",2,15,1,1],["star",27,15,1,1]]';
+  function upgradeLevel1(L) { if (JSON.stringify(L.objs.map(o => [o.t, o.x, o.y, o.w, o.h])) === OLD_L1) L.objs = sampleLevel(0).objs; }
   (function loadSave() {
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
       if (!s || !Array.isArray(s.slots)) return;
       for (let i = 0; i < NSLOT; i++) if (validLevel(s.slots[i])) save.slots[i] = normLevel(s.slots[i]);
+      upgradeLevel1(save.slots[0]);
       if (CHARS.some(ch => ch.id === s.char)) save.char = s.char;
       save.cur = (s.cur >= 0 && s.cur < NSLOT) ? s.cur : 0;
       save.mute = !!s.mute; save.picked = !!s.picked;
@@ -269,6 +279,8 @@
     wing:  () => { tone(660, 0.1, 'sine', 0.12, 990); tone(990, 0.18, 'sine', 0.08, 1480, 0.08); },
     flap:  () => { tone(480, 0.09, 'triangle', 0.12, 880); tone(720, 0.1, 'sine', 0.06, 1250, 0.05); },
     bump:  () => { tone(150, 0.16, 'sine', 0.22, 70); tone(420, 0.08, 'triangle', 0.06, 260, 0.02); },
+    splash: () => { tone(520, 0.2, 'sine', 0.13, 130); tone(880, 0.12, 'triangle', 0.05, 300, 0.03); },
+    swim:  () => tone(300, 0.11, 'sine', 0.09, 470),
   };
   function noise(k) { SFX.log.push({ id: 'fx', key: k, t: performance.now() }); if (NOISE[k]) NOISE[k](); }
 
@@ -301,13 +313,15 @@
   function maxCam() { return Math.max(0, levelW() - WW); }
   function setCam(x) { camX = clamp(x, 0, maxCam()); }
 
-  let solids = [], hazards = [], springs = [], starObjs = [], wingObjs = [], noDraw = [];
+  let solids = [], hazards = [], springs = [], starObjs = [], wingObjs = [], noDraw = [], waters = [];
+  function waterAt(x, y) { for (const w of waters) if (inRect(x, y, w.r)) return w; return null; }
   let enemies = []; // con enemy đang đi trong Play (tạo lại từ level.objs mỗi lần rebuild / baby về Start)
   function rebuild() {
-    solids = []; hazards = []; springs = []; starObjs = []; wingObjs = []; noDraw = [];
+    solids = []; hazards = []; springs = []; starObjs = []; wingObjs = []; noDraw = []; waters = [];
     for (const o of level.objs) {
       const r = rectOf(o);
       if (o.t === 'block') solids.push({ k: 'r', x: r.x, y: r.y, w: r.w, h: r.h });
+      else if (o.t === 'water') { waters.push({ o: o, r: r }); noDraw.push({ t: 'water', r: hazardVis(o) }); } // bơi được, nhưng vẫn không vẽ nét lên nước
       else if (KINDS[o.t].hz) { hazards.push({ o: o, hit: hazardHit(o) }); noDraw.push({ t: o.t, r: hazardVis(o) }); }
       else if (o.t === 'spring') springs.push({ o: o, box: springBox(o) });
       else if (o.t === 'star') starObjs.push(o);
@@ -317,6 +331,7 @@
     for (const L of level.lines) for (let i = 0; i + 3 < L.length; i += 2)
       solids.push({ k: 's', ax: L[i], ay: L[i + 1], bx: L[i + 2], by: L[i + 3] });
     spawnEnemies();
+    w3Dirty = true;
   }
 
   // ================= ENEMY: bạn khác của Bon đi qua đi lại =================
@@ -325,7 +340,7 @@
   function enemyFromObj(o, k, L) { // L = màn chứa con này (ô Levels vẽ cả màn khác)
     const n = o.w, st = (L || level).objs.find(q => q.t === 'start');
     const e = Object.assign(makeActor(enemyId(k), RV * n), {
-      o: o, k: k, n: n, rc: RC * n, vx: 0, vy: 0, grounded: false, gn: [0, -1], walk: true, stuckT: 0, gone: false,
+      o: o, k: k, n: n, rc: RC * n, vx: 0, vy: 0, grounded: false, gn: [0, -1], walk: true, stuckT: 0, gone: false, swim: false, hopCd: 0, hopT: 0,
       blinkT: 1 + k * 0.7, blinkOn: 0, winkT: 0 });
     e.x = (o.x + n / 2) * CELL; e.y = BAR + (o.y + n) * CELL - e.rc - 1;
     e.dir = st && (st.x + 0.5) * CELL > e.x ? 1 : -1; // đi về phía chỗ xuất phát của baby trước
@@ -349,17 +364,35 @@
     }
     return false;
   }
+  // bờ để nhảy lên khi đang bơi: ở chỗ x có khối đất mà mặt trên nằm trong tầm cú nhảy (không cao quá đầu, không thấp hơn chân)
+  function bankAhead(e, x) {
+    for (const s of solids) if (s.k === 'r' && x >= s.x && x <= s.x + s.w && s.y >= e.y - e.rc * 0.75 - 16 && s.y <= e.y + e.rc + 4) return true;
+    return false;
+  }
   function hazardAhead(e, d) { // gai/lửa/nước ngay phía trước (đang đứng sẵn trong đó thì thôi, để khỏi quay tại chỗ)
     for (const h of hazards) if (circleRect(e.x + d * 6, e.y, e.rc, h.hit) && !circleRect(e.x, e.y, e.rc, h.hit)) return true;
     return false;
   }
   function canGo(e, d) {
     const nx = e.x + d * (e.rc + 2);
-    return nx > 0 && nx < levelW() && groundAhead(e, d) && !hazardAhead(e, d);
+    return nx > 0 && nx < levelW() && (groundAhead(e, d) || !!waterAt(e.x + d * (e.rc + 8), e.y + e.rc + 8)) && !hazardAhead(e, d); // phía trước, ngay dưới mức chân, là nước → cứ đi, xuống bơi
   }
   function enemyStep(e, dt) {
     if (e.gone) return;
-    if (e.grounded) {
+    const w = waterAt(e.x, e.y);
+    e.swim = !!w; if (e.hopT > 0) e.hopT -= dt;
+    if (e.swim) { // bơi: nổi gần mặt nước (không chìm quá đáy), đi tiếp cùng hướng; tới bờ thì nhảy lên bờ; hết nước mà không có bờ thì quay lại
+      e.walk = true;
+      const surf = Math.min(w.r.y + e.rc * 0.75, w.r.y + w.r.h - e.rc);
+      e.vy = approach(e.vy, (surf - e.y) * 4, 900 * dt);
+      e.vx = approach(e.vx, e.dir * ENEMY_V * 0.7, 600 * dt);
+      e.hopCd -= dt;
+      const bank = e.x + e.dir * (e.rc + 10);
+      if (e.hopCd <= 0 && !waterAt(bank, e.y)) {
+        if (bank > 0 && bank < levelW() && bankAhead(e, bank)) { e.vy = -Math.sqrt(2 * GRAV * (e.rc * 1.75 + 14)); e.hopCd = 1; e.hopT = 0.7; fx('enemy_hop', e.x, e.y); }
+        else e.dir = -e.dir;
+      }
+    } else if (e.grounded) {
       // đụng tường / dốc quá đứng (đi mà không nhích) → quay đầu; tới mép đất / gặp gai-lửa-nước → quay đầu;
       // 2 bên đều không đi được (chỗ đứng chỉ vừa 1 ô) → đứng yên
       if (e.stuckT > 0.15) { e.dir = -e.dir; e.stuckT = 0; }
@@ -368,7 +401,7 @@
       const nx = e.gn[0], ny = e.gn[1], tx = -ny, ty = nx, v = e.walk ? e.dir * ENEMY_V : 0;
       e.vx = v * tx - nx * 40; e.vy = v * ty - ny * 40;
     } else {
-      e.vx = approach(e.vx, 0, ACC_A * dt);
+      e.vx = e.hopT > 0 ? e.dir * (ENEMY_V * 1.5 + e.rc * 2) : approach(e.vx, 0, ACC_A * dt); // đang nhảy từ nước lên bờ thì giữ đà tới
       e.vy = Math.min(MAXFALL, e.vy + GRAV * dt);
     }
     const x0 = e.x;
@@ -378,14 +411,14 @@
     const hit = collide(e);
     if (hit.ground) { e.grounded = true; e.gn = hit.ground; } else e.grounded = false;
     if (e.y > LVB + 60) { e.gone = true; return; } // rớt khỏi màn (đặt trên hố) → biến mất
-    if (e.grounded && e.walk) e.stuckT = (e.x - x0) * e.dir < ENEMY_V * dt * 0.3 ? e.stuckT + dt : 0;
+    if (e.grounded && e.walk && !e.swim) e.stuckT = (e.x - x0) * e.dir < ENEMY_V * dt * 0.3 ? e.stuckT + dt : 0;
     else e.stuckT = 0;
   }
   function animEnemies(dt, playing) {
     for (const e of enemies) {
       e.blinkT -= dt; if (e.blinkT <= 0) { e.blinkOn = 0.13; e.blinkT = 2 + Math.random() * 2.5; }
       e.blinkOn -= dt; e.winkT -= dt;
-      if (playing && e.walk && e.grounded) e.leg += dt * 10;
+      if (playing && e.walk && (e.grounded || e.swim)) e.leg += dt * 10;
       e.wing += dt * 3;
       e.face = e.winkT > 0 ? 'wink' : e.blinkOn > 0 ? 'blink' : 'idle';
     }
@@ -410,7 +443,7 @@
   const hero = Object.assign(makeActor(save.char, RV), {
     x: 0, y: 0, vx: 0, vy: 0, grounded: false, gn: [0, -1], coyote: 0, jbuf: 0, dir: 1,
     ouchT: 0, rode: false, usedSpring: false, usedWing: false, st: 0, stV: 0, blinkT: 2, blinkOn: 0,
-    winkT: 0, flapT: 0, landT: 0, tilt: 0, hasWing: false, airJump: false, hurtT: 0, knockT: 0 });
+    winkT: 0, flapT: 0, landT: 0, tilt: 0, hasWing: false, airJump: false, hurtT: 0, knockT: 0, swim: false, wasSwim: false, swam: false });
 
   function startObj() { return level.objs.find(o => o.t === 'start'); }
   // về chỗ xuất phát: mất cánh (wing trên màn hiện lại), enemy về chỗ cũ — như chơi lại màn từ đầu
@@ -418,7 +451,7 @@
     const s = startObj() || { x: 2, y: 19 };
     hero.x = (s.x + 0.5) * CELL; hero.y = BAR + (s.y + 1) * CELL - RC - 1;
     hero.vx = 0; hero.vy = 0; hero.grounded = false; hero.coyote = 0; hero.jbuf = 0; hero.ouchT = 0;
-    hero.hasWing = false; hero.airJump = false; hero.hurtT = 0; hero.knockT = 0;
+    hero.hasWing = false; hero.airJump = false; hero.hurtT = 0; hero.knockT = 0; hero.swim = false; hero.wasSwim = false;
     gotWing = new Set(); spawnEnemies();
   }
   function showHint(t) { hintText = t; hintT = 4; }
@@ -427,7 +460,7 @@
     if (overlay === 'win') overlay = null; // đổi mode / đổi màn thì khung khen tự đóng
     mode = m; sel = null; drag = null;
     rebuild(); respawn();
-    got = new Set(); won = false; wonT = 0; ouches = 0; bumps = 0; hero.rode = false; hero.usedSpring = false; hero.usedWing = false;
+    got = new Set(); won = false; wonT = 0; ouches = 0; bumps = 0; hero.rode = false; hero.usedSpring = false; hero.usedWing = false; hero.swam = false;
     inp.left = inp.right = inp.jumpPressed = false; ptrs.forEach(p => { p.role = null; });
     if (m === 'play') setCam(hero.x - WW * 0.4); else setCam(camX);
     if (m === 'build') showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
@@ -485,6 +518,7 @@
     const b = hero;
     b.ouchT = 0.75; ouches++; shakeT = 0.25;
     say(b.id, 'scream', 0.42); // "Ốp!" / "Ba!" / "Ah!" — 1 tiếng, không phải cả tràng
+    fx('ouch', b.x, b.y, kind);
     const col = kind === 'water' ? '#7fd3ff' : kind === 'fire' ? '#ff9d3b' : '#ffffff';
     for (let i = 0; i < 14; i++) {
       const a = Math.random() * TAU, sp = 80 + Math.random() * 160;
@@ -494,13 +528,14 @@
   function collect(i) {
     got.add(i); hero.winkT = 0.45; noise('ding');
     const s = starObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
+    fx('star', cx, cy);
     for (let k = 0; k < 12; k++) {
       const a = k / 12 * TAU;
       particles.push({ x: cx, y: cy, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, life: 0.5, max: 0.5, col: '#ffe066', size: 7, kind: 'star', grav: 0, rot: a, vr: 6 });
     }
     if (got.size === starObjs.length) {
       won = true; wonT = 0;
-      praiseText = hero.rode ? 'Your bridge worked!' : hero.usedWing ? 'Nice flying!' : hero.usedSpring ? 'What a spring jump!' : 'You found every star!';
+      praiseText = hero.rode ? 'Your bridge worked!' : hero.usedWing ? 'Nice flying!' : hero.usedSpring ? 'What a spring jump!' : hero.swam ? 'Great swimming!' : 'You found every star!';
       say(hero.id, 'pass1'); setTimeout(function() { noise('win'); }, 250);
     }
   }
@@ -511,13 +546,26 @@
     for (const e of enemies) enemyStep(e, dt);
     if (b.hurtT > 0) b.hurtT -= dt;
     if (b.knockT > 0) b.knockT -= dt;
+    const wt = waterAt(b.x, b.y + 4);
+    b.swim = !!wt;
+    if (b.swim && !b.wasSwim) { b.swam = true; noise('splash'); fx('splash', b.x, wt.r.y, b.vy > 250 ? 'big' : ''); }
+    b.wasSwim = b.swim;
     // đang bị hất lùi → nút đi tạm không ăn, để cú hất thấy rõ
     const dirIn = (won || b.knockT > 0) ? 0 : (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (dirIn) b.dir = dirIn;
     if (inp.jumpPressed) { inp.jumpPressed = false; if (!won) b.jbuf = JBUF; }
     if (b.jbuf > 0) b.jbuf -= dt;
     if (b.coyote > 0) b.coyote -= dt;
-    if (b.grounded) {
+    if (b.swim) {
+      b.vx = approach(b.vx, dirIn * SWIM_MOVE, 700 * dt);
+      b.vy = Math.min(SWIM_MAXFALL, b.vy + SWIM_GRAV * dt);
+      if (b.jbuf > 0) {
+        b.jbuf = 0;
+        if (b.y - wt.r.y < RC * 1.4) { b.vy = -SWIM_EXIT; b.flapT = 0.3; noise('splash'); fx('leap', b.x, wt.r.y); }
+        else { b.vy = -SWIM_UP; b.flapT = 0.2; noise('swim'); fx('stroke', b.x, b.y); }
+      }
+      b.grounded = false; b.coyote = 0;
+    } else if (b.grounded) {
       // đi DỌC theo mặt đang đứng (lên dốc/xuống dốc không nảy), ép nhẹ xuống mặt để khỏi lơ lửng
       const nx = b.gn[0], ny = b.gn[1], tx = -ny, ty = nx;
       const vt = approach(b.vx * tx + b.vy * ty, dirIn * MOVE, ACC_G * dt);
@@ -527,11 +575,12 @@
       b.vy = Math.min(MAXFALL, b.vy + GRAV * dt);
     }
     // nhảy: bấm sớm một chút vẫn tính (jbuf), hụt mép rồi vẫn kịp nhảy (coyote)
-    if (b.jbuf > 0 && (b.grounded || b.coyote > 0)) {
-      b.vy = -JUMP; b.jbuf = 0; b.coyote = 0; b.grounded = false; b.flapT = 0.3; noise('jump');
+    if (b.swim) { /* trong nước: nút Jump đã dùng để bơi ở trên */ }
+    else if (b.jbuf > 0 && (b.grounded || b.coyote > 0)) {
+      b.vy = -JUMP; b.jbuf = 0; b.coyote = 0; b.grounded = false; b.flapT = 0.3; noise('jump'); fx('jump', b.x, b.y + RC);
     } else if (b.jbuf > 0 && b.airJump) {
       // có cánh: đang trên trời bấm Jump = nhảy thêm 1 cú (Nam chọn "nhảy thêm 1 lần", 11-02); chạm đất mới có lại
-      b.vy = -JUMP; b.jbuf = 0; b.airJump = false; b.flapT = 0.45; b.usedWing = true; noise('flap');
+      b.vy = -JUMP; b.jbuf = 0; b.airJump = false; b.flapT = 0.45; b.usedWing = true; noise('flap'); fx('flap', b.x, b.y);
       for (let i = 0; i < 8; i++) {
         const a = Math.PI * (0.15 + 0.7 * Math.random());
         particles.push({ x: b.x + (Math.random() - 0.5) * 24, y: b.y + 10, vx: Math.cos(a) * 90 * (Math.random() < 0.5 ? -1 : 1), vy: Math.sin(a) * 120,
@@ -546,15 +595,17 @@
     const hit = collide(b);
     if (hit.ground) {
       b.grounded = true; b.gn = hit.ground; b.coyote = COYOTE;
-      if (!wasG && impact > 300) b.landT = 0.16;
+      if (!wasG && impact > 300) { b.landT = 0.16; fx('land', b.x, b.y + RC); }
       if (hit.line) b.rode = true;
       if (b.hasWing) b.airJump = true;
     } else b.grounded = false;
+    // hồ nào cũng có đáy: baby không chìm lọt ra ngoài đáy hồ (kể cả hồ nằm sát đáy màn, hồ lơ lửng)
+    if (wt && b.x >= wt.r.x && b.x <= wt.r.x + wt.r.w && b.y > wt.r.y + wt.r.h - RC) { b.y = wt.r.y + wt.r.h - RC; if (b.vy > 0) b.vy = 0; }
     // lò xo: không cứng — chạm vào từ trên/ngang là bật lên
     for (const sp of springs) {
       if (circleRect(b.x, b.y, RC, sp.box) && b.y < sp.box.y + 6 && b.vy > -200) {
         b.vy = -SPRING_V; b.grounded = false; b.coyote = 0; b.usedSpring = true;
-        anim.set(sp.o, 0.35); noise('boing');
+        anim.set(sp.o, 0.35); noise('boing'); fx('boing', b.x, b.y + RC);
       }
     }
     // đụng enemy → bị hất lùi ra xa nó (KHÔNG về Start, không tính thua — Nam chốt 10-27)
@@ -580,7 +631,7 @@
     const b = hero, s = dx > 0.5 ? 1 : dx < -0.5 ? -1 : -b.dir;
     b.vx = s * KNOCK_VX; b.vy = -KNOCK_VY; b.grounded = false; b.coyote = 0; b.jbuf = 0;
     b.hurtT = 0.7; b.knockT = 0.3; bumps++; shakeT = 0.12; e.winkT = 0.5;
-    noise('bump'); say(b.id, 'dizzy', 0.8);
+    noise('bump'); say(b.id, 'dizzy', 0.8); fx('bump', b.x - s * RC * 0.8, b.y);
     for (let i = 0; i < 6; i++) {
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
       particles.push({ x: b.x - s * RC * 0.8, y: b.y, vx: Math.cos(a) * 120, vy: Math.sin(a) * 120, life: 0.45, max: 0.45, col: '#fde68a', size: 6, kind: 'star', grav: 0, rot: a, vr: 5 });
@@ -589,7 +640,7 @@
   function pickWing(i) {
     const b = hero, s = wingObjs[i], cx = (s.x + 0.5) * CELL, cy = BAR + (s.y + 0.5) * CELL;
     gotWing.add(i); b.hasWing = true; if (!b.grounded) b.airJump = true;
-    noise('wing'); showHint('Tap Jump again in the air!');
+    noise('wing'); showHint('Tap Jump again in the air!'); fx('wing', cx, cy);
     for (let k = 0; k < 10; k++) {
       const a = k / 10 * TAU;
       particles.push({ x: cx, y: cy, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140, life: 0.5, max: 0.5, col: '#ffffff', size: 5, kind: 'dot', grav: 0 });
@@ -600,16 +651,17 @@
     const b = hero;
     b.blinkT -= dt; if (b.blinkT <= 0) { b.blinkOn = 0.13; b.blinkT = 1.8 + Math.random() * 2.5; }
     b.blinkOn -= dt; b.winkT -= dt; b.flapT -= dt; b.landT -= dt;
-    const moving = playing && b.grounded && Math.abs(b.vx) > 20 && b.ouchT <= 0;
+    const moving = playing && (b.grounded || b.swim) && Math.abs(b.vx) > 20 && b.ouchT <= 0;
     if (moving) b.leg += dt * 14;
     let tgt;
     if (!playing) tgt = Math.sin(clock * 2.2) * 0.03;
     else if (b.ouchT > 0) tgt = -0.15;
     else if (b.landT > 0) tgt = -0.16;
+    else if (b.swim) tgt = Math.sin(clock * 4) * 0.04;
     else if (!b.grounded) tgt = b.vy < 0 ? 0.14 : -0.05;
     else tgt = moving ? Math.abs(Math.sin(b.leg)) * 0.07 : Math.sin(clock * 2.2) * 0.03;
     b.stV += ((tgt - b.st) * 180 - b.stV * 12) * dt; b.st += b.stV * dt;
-    const fall = playing && !b.grounded && b.ouchT <= 0 ? clamp(b.vy / 700, -0.6, 1) : 0;
+    const fall = playing && !b.grounded && !b.swim && b.ouchT <= 0 ? clamp(b.vy / 700, -0.6, 1) : 0;
     for (let i = 0; i < 4; i++) {
       b.skirtV[i] += ((fall * (0.85 + 0.1 * i) - b.skirt[i]) * 260 - b.skirtV[i] * 14) * dt;
       b.skirt[i] += b.skirtV[i] * dt;
@@ -623,6 +675,7 @@
       else if (won) f = 'phew';
       else if (b.hurtT > 0.2) f = 'dizzy'; // vừa bị enemy hất (mặt choáng như gag "Dizzy~" bên Flappy)
       else if (b.winkT > 0) f = 'wink';
+      else if (b.swim) { if (b.vy < -100) f = 'flap'; }
       else if (!b.grounded && b.vy < -150) f = 'flap';
       else if (!b.grounded && b.vy > 650) f = 'panic';
       else if (!b.grounded && b.vy > 250) f = 'fall';
@@ -762,6 +815,7 @@
     W = document.body.clientWidth || window.innerWidth; H = document.body.clientHeight || window.innerHeight;
     c.width = Math.floor(W * DPR); c.height = Math.floor(H * DPR); c.style.width = W + 'px'; c.style.height = H + 'px';
     SC = Math.min(W / WW, H / WH); OX = (W - WW * SC) / 2; OY = (H - WH * SC) / 2;
+    placeGL();
   }
   window.addEventListener('resize', resize);
   function toWorld(cx, cy) { const b = c.getBoundingClientRect(); return [(cx - b.left - OX) / SC, (cy - b.top - OY) / SC]; }
@@ -1334,10 +1388,67 @@
     }
   }
 
+  // ================= HÌNH 3D (thư mục starfinder3d/) =================
+  // Khung vẽ 3D nằm DƯỚI khung 2D này và chỉ phủ đúng màn chơi. Khung 2D giữ nguyên mọi nút bấm + lưới + khung chọn, để TRONG SUỐT chỗ màn chơi
+  // → chỗ chạm, toWorld/toScreen, nút bấm không đổi gì. Luật chơi không biết gì về 3D: phần 3D chỉ ĐỌC level / hero / enemies mỗi khung.
+  // W3 = null (chưa tải xong · máy không có WebGL2 · thêm ?2d vào link · quá giật ở nấc thấp nhất) → game vẽ kiểu 2D như cũ.
+  const glc = document.getElementById('gl');
+  const NO3D = /[?&]2d\b/.test(location.search), FPSHUD = /[?&]fps\b/.test(location.search);
+  const QFORCE = (location.search.match(/[?&]q=(\d)/) || [])[1];
+  let W3 = null, w3Pending = null, w3Dirty = true, w3Why = NO3D ? 'off' : 'loading', rawDt = 0;
+  function fx(type, x, y, o) { if (W3) W3.event(type, x, y, o); }
+  // mặt đất / nét vẽ gần nhất BÊN DƯỚI chân (cho bóng tròn dưới chân nhân vật 3D) — không có gì thì trả về số rất lớn
+  function groundBelow(x, footY) {
+    let best = 1e9;
+    for (const s of solids) {
+      if (s.k === 'r') { if (x >= s.x && x <= s.x + s.w && s.y >= footY - 6 && s.y < best) best = s.y; continue; }
+      const lo = Math.min(s.ax, s.bx), hi = Math.max(s.ax, s.bx); if (x < lo || x > hi) continue;
+      const dx = s.bx - s.ax, yy = Math.abs(dx) < 1 ? Math.min(s.ay, s.by) : s.ay + (s.by - s.ay) * (x - s.ax) / dx;
+      if (yy - LW / 2 >= footY - 6 && yy - LW / 2 < best) best = yy - LW / 2;
+    }
+    return best;
+  }
+  function placeGL() { // đặt khung 3D trùng khít màn chơi — chỉ đổi cỡ HIỂN THỊ; cỡ khung vẽ bên trong cố định từ lúc mở
+    const b = c.getBoundingClientRect();
+    glc.style.left = (b.left + OX) + 'px'; glc.style.top = (b.top + OY + BAR * SC) + 'px'; glc.style.width = (WW * SC) + 'px'; glc.style.height = ((LVB - BAR) * SC) + 'px';
+  }
+  function drop3D(why) { W3 = null; w3Pending = null; w3Why = why; glc.style.display = 'none'; }
+  function boot3D() {
+    const list = ['lib/three.min.js', 'lib/pp/CopyShader.js', 'lib/pp/LuminosityHighPassShader.js', 'lib/pp/EffectComposer.js', 'lib/pp/RenderPass.js', 'lib/pp/ShaderPass.js',
+      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
+    let left = list.length, bad = false;
+    for (const f of list) {
+      const el = document.createElement('script'); el.src = 'starfinder3d/' + f; el.async = false; // async = false: tải song song nhưng chạy đúng thứ tự
+      el.onload = function () { if (--left === 0 && !bad) start3D(); };
+      el.onerror = function () { bad = true; w3Why = 'load: ' + f; };
+      document.body.appendChild(el);
+    }
+  }
+  function start3D() {
+    try {
+      const bw = clamp(Math.round(WW * SC * DPR / 64) * 64, 1024, 1536);
+      w3Pending = window.StarWorld.create({ canvas: glc, bufW: bw, bufH: bw * (LVB - BAR) / WW, cell: CELL, rows: ROWS, lvb: LVB, ww: WW, rc: RC, rv: RV, lineW: LW, char3d: CHAR3D, maxCols: MAX_COLS,
+        chars: CHARS.map(ch => ch.id), autoQuality: QFORCE === undefined && (!TEST || /[?&]auto\b/.test(location.search)), quality: QFORCE === undefined ? null : +QFORCE, onGiveUp: drop3D });
+    } catch (e) { w3Why = 'error: ' + (e && e.message); w3Pending = null; }
+  }
+  function step3D(dt) { // gọi mỗi khung, trước khi vẽ khung 2D
+    if (w3Pending && w3Pending.isReady() && !stroke && !drag) { W3 = w3Pending; w3Pending = null; w3Dirty = true; w3Why = 'on'; glc.style.display = 'block'; placeGL(); }
+    if (!W3) return;
+    if (w3Dirty) { W3.syncLevel(level, stroke); w3Dirty = false; }
+    W3.frame({ dt: dt, raw: rawDt, clock: clock, mode: mode, camX: camX, cols: level.cols, hero: hero, enemies: enemies, got: got, gotWing: gotWing, anim: anim, groundBelow: groundBelow });
+  }
+  function drawStrokeNow() { // nét ĐANG vẽ dở: vẫn vẽ 2D (rẻ, khớp từng điểm ảnh); buông tay thì thành dải 3D
+    if (!stroke || stroke.length < 4) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = LW; ctx.strokeStyle = '#111';
+    ctx.beginPath(); ctx.moveTo(stroke[0], stroke[1]);
+    for (let i = 2; i + 1 < stroke.length; i += 2) ctx.lineTo(stroke[i], stroke[i + 1]);
+    ctx.stroke();
+  }
+
   // ================= VÒNG LẶP =================
   let last = performance.now(), acc = 0;
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
+    rawDt = (now - last) / 1000; const dt = Math.min(0.05, rawDt); last = now; clock += dt;
     if (mode === 'play' && !overlay && !testHold) {
       acc += dt; let n = 0;
       while (acc >= DT && n < 8) { physStep(DT); acc -= DT; n++; }
@@ -1354,29 +1465,35 @@
     if (hintT > 0) hintT -= dt;
     if (flash) { flash.t -= dt; if (flash.t <= 0) flash = null; }
     if (shakeT > 0) shakeT -= dt;
+    step3D(dt);
     render(dt);
     requestAnimationFrame(frame);
   }
   function confettiBurst() {
+    fx('win', 0, 0);
     const cols = ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#facc15'];
     for (let i = 0; i < 70; i++) particles.push({ x: camX + WW / 2 + (Math.random() - 0.5) * 300, y: 200, vx: (Math.random() - 0.5) * 600, vy: -200 - Math.random() * 400,
       life: 2, max: 2, col: cols[i % cols.length], size: 10, kind: 'confetti', grav: 700, rot: Math.random() * TAU, vr: (Math.random() - 0.5) * 12 });
   }
   function render(dt) {
     hits = [];
+    const on3 = !!W3; // có hình 3D bên dưới → không tô nền, không vẽ món / nhân vật / hạt kiểu 2D
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.fillStyle = '#5bb3bd'; ctx.fillRect(0, 0, W, H);
+    if (on3) ctx.clearRect(0, 0, W, H); else { ctx.fillStyle = '#5bb3bd'; ctx.fillRect(0, 0, W, H); }
     const shx = shakeT > 0 ? (Math.random() - 0.5) * 6 : 0;
     ctx.setTransform(DPR * SC, 0, 0, DPR * SC, DPR * (OX + shx * SC), DPR * OY);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, WH); ctx.clip();
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, LVB); ctx.clip(); // màn chơi: không vẽ lấn xuống thanh dưới
-    drawBackground(clock);            // trời + mây đứng yên
+    if (!on3) drawBackground(clock);  // trời + mây đứng yên
     ctx.save(); ctx.translate(-camX, 0); // mọi thứ trong màn dài trôi theo camX
-    if (mode === 'build') drawGrid();
-    drawLevelScene(level, clock, mode === 'play');
-    if (mode === 'play') drawEnemies();
-    drawHero();
-    drawParticles(dt);
+    if (mode === 'build' && (!on3 || W3.isFlat())) drawGrid(); // 3D: đợi máy quay về góc nhìn thẳng rồi mới hiện lưới (lúc đang lia thì lưới lệch hình)
+    if (on3) { particles.length = 0; drawStrokeNow(); }
+    else {
+      drawLevelScene(level, clock, mode === 'play');
+      if (mode === 'play') drawEnemies();
+      drawHero();
+      drawParticles(dt);
+    }
     if (mode === 'build') drawSelection();
     if (mode === 'draw') {
       // noDraw đang chớp đỏ (vừa vẽ đụng)
@@ -1402,6 +1519,7 @@
       ctx.globalAlpha = 1;
     }
     drawTopBar();
+    if (FPSHUD && on3) { const i3 = W3.info(); text(Math.round(i3.fps) + ' fps · low ' + (i3.low === null ? '--' : Math.round(i3.low)) + ' · Q' + i3.q, WW - 8, BAR + 14, 14, 'rgba(255,255,255,0.9)', 'right', '700'); }
     if (overlay === 'pick') drawPick();
     else if (overlay === 'levels') drawLevels();
     else if (overlay === 'confirm') drawConfirm();
@@ -1419,11 +1537,11 @@
     window.__g = {
       get: function() { return { mode: mode, overlay: overlay, slot: save.cur, char: hero.id, tool: tool, sel: sel ? clone(sel) : null,
         hero: { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, grounded: hero.grounded, ouchT: hero.ouchT, face: hero.face,
-                hasWing: hero.hasWing, airJump: hero.airJump, hurtT: hero.hurtT },
+                hasWing: hero.hasWing, airJump: hero.airJump, hurtT: hero.hurtT, swim: hero.swim },
         got: got.size, total: starObjs.length, won: won, ouches: ouches, camX: camX, cols: level.cols, maxCam: maxCam(),
         lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME,
         bumps: bumps, wingsGot: gotWing.size, praise: praiseText,
-        enemies: enemies.map(e => ({ x: e.x, y: e.y, dir: e.dir, n: e.n, rc: e.rc, id: e.id, gone: e.gone, grounded: e.grounded, walk: e.walk })) }; },
+        enemies: enemies.map(e => ({ x: e.x, y: e.y, dir: e.dir, n: e.n, rc: e.rc, id: e.id, gone: e.gone, grounded: e.grounded, walk: e.walk, swim: e.swim })) }; },
       ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI), reset: resetRect() }; },
       level: function() { return clone(level); },
       setLevel: function(L) { normLevel(L); save.slots[save.cur] = L; level = L; persist(); setMode(mode); },
@@ -1454,6 +1572,11 @@
       sfx: function() { return SFX.log.slice(); },
       sprites: function() { return { frog: frogReady, chicken: !!friendReady.chicken, babyfrog: !!friendReady.babyfrog, pillow: !!friendReady.pillow }; },
       stored: function() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } },
+      // hình 3D: đang bật không · vì sao chưa bật · số liệu của phần 3D · điểm (x, y) của game hiện ở đâu trên màn hình theo máy quay 3D
+      w3: function() { return W3 ? Object.assign({ on: true, why: w3Why }, W3.info()) : { on: false, why: w3Why, pending: !!w3Pending }; },
+      w3project: function(x, y) { if (!W3) return null; const p = W3.project(x, y), b = glc.getBoundingClientRect(); return [b.left + p[0] * b.width, b.top + p[1] * b.height]; },
+      w3quality: function(q) { if (W3) W3.setQuality(q); },
+      w3census: function() { return W3 ? W3.census() : null; },
     };
   }
 
@@ -1461,6 +1584,7 @@
   setMode(save.cur < SAMPLES.length ? 'draw' : 'build');
   if (!save.picked && !TEST) overlay = 'pick';
   requestAnimationFrame(frame);
+  if (!NO3D) boot3D(); // game chạy ngay kiểu 2D; hình 3D tải xong thì tự bật
 })();
 </script>
 </body>
