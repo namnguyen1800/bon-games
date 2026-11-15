@@ -450,7 +450,7 @@ window.StarWorld = (function () {
     const BUILDERS = { spring: buildSpring, start: buildStart, star: buildStar, wing: buildWing };
     function keyOf(o) {
       if (o.t === 'block') return 'block|' + o.w + '|' + o.h + '|' + ((ROWS - o.y - o.h) > 0.5 ? 1 : 0);
-      if (o.t === 'spike' || o.t === 'fire') return o.t + '|' + o.w;
+      if (o.t === 'spike' || o.t === 'fire') { const r = (o.rot | 0) & 3; return o.t + '|' + (r & 1 ? o.h : o.w) + '|' + r; }
       if (o.t === 'water') return 'water|' + o.w + '|' + o.h + '|' + ((ROWS - o.y - o.h) > 0.5 ? 0 : 1);
       if (BUILDERS[o.t]) return o.t;
       return null; // enemy: là nhân vật, dựng riêng
@@ -459,8 +459,18 @@ window.StarWorld = (function () {
       const seed = o.x * 7.13 + o.y * 3.71 + o.w * 1.3;
       let n;
       if (o.t === 'block') n = buildBlock(o.w, o.h, (ROWS - o.y - o.h) > 0.5, seed);
-      else if (o.t === 'spike') n = buildSpike(o.w);
-      else if (o.t === 'fire') n = buildFire(o.w);
+      else if (o.t === 'spike' || o.t === 'fire') {
+        // Đợt 2: gai/lửa có hướng (o.rot 0 lên · 1 phải · 2 xuống · 3 trái) → dựng dải mũi-lên dài len ô như cũ rồi xoay quanh tâm hộp
+        const rot = (o.rot | 0) & 3, len = rot & 1 ? o.h : o.w;
+        n = o.t === 'spike' ? buildSpike(len) : buildFire(len);
+        if (rot) {
+          const outer = new THREE.Group(), pivot = new THREE.Group();
+          if (rot & 1) n.group.children.forEach(function (c) { if (c.isSprite) c.scale.set(c.scale.y, c.scale.x, 1); }); // quầng sáng là ảnh luôn quay mặt về máy quay, không xoay theo → đổi ngang/dọc tay
+          n.group.position.set(-len / 2, 0.5, 0); pivot.add(n.group); pivot.rotation.z = -rot * Math.PI / 2;
+          pivot.position.set(o.w / 2, -o.h / 2, 0); outer.add(pivot); n.group = outer;
+        }
+        n.rot = rot;
+      }
       else if (o.t === 'water') n = buildWater(o.w, o.h, (ROWS - o.y - o.h) <= 0.5, seed);
       else n = BUILDERS[o.t]();
       n.key = key; LG.add(n.group); return n;
@@ -723,20 +733,27 @@ window.StarWorld = (function () {
       G.shared.uTime.value = clock; G.shared.uHero.value.set(X(hb.x), Y(hb.y + RC), 0);
       for (const c of clouds) { c.position.x += c.userData.v * dt; if (c.position.x > lookX + 200) c.position.x -= 320; if (c.position.x < lookX - 120) c.position.x += 320; }
       for (const n of live) { if (n.update) n.update(st);
-        if (n.fire && Math.abs(n.gx + n.w / 2 - lookX) < 20 && Math.random() < dt * 5 * n.w) psAdd.add({ x: n.gx + Math.random() * n.w, y: n.gy - 0.5 + Math.random() * 0.3, z: (Math.random() - 0.5) * 0.5, vx: (Math.random() - 0.5) * 0.6, vy: 1.2 + Math.random() * 1.6, vz: 0, col: FIRE_COLS[Math.floor(Math.random() * 3)], size: 0.16 + Math.random() * 0.12, life: 0.7, a: 0.9 }); }
+        if (n.fire && Math.abs(n.gx + n.obj.w / 2 - lookX) < 20 && Math.random() < dt * 5 * n.w) { // tàn lửa bay theo hướng MŨI ngọn lửa (dx, dy), rải dọc đế (px, py)
+          const r = n.rot || 0, dx = r === 1 ? 1 : r === 3 ? -1 : 0, dy = r === 0 ? 1 : r === 2 ? -1 : 0, px = dy, py = -dx, s = (Math.random() - 0.5) * n.w, k = Math.random() * 0.3, sd = (Math.random() - 0.5) * 0.6, sp = 1.2 + Math.random() * 1.6;
+          psAdd.add({ x: n.gx + n.obj.w / 2 + px * s + dx * k, y: n.gy - n.obj.h / 2 + py * s + dy * k, z: (Math.random() - 0.5) * 0.5, vx: dx * sp + px * sd, vy: dy * sp + py * sd, vz: 0, col: FIRE_COLS[Math.floor(Math.random() * 3)], size: 0.16 + Math.random() * 0.12, life: 0.7, a: 0.9 }); } }
       syncActors(st);
       // bụi nắng lơ lửng
       if (Math.random() < dt * 8) psSpark.add({ x: lookX + (Math.random() - 0.5) * 26, y: GY + 0.4 + Math.random() * 7, z: -3 + Math.random() * 5, vx: (Math.random() - 0.5) * 0.4, vy: 0.15 + Math.random() * 0.2, vz: 0, col: '#ffd98a', size: 0.12 + Math.random() * 0.12, life: 3, a: 0.6, fadeIn: true, spin: 0.5 });
       // máy quay
       const play = st.mode === 'play', flatX = (st.camX + WWPX / 2) / CELL;
-      if (play && lastMode !== 'play') { camPX = flatX; camPY = HALF_ROWS; }
+      const flatY = HALF_ROWS - (st.camY || 0) / CELL; // nhìn thẳng (Build/Draw): giữa phần đang xem, kể cả khi đã cuộn lên màn cao
+      if (play && lastMode !== 'play') { camPX = flatX; camPY = flatY; }
       lastMode = st.mode;
       const halfW = PLAY_DIST * Math.tan(PLAY_FOV * Math.PI / 360) * camera.aspect, edge = Math.min(halfW - 1, st.cols / 2);
-      const tx = clamp(X(hb.x) + 1.5, edge, Math.max(edge, st.cols - edge)), ty = 5.2 + clamp((Y(hb.y) - 5.5) * 0.75, 0, 8);
+      // dọc: màn 1 tầng như cũ (theo baby 3/4, trần +8 → ty tối đa 13.2); màn cao (Đợt 2) thì quá tầm đó máy quay đuổi nhanh hơn baby (×1.4)
+      // tới khi baby nằm dưới tâm 1 ô (thấy được chỗ nhảy tiếp phía trên), dừng ở đỉnh màn
+      const tx = clamp(X(hb.x) + 1.5, edge, Math.max(edge, st.cols - edge));
+      const up = (st.rows || ROWS) - ROWS, dy = Y(hb.y) - 5.5, T3 = 32 / 3;
+      const ty = 5.2 + clamp(dy < T3 ? dy * 0.75 : Math.min(8 + (dy - T3) * 1.4, dy + 1.3), 0, 8 + up);
       if (play) { camPX += (tx - camPX) * Math.min(1, dt * 5); camPY += (ty - camPY) * Math.min(1, dt * 4); }
       viewK = approach(viewK, play ? 1 : 0, dt * 2.6); const vk = viewK * viewK * (3 - 2 * viewK);
       let sx = 0, sy = 0; if (shakeT > 0) { shakeT -= dt; sx = (Math.random() - 0.5) * shakeAmp * 2; sy = (Math.random() - 0.5) * shakeAmp * 2; } else shakeAmp = 0;
-      lookX = flatX + (camPX + sx * 0.5 - flatX) * vk; lookY = HALF_ROWS + (camPY - HALF_ROWS) * vk;
+      lookX = flatX + (camPX + sx * 0.5 - flatX) * vk; lookY = flatY + (camPY - flatY) * vk;
       const pdx = sx * 0.5, pdy = PLAY_UP + sy, pdl = Math.hypot(pdx, pdy, PLAY_DIST);
       let dxn = pdx / pdl * vk, dyn = pdy / pdl * vk, dzn = 1 + (PLAY_DIST / pdl - 1) * vk; const dl = Math.hypot(dxn, dyn, dzn); dxn /= dl; dyn /= dl; dzn /= dl;
       const fovDeg = FLAT_FOV + (PLAY_FOV - FLAT_FOV) * vk, halfH = HALF_ROWS + (pdl * Math.tan(PLAY_FOV * Math.PI / 360) - HALF_ROWS) * vk, dist = halfH / Math.tan(fovDeg * Math.PI / 360);
@@ -781,7 +798,13 @@ window.StarWorld = (function () {
 
     soilMat.name = 'soil'; grassMat.name = 'grass'; boardMat.name = 'pine'; blobMat.name = 'treeShadow'; mountMat.name = 'mountain'; terrain.material.name = 'terrain'; QI.forest.material.name = 'farForest';
     groundMat.name = 'groundTop'; rockMat.name = 'rock'; flowerMat.name = 'flower'; daisyMat.name = 'daisy'; rootMat.name = 'root'; strokeMat.name = 'stroke'; innerMat.name = 'inner'; skyMat.name = 'sky'; waterMat.name = 'water'; waterFrontMat.name = 'waterFront'; flameMat.name = 'flame';
-    return { census: census, frame: frame, syncLevel: syncLevel, event: event, project: project, info: info, setQuality: setQuality, isReady: function () { return ready; }, isFlat: function () { return viewK < 0.02; } };
+    // cho bộ kiểm: hộp bao (đơn vị ô, trục y hướng lên) của từng cụm loại t — để biết gai/lửa xoay có nằm đúng ô, đúng chiều không
+    // (bỏ qua quầng sáng: ảnh phẳng luôn quay về máy quay, cố ý to hơn món)
+    function boxes(t) { return live.filter(n => n.t === t).map(function (n) {
+      const b = new THREE.Box3(), gb = new THREE.Box3(); n.group.updateWorldMatrix(true, true);
+      n.group.traverse(function (c) { if (c.isMesh && c.geometry) { if (!c.geometry.boundingBox) c.geometry.computeBoundingBox(); gb.copy(c.geometry.boundingBox).applyMatrix4(c.matrixWorld); b.union(gb); } });
+      return [b.min.x, b.min.y, b.max.x, b.max.y]; }); }
+    return { census: census, frame: frame, syncLevel: syncLevel, event: event, project: project, info: info, setQuality: setQuality, boxes: boxes, isReady: function () { return ready; }, isFlat: function () { return viewK < 0.02; } };
   }
   return { create: create };
 })();

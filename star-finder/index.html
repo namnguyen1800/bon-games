@@ -43,12 +43,17 @@
   const LVB = BAR + ROWS * CELL; // đáy màn chơi = 640; từ đây xuống là thanh dưới
   // COLS = bề ngang 1 màn hình (ô). Màn chơi dài được: level.cols = 32..160 (tối đa 5 màn hình — mốc thử)
   const MAX_COLS = COLS * 5;
+  const MAX_ROWS = ROWS * 3; // cao tối đa gấp ba màn hình (Nam chọn 11-14)
   const TEST = /[?&]test/.test(location.search);
   const HOME = location.protocol !== 'file:'; // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu
   const GRAV = 1800, MOVE = 230, ACC_G = 2400, ACC_A = 1500, JUMP = 660, SPRING_V = 1080, MAXFALL = 1100;
   const RC = 20, RV = 21, LW = 8, COYOTE = 0.1, JBUF = 0.12, DT = 1 / 120;
   // enemy (bạn khác của Bon đi tuần): tốc độ đi · cú hất lùi khi baby đụng vào (mốc thử, chỉnh sau khi Bon chơi)
   const ENEMY_V = 80, KNOCK_VX = 420, KNOCK_VY = 380;
+  // enemy khôn (Đợt 2 — Nam chọn 11-14: con nào cũng khôn, đuổi CHẬM HƠN baby một chút):
+  // thấy baby cùng tầng, trong 8 ô, không bị khối/nét vẽ che → nhún giật mình + rình SPOT_T giây → đuổi CHASE_V; mất dấu LOSE_T giây → đi tuần lại
+  // hất baby xong → quay đi, CALM_T giây không đuổi (để Bon khỏi bị hất liên tục). Nhảy qua hố ≤ 3 ô, lên bậc / nét vẽ cao ≤ STEP_H.
+  const CHASE_V = Math.round(MOVE * 0.85), SIGHT = 256, SPOT_T = 0.5, LOSE_T = 1.2, CALM_T = 1.5, STEP_H = 56, GAP_MAX = 104, SPOT_HOP = 260;
   // bơi (11-13, Nam: "everybody can swim"): số chép từ bản mẫu Nam đã chơi — chìm chậm · bơi ngang · Jump = quạt lên · sát mặt nước Jump = phóng khỏi nước
   const SWIM_GRAV = 320, SWIM_MAXFALL = 150, SWIM_MOVE = 150, SWIM_UP = 330, SWIM_EXIT = 560;
   const TAU = Math.PI * 2;
@@ -71,8 +76,8 @@
   // rw/rh = kéo dài ngang / dọc được trong Build · sq = chỉ to/nhỏ VUÔNG, tối đa sq ô (enemy: Nam chốt "kích thước" = cỡ con enemy, 11-02)
   const KINDS = {
     block:  { w: 2, h: 1, rw: true,  rh: true,  hz: false },
-    spike:  { w: 3, h: 1, rw: true,  rh: false, hz: true },
-    fire:   { w: 3, h: 1, rw: true,  rh: false, hz: true },
+    spike:  { w: 3, h: 1, rw: true,  rh: false, hz: true, rot: true }, // rot: xoay 4 hướng trong Build (Đợt 2, Nam chọn 11-11)
+    fire:   { w: 3, h: 1, rw: true,  rh: false, hz: true, rot: true },
     water:  { w: 4, h: 2, rw: true,  rh: true,  hz: false }, // nước không làm đau nữa: ai cũng bơi được
     spring: { w: 1, h: 1, rw: false, rh: false, hz: false },
     wing:   { w: 1, h: 1, rw: false, rh: false, hz: false },
@@ -97,14 +102,24 @@
   ];
   const N_MY = 6;
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // hướng xoay của gai/lửa: o.rot 0 = mũi chĩa LÊN (như cũ) · 1 = sang PHẢI · 2 = XUỐNG · 3 = sang TRÁI. Không có o.rot = 0 (màn cũ đọc y nguyên).
+  // Nằm dọc (1, 3) thì dải món dựng đứng: rộng 1 ô, kéo dài theo chiều cao.
+  function rotOf(o) { return KINDS[o.t].rot ? ((o.rot | 0) & 3) : 0; }
+  function isVert(o) { return (rotOf(o) & 1) === 1; }
+  function canRW(o) { return isVert(o) ? false : KINDS[o.t].rw; }
+  function canRH(o) { return isVert(o) ? true : KINDS[o.t].rh; }
   function norm(o) {
-    const k = KINDS[o.t]; if (!o.w) o.w = k.w; if (!o.h) o.h = k.h; if (!k.rw) o.w = 1; if (!k.rh) o.h = k.h;
+    const k = KINDS[o.t];
+    if (k.rot) { const r = rotOf(o); if (r) o.rot = r; else delete o.rot; } else delete o.rot;
+    if (!o.w) o.w = k.w; if (!o.h) o.h = k.h; if (!canRW(o)) o.w = 1; if (!canRH(o)) o.h = k.h;
     if (k.sq) o.w = o.h = clamp(Math.round(Math.max(o.w, o.h)), 1, k.sq);
     return o;
   }
   // chuẩn hoá 1 màn (kể cả màn lưu từ bản thử cũ): có cols, không còn mực, đúng 1 star — nhiều star thì giữ star xa nhất (star cuối đường)
   function normLevel(L) {
     L.cols = clamp(Math.round((L.cols || COLS) / COLS) * COLS, COLS, MAX_COLS);
+    // Đợt 2 "lên cao" (Nam chọn tối đa gấp ba): rows = 18 / 36 / 54. Phần nới thêm nằm PHÍA TRÊN → ô ở đó có y ÂM (tới ROWS - rows); màn cũ không đổi số nào.
+    L.rows = clamp(Math.round((L.rows || ROWS) / ROWS) * ROWS, ROWS, MAX_ROWS);
     delete L.ink;
     L.objs.forEach(norm);
     const stars = L.objs.filter(o => o.t === 'star');
@@ -116,7 +131,7 @@
     return { name: 'My level ' + n, cols: COLS, lines: [], objs: [
       { t: 'block', x: 0, y: 16, w: 32, h: 2 }, { t: 'start', x: 2, y: 15, w: 1, h: 1 }, { t: 'star', x: 28, y: 15, w: 1, h: 1 } ] };
   }
-  function freshSlot(i) { return i < SAMPLES.length ? sampleLevel(i) : blankLevel(i - SAMPLES.length + 1); }
+  function freshSlot(i) { return i < SAMPLES.length ? sampleLevel(i) : normLevel(blankLevel(i - SAMPLES.length + 1)); }
   function validLevel(L) {
     return L && Array.isArray(L.objs) && Array.isArray(L.lines) &&
       L.objs.every(o => o && KINDS[o.t] && isFinite(o.x) && isFinite(o.y)) && L.lines.every(a => Array.isArray(a));
@@ -294,16 +309,23 @@
     return (cx - px) * (cx - px) + (cy - py) * (cy - py) < rad * rad;
   }
   // vùng CHẠM LÀ ĐAU (rộng lượng: nhỏ hơn hình vẽ)
+  // thu hộp r vào: tip = phía MŨI (theo hướng xoay), side = 2 bên dọc theo đế, đế giữ nguyên
+  function insetRot(r, rot, tip, side) {
+    if (rot === 0) return { x: r.x + side, y: r.y + tip, w: r.w - side * 2, h: r.h - tip };
+    if (rot === 2) return { x: r.x + side, y: r.y, w: r.w - side * 2, h: r.h - tip };
+    if (rot === 1) return { x: r.x, y: r.y + side, w: r.w - tip, h: r.h - side * 2 };
+    return { x: r.x + tip, y: r.y + side, w: r.w - tip, h: r.h - side * 2 };
+  }
   function hazardHit(o) {
     const r = rectOf(o);
-    if (o.t === 'spike') return { x: r.x + 5, y: r.y + 14, w: r.w - 10, h: r.h - 14 };
-    if (o.t === 'fire')  return { x: r.x + 5, y: r.y + 10, w: r.w - 10, h: r.h - 10 };
+    if (o.t === 'spike') return insetRot(r, rotOf(o), 14, 5);
+    if (o.t === 'fire')  return insetRot(r, rotOf(o), 10, 5);
     return { x: r.x + 3, y: r.y + 12, w: r.w - 6, h: r.h - 12 }; // water
   }
   // vùng KHÔNG ĐƯỢC VẼ ĐÈ (bằng hình vẽ) — nét vẽ cách thêm LW/2+2 nữa
   function hazardVis(o) {
     const r = rectOf(o);
-    if (o.t === 'spike') return { x: r.x, y: r.y + 2, w: r.w, h: r.h - 2 };
+    if (o.t === 'spike') return insetRot(r, rotOf(o), 2, 0);
     if (o.t === 'water') return { x: r.x, y: r.y + 4, w: r.w, h: r.h - 4 };
     return r;
   }
@@ -312,6 +334,11 @@
   function levelW() { return level.cols * CELL; }
   function maxCam() { return Math.max(0, levelW() - WW); }
   function setCam(x) { camX = clamp(x, 0, maxCam()); }
+  // màn cao: camY = cuộn dọc (px, ≤ 0: âm = đang nhìn lên trên). Màn cao 1 màn hình thì camY luôn 0.
+  function topRow() { return ROWS - (level.rows || ROWS); }      // ô cao nhất (0 / -18 / -36)
+  function levelTop() { return BAR + topRow() * CELL; }          // mép trên màn (toạ độ màn chơi)
+  function minCamY() { return topRow() * CELL; }
+  function setCamY(y) { camY = clamp(y, minCamY(), 0); }
 
   let solids = [], hazards = [], springs = [], starObjs = [], wingObjs = [], noDraw = [], waters = [];
   function waterAt(x, y) { for (const w of waters) if (inRect(x, y, w.r)) return w; return null; }
@@ -341,6 +368,7 @@
     const n = o.w, st = (L || level).objs.find(q => q.t === 'start');
     const e = Object.assign(makeActor(enemyId(k), RV * n), {
       o: o, k: k, n: n, rc: RC * n, vx: 0, vy: 0, grounded: false, gn: [0, -1], walk: true, stuckT: 0, gone: false, swim: false, hopCd: 0, hopT: 0,
+      mind: 'patrol', spotT: 0, lostT: 0, calmT: 0, jumpCd: 0, jumpVx: 0, seeT: k * 0.03, sees: false,
       blinkT: 1 + k * 0.7, blinkOn: 0, winkT: 0 });
     e.x = (o.x + n / 2) * CELL; e.y = BAR + (o.y + n) * CELL - e.rc - 1;
     e.dir = st && (st.x + 0.5) * CELL > e.x ? 1 : -1; // đi về phía chỗ xuất phát của baby trước
@@ -352,7 +380,10 @@
   }
   // dưới chân phía trước (hướng d) có đất / nét vẽ không — dò 1 cột dọc từ ngang hông xuống hơi dưới chân
   function groundAhead(e, d) {
-    const px = e.x + d * e.rc * 0.7, foot = e.y + e.rc, y0 = foot - e.rc, y1 = foot + Math.max(20, e.rc * 0.9);
+    const foot = e.y + e.rc;
+    return groundAt(e.x + d * e.rc * 0.7, foot - e.rc, foot + Math.max(20, e.rc * 0.9));
+  }
+  function groundAt(px, y0, y1) { // ở cột x = px, trong khoảng cao y0..y1 có đất / nét vẽ không
     for (const s of solids) {
       if (s.k === 'r') { if (px >= s.x && px <= s.x + s.w && s.y <= y1 && s.y + s.h >= y0) return true; continue; }
       const lo = Math.min(s.ax, s.bx) - LW, hi = Math.max(s.ax, s.bx) + LW;
@@ -377,10 +408,65 @@
     const nx = e.x + d * (e.rc + 2);
     return nx > 0 && nx < levelW() && (groundAhead(e, d) || !!waterAt(e.x + d * (e.rc + 8), e.y + e.rc + 8)) && !hazardAhead(e, d); // phía trước, ngay dưới mức chân, là nước → cứ đi, xuống bơi
   }
+  function solidAt(px, py) { // điểm (px, py) nằm trong khối đất hoặc đè lên nét vẽ
+    for (const s of solids) {
+      if (s.k === 'r') { if (inRect(px, py, s)) return true; continue; }
+      const dx = s.bx - s.ax, dy = s.by - s.ay, L2 = dx * dx + dy * dy, t = L2 ? clamp(((px - s.ax) * dx + (py - s.ay) * dy) / L2, 0, 1) : 0;
+      const qx = s.ax + dx * t - px, qy = s.ay + dy * t - py; if (qx * qx + qy * qy < (LW / 2 + 2) * (LW / 2 + 2)) return true;
+    }
+    return false;
+  }
+  // thấy baby: cùng tầng (chân lệch < 40px), trong SIGHT, đường nhìn ngang tầm bụng không vướng khối / nét vẽ
+  function seesHero(e) {
+    if (won || hero.ouchT > 0 || mode !== 'play') return false;
+    const dx = hero.x - e.x, fe = e.y + e.rc, fh = hero.y + RC;
+    if (Math.abs(dx) > SIGHT + e.rc || Math.abs(fh - fe) > 40) return false;
+    const ay = fe - 16, by = fh - 16, n = Math.ceil(Math.abs(dx) / 8);
+    for (let i = 1; i < n; i++) { const t = i / n; if (solidAt(e.x + dx * t, ay + (by - ay) * t)) return false; }
+    return true;
+  }
+  function enemyMind(e, dt) {
+    if (e.calmT > 0) e.calmT -= dt;
+    if (e.jumpCd > 0) e.jumpCd -= dt;
+    e.seeT -= dt; if (e.seeT <= 0) { e.seeT = 0.1; e.sees = e.calmT <= 0 && seesHero(e); }
+    if (e.sees) {
+      e.lostT = 0;
+      if (e.mind === 'patrol' && e.grounded) { // giật mình: nhún nhẹ, nháy mắt, quay mặt về baby, rình một nhịp rồi mới đuổi
+        e.mind = 'spot'; e.spotT = SPOT_T; e.winkT = SPOT_T; e.dir = hero.x > e.x ? 1 : -1;
+        e.vy = -SPOT_HOP; e.vx = 0; e.grounded = false; e.jumpVx = 0; e.hopT = 0;
+      }
+    } else if (e.mind !== 'patrol') { e.lostT += dt; if (e.lostT > LOSE_T) e.mind = 'patrol'; }
+    if (e.mind === 'spot') { e.spotT -= dt; if (e.spotT <= 0) e.mind = 'chase'; }
+  }
+  function enemyJump(e, vy, vx, t) { e.vy = -vy; e.jumpVx = vx; e.hopT = t; e.grounded = false; e.jumpCd = 0.4; e.stuckT = 0; fx('enemy_hop', e.x, e.y); }
+  // hết đất phía trước: có chỗ đáp trong GAP_MAX (cao thấp lệch ít) và chỗ đáp không phải gai/lửa → nhảy qua
+  function tryGap(e) {
+    if (e.jumpCd > 0 || hazardAhead(e, e.dir)) return false;
+    const foot = e.y + e.rc;
+    for (let k = 1; k * 8 <= GAP_MAX; k++) {
+      const x = e.x + e.dir * (e.rc * 0.7 + k * 8);
+      if (x < e.rc || x > levelW() - e.rc) return false;
+      if (groundAt(x, foot - 40, foot + 20)) {
+        const lx = x + e.dir * e.rc * 0.6;
+        for (const h of hazards) if (circleRect(lx, foot - e.rc, e.rc, h.hit)) return false;
+        const T = 0.55; enemyJump(e, GRAV * T / 2, e.dir * clamp(Math.abs(lx - e.x) / T, 100, 280), T); return true;
+      }
+    }
+    return false;
+  }
+  // đụng tường: tường thấp (khối hoặc nét vẽ) cao ≤ STEP_H thì nhảy lên / nhảy qua
+  function tryStep(e) {
+    if (e.jumpCd > 0) return false;
+    const px = e.x + e.dir * (e.rc + 6), foot = e.y + e.rc;
+    if (!solidAt(px, foot - 4)) return false;
+    for (let h = 8; h <= STEP_H; h += 4) if (!solidAt(px, foot - h)) { enemyJump(e, Math.sqrt(2 * GRAV * (h + 16)), e.dir * Math.max(ENEMY_V * 1.5, 130), 0.5); return true; }
+    return false;
+  }
   function enemyStep(e, dt) {
     if (e.gone) return;
     const w = waterAt(e.x, e.y);
     e.swim = !!w; if (e.hopT > 0) e.hopT -= dt;
+    if (!e.swim) enemyMind(e, dt);
     if (e.swim) { // bơi: nổi gần mặt nước (không chìm quá đáy), đi tiếp cùng hướng; tới bờ thì nhảy lên bờ; hết nước mà không có bờ thì quay lại
       e.walk = true;
       const surf = Math.min(w.r.y + e.rc * 0.75, w.r.y + w.r.h - e.rc);
@@ -389,25 +475,33 @@
       e.hopCd -= dt;
       const bank = e.x + e.dir * (e.rc + 10);
       if (e.hopCd <= 0 && !waterAt(bank, e.y)) {
-        if (bank > 0 && bank < levelW() && bankAhead(e, bank)) { e.vy = -Math.sqrt(2 * GRAV * (e.rc * 1.75 + 14)); e.hopCd = 1; e.hopT = 0.7; fx('enemy_hop', e.x, e.y); }
+        if (bank > 0 && bank < levelW() && bankAhead(e, bank)) { e.vy = -Math.sqrt(2 * GRAV * (e.rc * 1.75 + 14)); e.hopCd = 1; e.hopT = 0.7; e.jumpVx = 0; fx('enemy_hop', e.x, e.y); }
         else e.dir = -e.dir;
       }
+    } else if (e.grounded && e.mind === 'spot') { // đang rình: đứng yên nhìn baby
+      e.walk = false; e.dir = hero.x > e.x ? 1 : -1;
+      e.vx = -e.gn[0] * 40; e.vy = -e.gn[1] * 40;
     } else if (e.grounded) {
-      // đụng tường / dốc quá đứng (đi mà không nhích) → quay đầu; tới mép đất / gặp gai-lửa-nước → quay đầu;
+      // đuổi: quay mặt theo baby. Đụng tường thấp / hết đất mà bên kia gần → nhảy (tryStep / tryGap).
+      // Không nhảy được: đi tuần thì quay đầu như cũ (tường, mép đất, gai-lửa); đang đuổi thì đứng chờ, không lao xuống hố / vào gai.
       // 2 bên đều không đi được (chỗ đứng chỉ vừa 1 ô) → đứng yên
-      if (e.stuckT > 0.15) { e.dir = -e.dir; e.stuckT = 0; }
-      else if (!canGo(e, e.dir) && canGo(e, -e.dir)) e.dir = -e.dir;
-      e.walk = canGo(e, e.dir);
-      const nx = e.gn[0], ny = e.gn[1], tx = -ny, ty = nx, v = e.walk ? e.dir * ENEMY_V : 0;
-      e.vx = v * tx - nx * 40; e.vy = v * ty - ny * 40;
+      const chase = e.mind === 'chase';
+      if (chase && Math.abs(hero.x - e.x) > 6) e.dir = hero.x > e.x ? 1 : -1;
+      if (e.stuckT > 0.15) { if (!tryStep(e)) { if (!chase) e.dir = -e.dir; e.stuckT = 0; } }
+      else if (!canGo(e, e.dir) && !tryGap(e) && !chase && canGo(e, -e.dir)) e.dir = -e.dir;
+      if (e.grounded) {
+        e.walk = canGo(e, e.dir);
+        const nx = e.gn[0], ny = e.gn[1], tx = -ny, ty = nx, v = e.walk ? e.dir * (chase ? CHASE_V : ENEMY_V) : 0;
+        e.vx = v * tx - nx * 40; e.vy = v * ty - ny * 40;
+      }
     } else {
-      e.vx = e.hopT > 0 ? e.dir * (ENEMY_V * 1.5 + e.rc * 2) : approach(e.vx, 0, ACC_A * dt); // đang nhảy từ nước lên bờ thì giữ đà tới
+      e.vx = e.hopT > 0 ? (e.jumpVx || e.dir * (ENEMY_V * 1.5 + e.rc * 2)) : approach(e.vx, 0, ACC_A * dt); // đang nhảy (qua hố / lên bậc / từ nước lên bờ) thì giữ đà tới
       e.vy = Math.min(MAXFALL, e.vy + GRAV * dt);
     }
     const x0 = e.x;
     e.x += e.vx * dt; e.y += e.vy * dt;
     e.x = clamp(e.x, e.rc, levelW() - e.rc);
-    if (e.y < BAR + e.rc) { e.y = BAR + e.rc; if (e.vy < 0) e.vy = 0; }
+    if (e.y < levelTop() + e.rc) { e.y = levelTop() + e.rc; if (e.vy < 0) e.vy = 0; }
     const hit = collide(e);
     if (hit.ground) { e.grounded = true; e.gn = hit.ground; } else e.grounded = false;
     if (e.y > LVB + 60) { e.gone = true; return; } // rớt khỏi màn (đặt trên hố) → biến mất
@@ -426,8 +520,8 @@
 
   // ================= TRẠNG THÁI =================
   let mode = 'build';           // 'build' | 'draw' | 'play'
-  let camX = 0;
-  let overlay = null;           // null | 'pick' | 'levels' | 'win' | 'confirm'
+  let camX = 0, camY = 0;
+  let overlay = null;          // null | 'pick' | 'levels' | 'win' | 'confirm'
   let confirmSlot = -1, confirmFrom = 'levels'; // khung hỏi lại mở từ khung Levels (↺ trên thẻ) hay từ nút ↺ trên thanh trên
   let clock = 0, hintT = 0, hintText = '', flash = null, shakeT = 0;
   let tool = null, sel = null, drag = null, undoStack = [];
@@ -462,14 +556,14 @@
     rebuild(); respawn();
     got = new Set(); won = false; wonT = 0; ouches = 0; bumps = 0; hero.rode = false; hero.usedSpring = false; hero.usedWing = false; hero.swam = false;
     inp.left = inp.right = inp.jumpPressed = false; ptrs.forEach(p => { p.role = null; });
-    if (m === 'play') setCam(hero.x - WW * 0.4); else setCam(camX);
+    if (m === 'play') { setCam(hero.x - WW * 0.4); setCamY(playCamY()); } else { setCam(camX); setCamY(camY); }
     if (m === 'build') showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
     else if (m === 'draw') showHint('Draw black lines to make walls and bridges');
     else showHint(starObjs.length ? 'Get the star!' : 'Add a star in Build first!');
   }
   function loadSlot(i) {
     save.cur = i; level = save.slots[i]; persist();
-    undoStack = []; tool = null; camX = 0;
+    undoStack = []; tool = null; camX = 0; camY = 0;
     setMode(i < SAMPLES.length ? 'draw' : 'build');
   }
   function setChar(id) { save.char = id; save.picked = true; hero.id = id; for (const e of enemies) e.id = enemyId(e.k); persist(); }
@@ -590,7 +684,7 @@
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.x < RC) { b.x = RC; if (b.vx < 0) b.vx = 0; }
     if (b.x > levelW() - RC) { b.x = levelW() - RC; if (b.vx > 0) b.vx = 0; }
-    if (b.y < BAR + RC) { b.y = BAR + RC; if (b.vy < 0) b.vy = 0; }
+    if (b.y < levelTop() + RC) { b.y = levelTop() + RC; if (b.vy < 0) b.vy = 0; }
     const wasG = b.grounded, impact = b.vy;
     const hit = collide(b);
     if (hit.ground) {
@@ -631,6 +725,7 @@
     const b = hero, s = dx > 0.5 ? 1 : dx < -0.5 ? -1 : -b.dir;
     b.vx = s * KNOCK_VX; b.vy = -KNOCK_VY; b.grounded = false; b.coyote = 0; b.jbuf = 0;
     b.hurtT = 0.7; b.knockT = 0.3; bumps++; shakeT = 0.12; e.winkT = 0.5;
+    e.mind = 'patrol'; e.calmT = CALM_T; e.sees = false; e.dir = e.x > b.x ? 1 : -1; // hất xong thì quay đi, một lúc không đuổi
     noise('bump'); say(b.id, 'dizzy', 0.8); fx('bump', b.x - s * RC * 0.8, b.y);
     for (let i = 0; i < 6; i++) {
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
@@ -686,13 +781,13 @@
   // ================= DRAW: vẽ nét =================
   // vẽ bao nhiêu cũng được (Nam bỏ giới hạn mực 10-27) — chỉ cấm đè gai/lửa/nước/chỗ xuất phát/ngoài mép
   function noDrawAt(x, y) {
-    if (y < BAR + LW / 2 || y > LVB - LW / 2 || x < LW / 2 || x > levelW() - LW / 2) return 'edge';
+    if (y < levelTop() + LW / 2 || y > LVB - LW / 2 || x < LW / 2 || x > levelW() - LW / 2) return 'edge';
     for (const z of noDraw) if (inRect(x, y, z.r, LW / 2 + 2)) return z.t;
     return null;
   }
   const NO_DRAW_MSG = { spike: "Can't draw on spikes!", fire: "Can't draw on fire!", water: "Can't draw on water!", start: 'Leave room for your baby!', edge: '' };
   function sayNo(why, x, y) { // x, y = toạ độ trong màn chơi; chữ báo hiện theo vị trí trên màn hình
-    if (NO_DRAW_MSG[why]) { flash = { text: NO_DRAW_MSG[why], x: x - camX, y: y, t: 1.2 }; noise('nope'); }
+    if (NO_DRAW_MSG[why]) { flash = { text: NO_DRAW_MSG[why], x: x - camX, y: y - camY, t: 1.2 }; noise('nope'); }
     if (why !== 'edge') for (const z of noDraw) if (z.t === why && inRect(x, y, z.r, 30)) anim.set(z, 0.5);
   }
   function beginStroke(x, y) {
@@ -731,17 +826,28 @@
   }
 
   // ================= BUILD: xếp món =================
-  function snapshot() { return JSON.stringify({ objs: level.objs, cols: level.cols }); }
+  function snapshot() { return JSON.stringify({ objs: level.objs, cols: level.cols, rows: level.rows }); }
   function pushUndo(s) { undoStack.push(s); if (undoStack.length > 60) undoStack.shift(); }
   function objAt(x, y) {
     for (let i = level.objs.length - 1; i >= 0; i--) { const o = level.objs[i]; if (inRect(x, y, rectOf(o), 4)) return o; }
     return null;
   }
-  function fitObj(o) { o.w = clamp(o.w, 1, level.cols); o.h = clamp(o.h, 1, ROWS); o.x = clamp(o.x, 0, level.cols - o.w); o.y = clamp(o.y, 0, ROWS - o.h); }
-  // nút kéo-dài (góc dưới phải) và nút × (góc trên trái) — kẹp vào trong màn để món sát mép vẫn bấm được
-  function handlePos(o) { const r = rectOf(o); return { x: Math.min(r.x + r.w, levelW() - 16), y: Math.min(r.y + r.h, LVB - 16) }; }
-  function delPos(o) { const r = rectOf(o); return { x: Math.max(r.x, 16), y: Math.max(r.y, BAR + 16) }; }
+  function fitObj(o) { o.w = clamp(o.w, 1, level.cols); o.h = clamp(o.h, 1, level.rows); o.x = clamp(o.x, 0, level.cols - o.w); o.y = clamp(o.y, topRow(), ROWS - o.h); }
+  // nút kéo-dài (góc dưới phải) và nút × (góc trên trái) — kẹp vào trong PHẦN ĐANG XEM để món sát mép vẫn bấm được
+  function handlePos(o) { const r = rectOf(o); return { x: Math.min(r.x + r.w, levelW() - 16), y: Math.min(r.y + r.h, LVB + camY - 16) }; }
+  function delPos(o) { const r = rectOf(o); return { x: Math.max(r.x, 16), y: Math.max(r.y, BAR + camY + 16) }; }
   function canDelete(o) { return o.t !== 'start' && o.t !== 'star'; } // màn nào cũng phải có chỗ xuất phát + 1 star
+  // nút ↻ xoay (chỉ gai/lửa): lệch ra NGOÀI góc trên phải món → cách nút × và nút kéo-dài ≥ 50px, món 1 ô vẫn bấm trúng
+  function rotPos(o) { const r = rectOf(o); return { x: Math.min(r.x + r.w + 20, levelW() - 16), y: Math.max(r.y - 20, BAR + camY + 16) }; }
+  // xoay 1 nấc theo chiều kim đồng hồ: lên → phải → xuống → trái. Dải dài N ô nằm ngang thành dải N ô đứng (và ngược lại), giữ góc trên trái rồi kẹp vào màn.
+  function rotateObj(o) {
+    if (!KINDS[o.t].rot) return;
+    pushUndo(snapshot());
+    const len = isVert(o) ? o.h : o.w, r = (rotOf(o) + 1) & 3;
+    if (r) o.rot = r; else delete o.rot;
+    if (isVert(o)) { o.w = 1; o.h = len; } else { o.w = len; o.h = 1; }
+    fitObj(o); afterEdit(); noise('click');
+  }
   // nút "+ Map Expand": thêm 1 màn hình bên phải; khối chạm mép phải cũ kéo dài theo, không có đất ở đáy thì thêm đất
   function makeLonger() {
     if (level.cols >= MAX_COLS) return;
@@ -752,6 +858,15 @@
     if (!floor) level.objs.push({ t: 'block', x: old, y: ROWS - 2, w: COLS, h: 2 });
     sel = null; afterEdit(); setCam(maxCam()); noise('place');
   }
+  // nút ▲ cạnh "Map Expand": nới màn LÊN CAO thêm 1 màn hình (trời trống phía trên, Bon tự xây lên), tối đa gấp ba; màn hình cuộn lên phần mới
+  function makeTaller() {
+    if (level.rows >= MAX_ROWS) return;
+    pushUndo(snapshot());
+    level.rows += ROWS;
+    sel = null; afterEdit(); setCamY(minCamY()); noise('place');
+  }
+  // Play: máy quay dọc giữ baby ở ~55% chiều cao màn chơi (màn 1 tầng thì luôn 0)
+  function playCamY() { return hero.y - (BAR + (LVB - BAR) * 0.55); }
   function placeAt(x, y) {
     const k = KINDS[tool], before = snapshot();
     let gx = Math.floor(x / CELL), gy = Math.floor((y - BAR) / CELL);
@@ -770,8 +885,11 @@
       if (canDelete(sel) && Math.hypot(x - dp.x, y - dp.y) < 22) {
         pushUndo(snapshot()); level.objs.splice(level.objs.indexOf(sel), 1); sel = null; afterEdit(); noise('click'); return;
       }
-      const k = KINDS[sel.t];
-      if (k.rw || k.rh) {
+      if (KINDS[sel.t].rot) {
+        const rp = rotPos(sel);
+        if (Math.hypot(x - rp.x, y - rp.y) < 22) { rotateObj(sel); return; }
+      }
+      if (canRW(sel) || canRH(sel)) {
         const hp = handlePos(sel);
         if (Math.hypot(x - hp.x, y - hp.y) < 24) { drag = { id: id, kind: 'resize', o: sel, before: snapshot(), changed: false }; return; }
       }
@@ -785,12 +903,12 @@
     if (!drag || drag.id !== id) return;
     const o = drag.o, k = KINDS[o.t];
     if (drag.kind === 'move') {
-      const nx = clamp(Math.round((x - drag.dx) / CELL), 0, level.cols - o.w), ny = clamp(Math.round((y - BAR - drag.dy) / CELL), 0, ROWS - o.h);
+      const nx = clamp(Math.round((x - drag.dx) / CELL), 0, level.cols - o.w), ny = clamp(Math.round((y - BAR - drag.dy) / CELL), topRow(), ROWS - o.h);
       if (nx !== o.x || ny !== o.y) { o.x = nx; o.y = ny; drag.changed = true; rebuild(); respawn(); }
     } else {
       const r = rectOf(o);
-      let nw = k.rw ? clamp(Math.round((x - r.x) / CELL), 1, level.cols - o.x) : o.w;
-      let nh = k.rh ? clamp(Math.round((y - r.y) / CELL), 1, ROWS - o.y) : o.h;
+      let nw = canRW(o) ? clamp(Math.round((x - r.x) / CELL), 1, level.cols - o.x) : o.w;
+      let nh = canRH(o) ? clamp(Math.round((y - r.y) / CELL), 1, ROWS - o.y) : o.h;
       if (k.sq) nw = nh = clamp(Math.round(Math.max((x - r.x) / CELL, (y - r.y) / CELL)), 1, Math.min(k.sq, level.cols - o.x, ROWS - o.y));
       if (nw !== o.w || nh !== o.h) { o.w = nw; o.h = nh; drag.changed = true; rebuild(); }
     }
@@ -804,7 +922,7 @@
     if (mode === 'draw') { if (level.lines.length) { level.lines.pop(); rebuild(); persist(); noise('click'); } return; }
     if (!undoStack.length) return;
     const s = JSON.parse(undoStack.pop());
-    level.objs = s.objs; level.cols = s.cols; sel = null; afterEdit(); setCam(camX); noise('click');
+    level.objs = s.objs; level.cols = s.cols; level.rows = s.rows || ROWS; sel = null; afterEdit(); setCam(camX); setCamY(camY); noise('click');
   }
 
   // ================= KHUNG HÌNH, CHẠM =================
@@ -827,8 +945,11 @@
   const CTRL = { left: { x: 16, y: 650, w: 140, h: 108 }, right: { x: 172, y: 650, w: 140, h: 108 }, jump: { x: 860, y: 650, w: 148, h: 108 } };
   function ctrlAt(x, y) { for (const k of ['left', 'right', 'jump']) if (inRect(x, y, CTRL[k], 6)) return k; return null; }
   // nút ◀ ▶ cuộn màn dài trong Build/Draw — ở 2 đầu thanh dưới (Nam chọn nút, không chọn bản đồ nhỏ / 2 ngón tay)
-  const ARW = { scrollL: { x: 8, y: 652, w: 84, h: 104 }, scrollR: { x: 932, y: 652, w: 84, h: 104 } };
-  function arrowAt(x, y) { for (const k in ARW) if (inRect(x, y, ARW[k], 4)) return k; return null; }
+  // ▲ ▼ cuộn màn cao: nút tròn ở mép phải màn chơi, chỉ hiện khi còn cuộn được về phía đó (màn 1 tầng không có)
+  const ARW = { scrollL: { x: 8, y: 652, w: 84, h: 104 }, scrollR: { x: 932, y: 652, w: 84, h: 104 },
+    scrollU: { x: 950, y: BAR + 10, w: 64, h: 64 }, scrollD: { x: 950, y: LVB - 74, w: 64, h: 64 } };
+  function arrowOn(k) { return k === 'scrollU' ? camY > minCamY() + 0.5 : k === 'scrollD' ? camY < -0.5 : true; }
+  function arrowAt(x, y) { for (const k in ARW) if (arrowOn(k) && inRect(x, y, ARW[k], 4)) return k; return null; }
   const ptrs = new Map();
   function syncHold() {
     let l = keys.left, r = keys.right;
@@ -847,7 +968,11 @@
     if (y < BAR) return;
     if (mode !== 'play') {
       const a = arrowAt(x, y);
-      if (a) { ptrs.set(id, { role: a }); setCam(camX + (a === 'scrollR' ? 64 : -64)); return; } // nhấn = nhích ngay, giữ = cuộn tiếp (frame)
+      if (a) { // nhấn = nhích ngay, giữ = cuộn tiếp (frame)
+        ptrs.set(id, { role: a });
+        if (a === 'scrollU' || a === 'scrollD') setCamY(camY + (a === 'scrollD' ? 64 : -64)); else setCam(camX + (a === 'scrollR' ? 64 : -64));
+        return;
+      }
       if (y > LVB) return; // chỗ trống ở thanh dưới
     }
     if (mode === 'play') {
@@ -858,8 +983,8 @@
     }
     // trong màn chơi: toạ độ màn = chỗ chạm + camX; sx/sy giữ chỗ chạm trên màn hình để tự cuộn khi sát mép
     ptrs.set(id, { role: 'level', sx: x, sy: y });
-    if (mode === 'build') buildDown(id, x + camX, y);
-    else if (mode === 'draw' && !stroke) { if (beginStroke(x + camX, y)) ptrs.get(id).role = 'stroke'; }
+    if (mode === 'build') buildDown(id, x + camX, y + camY);
+    else if (mode === 'draw' && !stroke) { if (beginStroke(x + camX, y + camY)) ptrs.get(id).role = 'stroke'; }
   }
   function onMove(id, x, y) {
     const p = ptrs.get(id); if (!p) return;
@@ -869,19 +994,21 @@
       return;
     }
     p.sx = x; p.sy = y;
-    if (mode === 'build') buildMove(id, x + camX, y);
-    else if (mode === 'draw' && p.role === 'stroke') extendStroke(x + camX, y);
+    if (mode === 'build') buildMove(id, x + camX, y + camY);
+    else if (mode === 'draw' && p.role === 'stroke') extendStroke(x + camX, y + camY);
   }
   // mỗi khung (Build/Draw): giữ ◀ ▶ → cuộn; đang vẽ / kéo món mà ngón tay sát mép → màn tự cuộn, nét/món đi theo
   function scrollStep(dt) {
     ptrs.forEach(function(p, id) {
       if (p.role === 'scrollL') setCam(camX - 700 * dt);
       else if (p.role === 'scrollR') setCam(camX + 700 * dt);
+      else if (p.role === 'scrollU') setCamY(camY - 600 * dt);
+      else if (p.role === 'scrollD') setCamY(camY + 600 * dt);
       else if ((p.role === 'stroke' && stroke) || (p.role === 'level' && drag && drag.id === id)) {
-        const d = p.sx < 60 ? -1 : p.sx > WW - 60 ? 1 : 0;
-        if (!d) return;
-        const before = camX; setCam(camX + d * 500 * dt);
-        if (camX !== before) onMove(id, p.sx, p.sy);
+        const d = p.sx < 60 ? -1 : p.sx > WW - 60 ? 1 : 0, dv = p.sy < BAR + 50 ? -1 : p.sy > LVB - 50 && p.sy <= LVB ? 1 : 0;
+        if (!d && !dv) return;
+        const bx = camX, by = camY; if (d) setCam(camX + d * 500 * dt); if (dv) setCamY(camY + dv * 450 * dt);
+        if (camX !== bx || camY !== by) onMove(id, p.sx, p.sy);
       }
     });
   }
@@ -1043,6 +1170,12 @@
   function drawObj(o, t, isPlay) {
     const r = rectOf(o);
     if (o.t === 'block') drawBlock(r.x, r.y, r.w, r.h);
+    else if ((o.t === 'spike' || o.t === 'fire') && rotOf(o)) { // có hướng: vẽ như dải mũi-lên dài len ô rồi xoay quanh tâm
+      const len = (isVert(o) ? o.h : o.w) * CELL;
+      ctx.save(); ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.rotate(rotOf(o) * Math.PI / 2);
+      if (o.t === 'spike') drawSpikes(-len / 2, -CELL / 2, len, CELL); else drawFire(-len / 2, -CELL / 2, len, CELL, t);
+      ctx.restore();
+    }
     else if (o.t === 'spike') drawSpikes(r.x, r.y, r.w, r.h);
     else if (o.t === 'fire') drawFire(r.x, r.y, r.w, r.h, t);
     else if (o.t === 'water') drawWater(r.x, r.y, r.w, r.h, t);
@@ -1167,13 +1300,21 @@
     }
     // giữa: tên màn đang chơi; Build có thêm nút "+ Map Expand" (thêm 1 màn hình, ẩn khi đã dài nhất)
     const lname = save.cur < SAMPLES.length ? 'Level ' + (save.cur + 1) : 'My level ' + (save.cur - SAMPLES.length + 1);
+    // ▲ nới màn lên cao (Đợt 2): nút vuông ngay bên trái "Map Expand" — dấu + xanh lá trên mũi tên lên; tên màn nhích sang trái, chữ nhỏ lại cho vừa
+    const tallOn = mode === 'build' && level.rows < MAX_ROWS;
+    if (tallOn) {
+      const T = TALL_UI; button(T.x, T.y, T.w, T.h, '#f8fafc', '#cbd5e1', makeTaller);
+      const cx = T.x + T.w / 2; ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(cx - 13, 48); ctx.lineTo(cx, 33); ctx.lineTo(cx + 13, 48); ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#16a34a'; ctx.beginPath(); ctx.moveTo(cx - 8, 20); ctx.lineTo(cx + 8, 20); ctx.moveTo(cx, 12); ctx.lineTo(cx, 28); ctx.stroke();
+      nameX = (resetRect().x + resetRect().w + T.x) / 2;
+    }
     if (mode === 'build' && level.cols < MAX_COLS) {
-      text(lname, nameX, 33, 22, '#64748b');
+      text(lname, nameX, 33, tallOn ? 19 : 22, '#64748b');
       button(628, 6, 190, 52, '#f8fafc', '#cbd5e1', makeLonger);
       ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.strokeStyle = '#16a34a'; ctx.beginPath();
       ctx.moveTo(636, 32); ctx.lineTo(660, 32); ctx.moveTo(648, 20); ctx.lineTo(648, 44); ctx.stroke();
       text('Map Expand', 740, 33, 19, '#334155');
-    } else text(lname, 586, 33, 22, '#64748b');
+    } else text(lname, tallOn ? nameX : 586, 33, tallOn ? 19 : 22, '#64748b');
     // phải: baby đang chơi · chọn màn · loa
     button(840, 6, 56, 52, '#f8fafc', '#cbd5e1', function() { overlay = 'pick'; noise('click'); });
     const mini = makeActor(hero.id, 12); ctx.save(); ctx.translate(868, 33); drawActor(mini); ctx.restore();
@@ -1205,6 +1346,18 @@
     drawStar(462, 704, clock, 22);
     text(got.size ? 'Got it!' : 'Get the star!', 494, 706, 28, '#334155', 'left');
   }
+  function drawVArrows() { // ▲ ▼ cuộn màn cao (Build/Draw): nút tròn trắng đục ở mép phải màn chơi, chỉ khi còn cuộn được
+    for (const k of ['scrollU', 'scrollD']) {
+      if (!arrowOn(k)) continue;
+      const R = ARW[k], cx = R.x + R.w / 2, cy = R.y + R.h / 2; let held = false; ptrs.forEach(p => { if (p.role === k) held = true; });
+      ctx.fillStyle = held ? 'rgba(203,213,225,0.95)' : 'rgba(248,250,252,0.9)'; ctx.beginPath(); ctx.arc(cx, cy, R.w / 2, 0, TAU); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#94a3b8'; ctx.stroke();
+      ctx.fillStyle = '#334155'; ctx.beginPath();
+      if (k === 'scrollU') { ctx.moveTo(cx - 18, cy + 9); ctx.lineTo(cx, cy - 13); ctx.lineTo(cx + 18, cy + 9); }
+      else { ctx.moveTo(cx - 18, cy - 9); ctx.lineTo(cx, cy + 13); ctx.lineTo(cx + 18, cy - 9); }
+      ctx.closePath(); ctx.fill();
+    }
+  }
   function drawArrows() {
     for (const k of ['scrollL', 'scrollR']) {
       const R = ARW[k], can = k === 'scrollL' ? camX > 0.5 : camX < maxCam() - 0.5;
@@ -1221,6 +1374,7 @@
   const KIND_LABEL = { block: 'Block', spike: 'Spikes', fire: 'Fire', water: 'Water', spring: 'Spring', wing: 'Wing', enemy: 'Enemy', star: 'Star', start: 'Start' };
   // thanh dưới Build: 9 món + Undo vừa 1 hàng giữa 2 nút ◀ ▶ (◀ hết ở x=92, ▶ bắt đầu ở x=932)
   const PAL_UI = { x0: 100, step: 80, w: 74, y: 652, h: 104, undoX: 822, undoW: 102 };
+  const TALL_UI = { x: 566, y: 6, w: 56, h: 52 }; // nút ▲ nới màn lên cao, sát bên trái "Map Expand" (628)
   // thanh dưới: đồ nghề theo mode (Build: ◀ các món Undo ▶ · Draw: ◀ Undo Clear ▶ · Play: nút đi/nhảy)
   function drawBottomBar() {
     ctx.fillStyle = 'rgba(255,255,255,0.93)'; ctx.fillRect(0, LVB, WW, WH - LVB);
@@ -1264,7 +1418,15 @@
     const r = rectOf(sel), k = KINDS[sel.t];
     ctx.save(); ctx.setLineDash([7, 5]); ctx.lineWidth = 3; ctx.strokeStyle = '#2563eb';
     rr(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 6); ctx.stroke(); ctx.restore();
-    if (k.rw || k.rh) {
+    if (k.rot) { // ↻ xanh lá: vòng tròn hở + đầu mũi tên
+      const rp = rotPos(sel);
+      ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.arc(rp.x, rp.y, 17, 0, TAU); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(rp.x, rp.y, 8, -Math.PI * 0.35, Math.PI * 1.25); ctx.stroke();
+      const ea = -Math.PI * 0.35, ex = rp.x + Math.cos(ea) * 8, ey = rp.y + Math.sin(ea) * 8;
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(ex + 5, ey - 1); ctx.lineTo(ex - 3, ey - 6); ctx.lineTo(ex - 1, ey + 4); ctx.closePath(); ctx.fill();
+    }
+    if (canRW(sel) || canRH(sel)) {
       const hp = handlePos(sel);
       ctx.fillStyle = '#2563eb'; ctx.beginPath(); ctx.arc(hp.x, hp.y, 15, 0, TAU); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
@@ -1290,7 +1452,8 @@
   function drawGrid() { // chỉ vẽ chấm lưới ở phần đang xem
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     const g0 = Math.max(1, Math.floor(camX / CELL)), g1 = Math.min(level.cols - 1, Math.ceil((camX + WW) / CELL));
-    for (let gy = 1; gy < ROWS; gy++) for (let gx = g0; gx <= g1; gx++) ctx.fillRect(gx * CELL - 1.5, BAR + gy * CELL - 1.5, 3, 3);
+    const r0 = Math.max(topRow() + 1, Math.floor(camY / CELL)), r1 = Math.min(ROWS - 1, Math.ceil(camY / CELL) + ROWS);
+    for (let gy = r0; gy <= r1; gy++) for (let gx = g0; gx <= g1; gx++) ctx.fillRect(gx * CELL - 1.5, BAR + gy * CELL - 1.5, 3, 3);
   }
   function drawParticles(dt) {
     for (const p of particles) {
@@ -1435,7 +1598,7 @@
     if (w3Pending && w3Pending.isReady() && !stroke && !drag) { W3 = w3Pending; w3Pending = null; w3Dirty = true; w3Why = 'on'; glc.style.display = 'block'; placeGL(); }
     if (!W3) return;
     if (w3Dirty) { W3.syncLevel(level, stroke); w3Dirty = false; }
-    W3.frame({ dt: dt, raw: rawDt, clock: clock, mode: mode, camX: camX, cols: level.cols, hero: hero, enemies: enemies, got: got, gotWing: gotWing, anim: anim, groundBelow: groundBelow });
+    W3.frame({ dt: dt, raw: rawDt, clock: clock, mode: mode, camX: camX, camY: camY, rows: level.rows || ROWS, cols: level.cols, hero: hero, enemies: enemies, got: got, gotWing: gotWing, anim: anim, groundBelow: groundBelow });
   }
   function drawStrokeNow() { // nét ĐANG vẽ dở: vẫn vẽ 2D (rẻ, khớp từng điểm ảnh); buông tay thì thành dải 3D
     if (!stroke || stroke.length < 4) return;
@@ -1454,9 +1617,9 @@
       while (acc >= DT && n < 8) { physStep(DT); acc -= DT; n++; }
       if (n >= 8) acc = 0;
     }
-    if (mode === 'play') { // camera theo baby: baby đứng ở ~40% bề ngang, trôi mượt
-      const tgt = clamp(hero.x - WW * 0.4, 0, maxCam());
-      camX += (tgt - camX) * Math.min(1, dt * 6);
+    if (mode === 'play') { // camera theo baby: baby đứng ở ~40% bề ngang, trôi mượt; màn cao thì theo cả chiều dọc
+      const tgt = clamp(hero.x - WW * 0.4, 0, maxCam()), tgy = clamp(playCamY(), minCamY(), 0);
+      camX += (tgt - camX) * Math.min(1, dt * 6); camY += (tgy - camY) * Math.min(1, dt * 5);
     } else if (!overlay) scrollStep(dt);
     if (won && mode === 'play') { wonT += dt; if (wonT > 0.9 && !overlay) { overlay = 'win'; confettiBurst(); } }
     animHero(dt, mode === 'play');
@@ -1472,7 +1635,7 @@
   function confettiBurst() {
     fx('win', 0, 0);
     const cols = ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#facc15'];
-    for (let i = 0; i < 70; i++) particles.push({ x: camX + WW / 2 + (Math.random() - 0.5) * 300, y: 200, vx: (Math.random() - 0.5) * 600, vy: -200 - Math.random() * 400,
+    for (let i = 0; i < 70; i++) particles.push({ x: camX + WW / 2 + (Math.random() - 0.5) * 300, y: 200 + camY, vx: (Math.random() - 0.5) * 600, vy: -200 - Math.random() * 400,
       life: 2, max: 2, col: cols[i % cols.length], size: 10, kind: 'confetti', grav: 700, rot: Math.random() * TAU, vr: (Math.random() - 0.5) * 12 });
   }
   function render(dt) {
@@ -1485,7 +1648,7 @@
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, WH); ctx.clip();
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, WW, LVB); ctx.clip(); // màn chơi: không vẽ lấn xuống thanh dưới
     if (!on3) drawBackground(clock);  // trời + mây đứng yên
-    ctx.save(); ctx.translate(-camX, 0); // mọi thứ trong màn dài trôi theo camX
+    ctx.save(); ctx.translate(-camX, -camY); // mọi thứ trong màn dài / màn cao trôi theo camX, camY
     if (mode === 'build' && (!on3 || W3.isFlat())) drawGrid(); // 3D: đợi máy quay về góc nhìn thẳng rồi mới hiện lưới (lúc đang lia thì lưới lệch hình)
     if (on3) { particles.length = 0; drawStrokeNow(); }
     else {
@@ -1500,6 +1663,7 @@
       anim.forEach(function(v, z) { if (z && z.r) { ctx.fillStyle = 'rgba(239,68,68,' + (0.35 * v / 0.5) + ')'; rr(z.r.x - 4, z.r.y - 4, z.r.w + 8, z.r.h + 8, 8); ctx.fill(); } });
     }
     ctx.restore();
+    if (mode !== 'play' && !overlay) drawVArrows();
     ctx.restore();
     drawBottomBar();
     if (hintT > 0 && !overlay) {
@@ -1538,15 +1702,16 @@
       get: function() { return { mode: mode, overlay: overlay, slot: save.cur, char: hero.id, tool: tool, sel: sel ? clone(sel) : null,
         hero: { x: hero.x, y: hero.y, vx: hero.vx, vy: hero.vy, grounded: hero.grounded, ouchT: hero.ouchT, face: hero.face,
                 hasWing: hero.hasWing, airJump: hero.airJump, hurtT: hero.hurtT, swim: hero.swim },
-        got: got.size, total: starObjs.length, won: won, ouches: ouches, camX: camX, cols: level.cols, maxCam: maxCam(),
+        got: got.size, total: starObjs.length, won: won, ouches: ouches, camX: camX, camY: camY, rows: level.rows, cols: level.cols, maxCam: maxCam(),
         lines: level.lines.length, objs: level.objs.length, undo: undoStack.length, hint: hintText, home: HOME,
         bumps: bumps, wingsGot: gotWing.size, praise: praiseText,
         enemies: enemies.map(e => ({ x: e.x, y: e.y, dir: e.dir, n: e.n, rc: e.rc, id: e.id, gone: e.gone, grounded: e.grounded, walk: e.walk, swim: e.swim })) }; },
-      ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI), reset: resetRect() }; },
+      ui: function() { return { pal: PALETTE.slice(), palUI: Object.assign({}, PAL_UI), reset: resetRect(), tall: Object.assign({}, TALL_UI), arw: JSON.parse(JSON.stringify(ARW)) }; },
+      setCamY: setCamY, taller: makeTaller,
       level: function() { return clone(level); },
       setLevel: function(L) { normLevel(L); save.slots[save.cur] = L; level = L; persist(); setMode(mode); },
       setCam: setCam, longer: makeLonger,
-      toScreenWorld: function(x, y) { const b = c.getBoundingClientRect(); return [b.left + OX + (x - camX) * SC, b.top + OY + y * SC]; },
+      toScreenWorld: function(x, y) { const b = c.getBoundingClientRect(); return [b.left + OX + (x - camX) * SC, b.top + OY + (y - camY) * SC]; },
       setMode: setMode, loadSlot: loadSlot, setChar: setChar,
       stroke: function(pts) { // vẽ y như ngón tay: begin → extend từng điểm → end
         if (mode !== 'draw') setMode('draw');
@@ -1577,6 +1742,8 @@
       w3project: function(x, y) { if (!W3) return null; const p = W3.project(x, y), b = glc.getBoundingClientRect(); return [b.left + p[0] * b.width, b.top + p[1] * b.height]; },
       w3quality: function(q) { if (W3) W3.setQuality(q); },
       w3census: function() { return W3 ? W3.census() : null; },
+      w3boxes: function(t) { return W3 ? W3.boxes(t) : null; },
+      rotate: function() { if (sel) rotateObj(sel); },
     };
   }
 
