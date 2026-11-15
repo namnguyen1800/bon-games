@@ -701,7 +701,200 @@ window.StarWorld = (function () {
         case 'leap': burst(psNorm, ex, ey, 20, WATER, 6, { size: 0.3, life: 0.7, grav: 22, up: 6, spread: 0.8 }); break;
         case 'enemy_hop': burst(psNorm, ex, ey - 0.3, 10, WATER, 4, { size: 0.26, life: 0.5, grav: 20, up: 3 }); break;
         case 'win': for (let i = 0; i < 110; i++) psNorm.add({ x: lookX + (Math.random() - 0.5) * 18, y: lookY + 5 + Math.random() * 3, z: 1 + Math.random() * 2, vx: (Math.random() - 0.5) * 8, vy: Math.random() * 6, vz: 0, col: CONFETTI[i % 6], size: 0.34, life: 2.4, grav: 9 }); break;
+        default: fightEvent(type, ex, ey, o); // Đợt 3: vũ khí, boss, sét
       }
+    }
+
+    // ================= ĐỢT 3: VŨ KHÍ, ĐẠN, Ổ KHOÁ, BOSS VUA SẤM, SÉT, MƯA =================
+    // Luật chơi nằm ở draw_run.html (st.fight); ở đây chỉ dựng hình. Màn không có vũ khí / boss thì không dựng gì thêm (fightFrame thoát ngay).
+    const BR = (opt.bossR || 60) / CELL;
+    const hotMat = new THREE.MeshBasicMaterial({ color: G.hdr(0xff8a2a, 2.2) }), coreMat = new THREE.MeshBasicMaterial({ color: G.hdr(0xfff1a8, 3.0) });
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.12, metalness: 1 }), gripMat = new THREE.MeshStandardMaterial({ color: 0x6b3410, roughness: 0.8 });
+    const lockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.35, metalness: 0.9 });
+    hotMat.name = 'hot'; coreMat.name = 'hot'; bladeMat.name = 'blade'; lockMat.name = 'lock';
+    const pebGeo = keep(rockGeo.clone());
+    const W_GEO = {
+      gunBody: keep(new THREE.BoxGeometry(0.62, 0.3, 0.26)), gunGrip: keep(new THREE.BoxGeometry(0.2, 0.34, 0.2)), gunBarrel: keep(new THREE.CylinderGeometry(0.1, 0.13, 0.34, 14).rotateZ(Math.PI / 2)),
+      ball: keep(new THREE.SphereGeometry(1, 16, 12)),
+      blade: keep(new THREE.BoxGeometry(0.16, 0.86, 0.05)), tip: keep(new THREE.ConeGeometry(0.113, 0.22, 4).rotateY(Math.PI / 4)), guard: keep(new THREE.BoxGeometry(0.5, 0.09, 0.14)), grip: keep(new THREE.CylinderGeometry(0.055, 0.055, 0.28, 10)),
+      lockBody: keep(new THREE.BoxGeometry(0.5, 0.4, 0.2)), lockArc: keep(new THREE.TorusGeometry(0.17, 0.05, 8, 20, Math.PI)),
+      slash: keep(new THREE.TorusGeometry(1.5, 0.09, 6, 28, Math.PI * 0.75)),
+      ring: keep(new THREE.RingGeometry(1.0, 1.35, 40).rotateX(-Math.PI / 2)), disc: keep(new THREE.CircleGeometry(1.0, 32).rotateX(-Math.PI / 2)), beam: keep(new THREE.CylinderGeometry(0.25, 0.9, 12, 20, 1, true)) };
+    function weaponMesh(t) { // 1 món vũ khí, tâm ở gốc toạ độ, cỡ ~0.9 ô
+      const g = new THREE.Group();
+      const add = function (geo, mat, x, y, z, s, sz) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (s) m.scale.set(s, s, sz === undefined ? s : sz); m.castShadow = true; g.add(m); return m; };
+      if (t === 'gun') { add(W_GEO.gunBody, plateMat, -0.06, 0.04, 0); add(W_GEO.gunGrip, plateMat, -0.22, -0.2, 0); add(W_GEO.gunBarrel, steelMat, 0.36, 0.06, 0); add(W_GEO.ball, hotMat, 0.56, 0.06, 0, 0.13); add(W_GEO.ball, coreMat, 0.6, 0.06, 0, 0.07); }
+      else if (t === 'sword') { add(W_GEO.blade, bladeMat, 0, 0.3, 0); add(W_GEO.tip, bladeMat, 0, 0.84, 0, 1, 0.3); add(W_GEO.guard, gold, 0, -0.16, 0); add(W_GEO.grip, gripMat, 0, -0.34, 0); g.rotation.z = -0.5; }
+      else for (const q of [[-0.24, -0.12, 0.05, 0.27], [0.22, -0.14, -0.04, 0.24], [0.0, 0.12, 0, 0.26], [0.02, -0.16, 0.26, 0.2]]) { const m = add(pebGeo, rockMat, q[0], q[1], q[2], q[3]); m.rotation.set(q[0] * 5, q[1] * 9, q[2] * 7); }
+      return g;
+    }
+    function buildWeapon(t) {
+      return function () {
+        const grp = new THREE.Group(), inner = weaponMesh(t), gl = G.glow(G.hdr(t === 'gun' ? 0xffb060 : 0xfff0c0, 1.0), 2.4, 0.35);
+        grp.add(inner); grp.add(gl);
+        const node = { group: grp }; node.update = function (st) { // đang cầm món này → món trên màn thu nhỏ, mờ quầng (vẫn nằm đó để đổi lại)
+          const held = st.mode === 'play' && st.fight && st.fight.weapon === t;
+          const y = -0.5 + (t === 'rocks' ? -0.12 : 0.08 + Math.sin(st.clock * 3 + node.gx * 1.6) * 0.1);
+          inner.position.set(0.5, y, 0); inner.scale.setScalar(held ? 0.6 : 1); gl.position.set(0.5, y, -0.2); gl.material.opacity = held ? 0.08 : 0.35;
+          if (t !== 'rocks') inner.rotation.y = Math.sin(st.clock * 1.4 + node.gx) * 0.5;
+        };
+        return node;
+      };
+    }
+    BUILDERS.gun = buildWeapon('gun'); BUILDERS.sword = buildWeapon('sword'); BUILDERS.rocks = buildWeapon('rocks');
+
+    const FX3 = new THREE.Group(); scene.add(FX3);
+    let autoRockN = null, heldG = null, lockG = null, slashM = null, bossA = null, bossKit = null, rainNear = null, rainFar = null, flashK = 0, stormK = 0;
+    const fireM = [], rockM = [], rings = new Map(), boltsG = [];
+    const colSleep = lin(0x9aa6c4), colStorm = lin(0x2e3954), colHappy = lin(0xf1f4fb), tintN = new THREE.Color(1, 1, 1), tintR = new THREE.Color(1.9, 0.62, 0.5), fogStorm = new THREE.Color(0x4a5a78), SPARK = ['#fff7c2', '#ffd34d', '#ffffff'];
+    function fightInit() { // dựng 1 lần, lúc màn đầu tiên cần tới
+      heldG = new THREE.Group(); for (const t of ['gun', 'sword', 'rocks']) { const m = weaponMesh(t); m.scale.setScalar(0.62); m.userData.t = t; heldG.add(m); } FX3.add(heldG);
+      lockG = new THREE.Group(); const lb = new THREE.Mesh(W_GEO.lockBody, lockMat), la = new THREE.Mesh(W_GEO.lockArc, lockMat), lk = new THREE.Mesh(W_GEO.ball, plateMat);
+      la.position.y = 0.2; lk.scale.setScalar(0.06); lk.position.set(0, 0, 0.11); lb.castShadow = true; lockG.add(lb); lockG.add(la); lockG.add(lk); lockG.visible = false; FX3.add(lockG);
+      slashM = new THREE.Mesh(W_GEO.slash, new THREE.MeshBasicMaterial({ color: G.hdr(0xffffff, 2.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); slashM.material.name = 'slash'; slashM.visible = false; slashM.renderOrder = 6; FX3.add(slashM);
+      for (let i = 0; i < 8; i++) {
+        const f = new THREE.Group(), a = new THREE.Mesh(W_GEO.ball, hotMat), b = new THREE.Mesh(W_GEO.ball, coreMat); a.scale.setScalar(0.34); b.scale.setScalar(0.19); f.add(a); f.add(b); f.add(G.glow(G.hdr(0xff9a3a, 1.4), 2.2, 0.6)); f.visible = false; FX3.add(f); fireM.push(f);
+        const r = new THREE.Mesh(pebGeo, rockMat); r.scale.setScalar(0.3); r.castShadow = true; r.visible = false; FX3.add(r); rockM.push(r);
+      }
+    }
+    function pickFace(B, F) {
+      if (B.state === 'sleep') return 'sleep';
+      if (B.state === 'intro') return B.t < 0.55 ? 'wake' : 'roar';
+      if (B.state === 'happy') return 'happy';
+      if (B.hurtT > 0) return 'hurt';
+      if (B.gloatT > 0) return 'gloat';
+      if (B.phase === 'dive') return 'swoop';
+      if (B.hp === 1) return 'panic';
+      if (B.phase === 'warn' || B.atkT < 0.8 || F.bolts.some(L => L.phase === 'warn')) return 'scheme';
+      if (B.hp <= 2) return 'rage';
+      return 'grumpy';
+    }
+    function drawBoss(B, F, st, dt, clock) { // cách diễn lấy từ bản mẫu đã duyệt (mau_3d_v2.html), thêm lúc "happy"
+      const bo = bossA;
+      if (!B) { bo.root.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = pickFace(B, F), storm = stormK;
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      let x = X(B.x), y = Y(B.y);
+      if (B.state === 'sleep') y += Math.sin(clock * 0.9) * 0.15;
+      else if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 1.2 : 0;
+      else if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.7;
+      else if (B.phase === 'warn') x += Math.sin(clock * 60) * 0.08; // rung báo trước khi sà xuống
+      bo.root.position.set(x, y, 0);
+      let rz = Math.sin(clock * 1.1) * 0.04; const ry = B.state === 'fight' ? clamp((hb.x - B.x) / 600, -0.4, 0.4) : 0;
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.6));
+      let sx = 1 + br * 0.025, sy = 1 - br * 0.03;
+      if (face === 'sleep') { sx = 1 + br * 0.05; sy = 1 + br * 0.04; }
+      if (face === 'wake') { sy = 1.12; sx = 0.92; }
+      if (face === 'roar') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.08 * k; sy = 1.04 * k; }
+      if (face === 'gloat' || face === 'happy') { sy = 1 + Math.abs(Math.sin(clock * (face === 'happy' ? 10 : 14))) * 0.08; rz = Math.sin(clock * 7) * 0.08; }
+      if (face === 'swoop') { sx = 1.12; sy = 0.9; rz = -Math.sign(hb.x - B.x) * 0.12; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.12; sy = 1 + k * 0.1; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'rage') rz += Math.sin(clock * 40) * 0.02;
+      if (face === 'panic') rz += Math.sin(clock * 22) * 0.05;
+      bo.wob.scale.set(sx, sy, 1); bo.wob.rotation.set(0, ry, rz);
+      // màu thân: ngủ xám sáng, bão xanh than, tức → đỏ, trúng đòn → loé trắng, hết giận → trắng bông
+      bo.mat.color.copy(colSleep).lerp(colStorm, storm); if (face === 'happy') bo.mat.color.lerp(colHappy, Math.min(1, B.t * 1.5));
+      const angry = face === 'rage' ? 0.85 + 0.15 * Math.sin(clock * 9) : face === 'scheme' && B.hp <= 2 ? 0.6 : 0;
+      bo.U.uTint.value.copy(tintN).lerp(tintR, angry);
+      bo.U.uHurt.value = face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 : 0;
+      bo.U.uRim.value.setRGB(0.12 + 0.3 * storm, 0.2 + 0.42 * storm, 0.45 + 0.75 * storm).multiplyScalar(face === 'sleep' ? 0.5 : 1);
+      bo.U.uInner.value = (face === 'scheme' ? 0.35 + 0.25 * Math.sin(clock * 18) : face === 'roar' ? 0.3 : 0) * storm + flashK * 0.3;
+      const arcK = face === 'sleep' ? 0.04 : face === 'happy' ? 0.1 : face === 'scheme' || face === 'roar' || face === 'rage' ? 0.75 : 0.36;
+      for (const a of bo.arcs) { const on = Math.sin(clock * 7 + a.userData.phase * 3) + Math.sin(clock * 19 + a.userData.phase * 7) * 0.6 > 1.6 - arcK * 2.6; a.visible = on && Math.random() > 0.08; }
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.25 : face === 'rage' ? 3.4 : face === 'happy' ? 2.0 : 2.8);
+      for (const e of bo.eyeGlows) { e.visible = face !== 'sleep' && face !== 'hurt' && face !== 'gloat' && face !== 'happy' && !pale; e.material.color.copy(face === 'rage' ? G.hdr(0xff5a20, 1.8) : G.hdr(0xffc94a, 1.6)); }
+      // vương miện: lò xo lệch khi trúng đòn
+      bo.crownV += (-bo.crownA * 60 - bo.crownV * 7) * dt; bo.crownA += bo.crownV * dt; const tilt = face === 'hurt' ? 0.35 : face === 'panic' ? 0.18 : 0;
+      bo.crown.rotation.z = -0.08 + bo.crownA * 0.12 + tilt * Math.sign(bo.crownA || 1) + (face === 'roar' ? Math.sin(clock * 30) * 0.05 : 0);
+      bo.crown.position.copy(bo.crownHome); bo.crown.position.x += bo.crownA * 0.08 * R + (face === 'hurt' ? 0.18 * R : 0);
+      bo.crown.position.y += (face === 'wake' ? 0.25 * R : 0) + (face === 'gloat' || face === 'happy' ? Math.abs(Math.sin(clock * (face === 'happy' ? 10 : 14))) * 0.12 * R : 0);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const s = (0.5 + t * 0.7) * R * 0.45; z.scale.set(s, s, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // khói (tức), mồ hôi (hoảng), sao (mừng), tàn điện (đang đánh)
+      if (face === 'rage' && Math.random() < dt * 22) for (const s of [-1, 1]) psPuff.add({ x: x + s * R * 0.9, y: y + R * 1.0, z: 0.5, vx: s * 1.4, vy: 2.6 + Math.random(), vz: 0, col: '#d6dbe4', size: 1.1, life: 1.0, grow: 2.2, a: 0.55, drag: 1 });
+      if (face === 'panic' && Math.random() < dt * 10) { const s = Math.random() < 0.5 ? -1 : 1; psNorm.add({ x: x + s * R * 1.1, y: y + R * 0.7, z: R * 0.5, vx: s * (2 + Math.random() * 2), vy: 3 + Math.random() * 2, vz: 0.5, col: '#8fd0ff', size: 0.45, life: 0.9, grav: 14 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: x + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+      if (B.state === 'fight' && Math.random() < dt * 18) psSpark.add({ x: x + (Math.random() - 0.5) * R * 2.4, y: y - R * 0.6 - Math.random() * 0.6, z: R * 0.4, vx: (Math.random() - 0.5) * 2, vy: -1.5 - Math.random() * 2, vz: 0, col: '#ffe9a0', size: 0.25, life: 0.35 });
+    }
+    function makeBolt(x0, y0, x1, y1) { // tia sét gãy khúc từ boss xuống đất, tự tắt sau 0.32 giây
+      const pts = [], N = 9; for (let i = 0; i <= N; i++) { const k = i / N, j = i === 0 || i === N ? 0 : 1; pts.push(new THREE.Vector3(x0 + (x1 - x0) * k + (Math.random() - 0.5) * 1.3 * j, y0 + (y1 - y0) * k + (Math.random() - 0.5) * 0.4 * j, (Math.random() - 0.5) * 0.6 * j)); }
+      const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.0), g = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.07, 5), new THREE.MeshBasicMaterial({ color: G.hdr(0xfffbe0, 3.2), transparent: true, depthWrite: false }));
+      const halo = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.26, 6), new THREE.MeshBasicMaterial({ color: G.hdr(0xffc23a, 1.4), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+      core.material.userData.own = halo.material.userData.own = true; core.material.name = halo.material.name = 'bolt'; core.renderOrder = halo.renderOrder = 7; g.add(halo); g.add(core); FX3.add(g); boltsG.push({ g: g, t: 0.32, core: core, halo: halo });
+    }
+    function fightEvent(type, ex, ey, o) { // sự kiện Đợt 3 (event() ở trên chuyển xuống)
+      switch (type) {
+        case 'shoot': burst(psAdd, ex, ey, 6, FIRE_COLS, 3, { size: 0.3, life: 0.25 }); break;
+        case 'slash': burst(psSpark, ex, ey, 8, '#ffffff', 4, { size: 0.4, life: 0.3 }); break;
+        case 'weapon': burst(psSpark, ex, ey, 16, '#ffffff', 4.5, { size: 0.5, life: 0.5 }); break;
+        case 'shot_end': if (o === 'fire') burst(psAdd, ex, ey, 10, FIRE_COLS, 4, { size: 0.34, life: 0.35 }); else burst(psNorm, ex, ey, 8, '#cbd5e1', 3, { size: 0.26, life: 0.4, grav: 10 }); break;
+        case 'enemy_poof': burst(psPuff, ex, ey, 10, ['#ffffff', '#e2e8f0'], 2.5, { size: 0.9, life: 0.6, grow: 1.6, a: 0.7 }); burst(psSpark, ex, ey, 14, '#ffe58a', 5, { size: 0.5, life: 0.5 }); shake(0.1, 0.1); break;
+        case 'hit_boss': burst(psSpark, ex, ey, 30, SPARK.concat(['#c084fc']), 8.5, { size: 0.6, life: 0.7, grav: 5 }); shake(0.14, 0.16); flashK = Math.max(flashK, 0.25); if (bossA) bossA.crownV += 6; break;
+        case 'boss_intro': shake(1.6, 0.09); break;
+        case 'boss_fight': shake(0.4, 0.26); flashK = 1; break;
+        case 'swoop': burst(psPuff, ex, ey, 8, '#cbd5e1', 2.5, { size: 0.9, life: 0.5, grow: 1.4, a: 0.5 }); break;
+        case 'boss_happy': burst(psSpark, ex, ey, 60, SPARK.concat(['#f9a8d4', '#86efac']), 9, { size: 0.7, life: 1.1, grav: 4 }); shake(0.4, 0.2); flashK = 0.6; break;
+        case 'bolt': if (o) makeBolt(X(o.fromX), Y(o.fromY) - BR * 0.5, ex, ey); flashK = 1; shake(0.3, 0.25);
+          burst(psSpark, ex, ey + 0.1, 26, SPARK, 7, { size: 0.55, life: 0.5, grav: 8, up: 3 }); burst(psPuff, ex, ey + 0.2, 6, '#6b7280', 1.5, { size: 0.9, life: 0.8, grow: 1.5, a: 0.5, up: 1 }); break;
+      }
+    }
+    function fightFrame(st, dt, clock) {
+      const F = st.fight; if (!F) return;
+      if (!heldG && !(F.weapon || F.shots.length || F.locked || F.autoRock || F.boss)) return;
+      if (!heldG) fightInit();
+      const play = st.mode === 'play', hb = st.hero;
+      // đống đá tự có cạnh Start (màn có boss mà Bon chưa đặt vũ khí)
+      if (F.autoRock) { if (!autoRockN) { autoRockN = BUILDERS.rocks(); LG.add(autoRockN.group); } autoRockN.group.visible = true; autoRockN.gx = F.autoRock.x; autoRockN.group.position.set(F.autoRock.x, ROWS - F.autoRock.y, 0); autoRockN.update(st); }
+      else if (autoRockN) autoRockN.group.visible = false;
+      // món đang cầm: lơ lửng trước mặt baby
+      heldG.visible = play && !!F.weapon && !(hb.ouchT > 0);
+      if (heldG.visible) { for (const m of heldG.children) m.visible = m.userData.t === F.weapon; heldG.position.set(X(hb.x) + hb.dir * 0.8, Y(hb.y) + 0.12 + Math.sin(clock * 5) * 0.04, 0.55); heldG.scale.x = hb.dir < 0 ? -1 : 1; }
+      // đạn lửa + đá ném
+      let fi = 0, ri = 0;
+      for (const s of F.shots) {
+        if (s.k === 'fire') { const m = fireM[fi++]; if (!m) continue; m.visible = true; m.position.set(X(s.x), Y(s.y), 0.3); m.scale.setScalar(1 + Math.sin(clock * 30 + fi) * 0.12);
+          const sg = Math.sign(s.vx); psAdd.add({ x: m.position.x - sg * (0.2 + Math.random() * 0.4), y: m.position.y + (Math.random() - 0.5) * 0.3, z: 0.3, vx: -sg * 2 + (Math.random() - 0.5), vy: 0.8 + Math.random() * 1.4, vz: Math.random() - 0.5, col: FIRE_COLS[fi % 3], size: 0.42, life: 0.3, a: 0.7 }); }
+        else { const m = rockM[ri++]; if (!m) continue; m.visible = true; m.position.set(X(s.x), Y(s.y), 0.3); m.rotation.z -= dt * 9 * Math.sign(s.vx); m.rotation.x += dt * 5; }
+      }
+      for (; fi < fireM.length; fi++) fireM[fi].visible = false;
+      for (; ri < rockM.length; ri++) rockM[ri].visible = false;
+      // nhát chém
+      slashM.visible = play && F.slashT > 0;
+      if (slashM.visible) { const k = F.slashT / 0.22; slashM.position.set(X(hb.x), Y(hb.y), 0.6); slashM.rotation.set(0, F.slashDir > 0 ? 0 : Math.PI, -Math.PI * 0.375 - 0.6 + (1 - k) * 1.2); slashM.material.opacity = k; }
+      // ổ khoá trên star (màn có boss, boss chưa thua)
+      let starN = null; if (F.locked) for (const n of live) if (n.t === 'star') { starN = n; break; }
+      lockG.visible = !!starN && starN.group.visible;
+      if (lockG.visible) { lockG.position.set(starN.gx + 0.5, starN.gy - 0.5 + Math.sin(clock * 3 + starN.gx * 1.6) * 0.1, 0.55); lockG.rotation.y = Math.sin(clock * 1.6) * 0.3; }
+      // boss
+      stormK = F.storm || 0; if (flashK > 0) flashK = Math.max(0, flashK - dt * 2.6);
+      if (F.boss && !bossA && window.SFBoss) { bossKit = window.SFBoss.create({ G: G, scene: scene, R: BR }); bossA = bossKit.build(); bossA.body.material.name = 'boss'; }
+      if (bossA) drawBoss(F.boss, F, st, dt, clock);
+      // sét báo trước (vòng sáng trên đất) + tia sét
+      for (const L of F.bolts) if (L.phase === 'warn') {
+        let r = rings.get(L);
+        if (!r) { r = new THREE.Group(); const mk = function (geo, col, op, side) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: side || THREE.FrontSide })); m.material.userData.own = true; m.material.name = 'boltWarn'; r.add(m); return m; };
+          r.userData = { ring: mk(W_GEO.ring, G.hdr(0xfff3a0, 2), 1, THREE.DoubleSide), disc: mk(W_GEO.disc, G.hdr(0xfff3a0, 1.5), 0.2), beam: mk(W_GEO.beam, G.hdr(0xfff7c2, 1.2), 0.1, THREE.DoubleSide) }; r.userData.disc.material.map = TEX.soft; r.userData.beam.position.y = 6;
+          r.position.set(X(L.x), Y(L.y) + 0.09, 0); r.renderOrder = 4; FX3.add(r); rings.set(L, r); }
+        const kk = 1 - L.warn / 0.85, pulse = 0.5 + 0.5 * Math.sin(clock * 25 * (0.5 + kk));
+        r.userData.ring.scale.setScalar(1.5 - 0.5 * kk); r.userData.ring.material.opacity = (0.35 + 0.6 * pulse) * (0.3 + 0.7 * kk); r.userData.disc.material.opacity = 0.12 + 0.4 * kk * pulse; r.userData.beam.material.opacity = 0.04 + 0.12 * kk;
+      }
+      rings.forEach(function (r, L) { if (L.phase !== 'warn' || F.bolts.indexOf(L) < 0) { FX3.remove(r); disposeNode(r); rings.delete(L); } });
+      for (let i = boltsG.length - 1; i >= 0; i--) { const b = boltsG[i]; b.t -= dt; const kk = clamp(b.t / 0.32, 0, 1) * (Math.random() < 0.2 ? 0.4 : 1); b.core.material.opacity = kk; b.halo.material.opacity = 0.5 * kk; if (b.t <= 0) { FX3.remove(b.g); disposeNode(b.g); boltsG.splice(i, 1); } }
+      // bão: gió lay cỏ cây, mưa, sương xanh than, đèn dịu lại
+      const wd = F.wind ? F.wind.dir * F.wind.str / 110 : 0;
+      G.shared.uWind.value = wd * 0.6; G.shared.uGust.value = 0.3 + stormK * 0.9;
+      if (stormK > 0.02 && !rainNear && bossKit) { rainNear = bossKit.makeRain(500, 3, 12, 1.15, 0.016, 0.7); rainFar = bossKit.makeRain(1100, -16, 2, 0.9, 0.013, 0.48); rainNear.name = rainFar.name = 'rain'; }
+      if (rainNear) for (const rm of [rainNear, rainFar]) { rm.uniforms.uA.value = stormK > 0.1 ? stormK : 0; rm.uniforms.uCam.value.set(lookX, lookY); rm.uniforms.uSlant.value = 0.18 + wd * 0.35; }
+      scene.fog.color.copy(fogDay).lerp(fogStorm, stormK * 0.8);
+      hemi.intensity = 1.05 - 0.3 * stormK + flashK * 0.9; sun.intensity = 0.55 - 0.3 * stormK + flashK * 1.2;
+      if (play && stormK > 0.2 && Math.random() < dt * 30 * stormK) { const rx = lookX + (Math.random() - 0.5) * 22; burst(psNorm, rx, Y(st.groundBelow(rx * CELL, 0)) + 0.05, 3, '#c9dcff', 1.6, { size: 0.12, life: 0.3, grav: 14, up: 1.6, z: (Math.random() - 0.3) * 5, a: 0.7 }); }
+    }
+    function fightInfo() { // cho bộ kiểm
+      return { boss: bossA ? [bossA.root.position.x, bossA.root.position.y, bossA.root.visible ? 1 : 0, bossA.face] : null, fire: fireM.filter(m => m.visible).length, rock: rockM.filter(m => m.visible).length,
+        lock: lockG && lockG.visible ? 1 : 0, held: heldG && heldG.visible ? heldG.children.filter(m => m.visible).map(m => m.userData.t).join(',') : '', slash: slashM && slashM.visible ? 1 : 0,
+        storm: stormK, flash: flashK, rings: rings.size, bolts: boltsG.length, autoRock: autoRockN && autoRockN.group.visible ? 1 : 0, rain: rainNear ? rainNear.uniforms.uA.value : 0 };
     }
 
     // ================= GÓC NHÌN + VẼ MỖI KHUNG =================
@@ -737,6 +930,7 @@ window.StarWorld = (function () {
           const r = n.rot || 0, dx = r === 1 ? 1 : r === 3 ? -1 : 0, dy = r === 0 ? 1 : r === 2 ? -1 : 0, px = dy, py = -dx, s = (Math.random() - 0.5) * n.w, k = Math.random() * 0.3, sd = (Math.random() - 0.5) * 0.6, sp = 1.2 + Math.random() * 1.6;
           psAdd.add({ x: n.gx + n.obj.w / 2 + px * s + dx * k, y: n.gy - n.obj.h / 2 + py * s + dy * k, z: (Math.random() - 0.5) * 0.5, vx: dx * sp + px * sd, vy: dy * sp + py * sd, vz: 0, col: FIRE_COLS[Math.floor(Math.random() * 3)], size: 0.16 + Math.random() * 0.12, life: 0.7, a: 0.9 }); } }
       syncActors(st);
+      fightFrame(st, dt, clock);
       // bụi nắng lơ lửng
       if (Math.random() < dt * 8) psSpark.add({ x: lookX + (Math.random() - 0.5) * 26, y: GY + 0.4 + Math.random() * 7, z: -3 + Math.random() * 5, vx: (Math.random() - 0.5) * 0.4, vy: 0.15 + Math.random() * 0.2, vz: 0, col: '#ffd98a', size: 0.12 + Math.random() * 0.12, life: 3, a: 0.6, fadeIn: true, spin: 0.5 });
       // máy quay
@@ -765,7 +959,7 @@ window.StarWorld = (function () {
       sun.position.set(lookX + 16, 30, 14); sun.target.position.set(lookX, 4, 0); sun.target.updateMatrixWorld();
       psScale = G.innerH() / (2 * Math.tan(camera.fov * Math.PI / 360));
       psAdd.update(dt); psSpark.update(dt); psNorm.update(dt); psPuff.update(dt);
-      renderer.info.reset(); G.render({ time: clock, exposure: EXPOSURE, tilt: 0.55 * vk });
+      renderer.info.reset(); G.render({ time: clock, exposure: EXPOSURE * (1 - 0.25 * stormK), tilt: 0.55 * vk, storm: stormK, flash: flashK }); // bão: cả cảnh tối đi một phần tư
       frames++;
       return true;
     }
@@ -790,7 +984,7 @@ window.StarWorld = (function () {
         nodes: live.map(n => [n.t, n.group.position.x, n.group.position.y, n.group.visible ? 1 : 0]), shown: { star: live.filter(n => n.t === 'star' && n.group.visible).length, wing: live.filter(n => n.t === 'wing' && n.group.visible).length },
         heroPos: heroA ? [heroA.root.position.x, heroA.root.position.y, heroA.root.visible ? 1 : 0] : null, hero: heroA ? heroA.made : null, enemies: enemyA.map(a => a ? a.made + '|' + a.n : null),
         fps: fpsShow, low: fpsLow > 900 ? null : Math.round(fpsLow * 10) / 10, q: quality, auto: QAUTO, scale: G.scale(), tris: renderer.info.render.triangles, calls: renderer.info.render.calls,
-        look: [lookX, lookY], buf: [G.BW, G.BH], grass: (function () { let a = 0; grassSet.forEach(function (im) { a += im.count; }); return a; })(), ps: psAdd.count() + psNorm.count() + psSpark.count() + psPuff.count() };
+        look: [lookX, lookY], buf: [G.BW, G.BH], grass: (function () { let a = 0; grassSet.forEach(function (im) { a += im.count; }); return a; })(), ps: psAdd.count() + psNorm.count() + psSpark.count() + psPuff.count(), fight: fightInfo() };
     }
 
     opt.canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); ready = false; failed = 'lost'; if (opt.onGiveUp) opt.onGiveUp('lost'); });
