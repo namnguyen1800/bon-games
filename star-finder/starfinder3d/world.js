@@ -826,8 +826,8 @@ window.StarWorld = (function () {
       if (B.hurtT > 0) return 'hurt';
       if (B.phase === 'rest') return 'dizzy';
       if (B.gloatT > 0) return 'gloat';
-      if (B.phase === 'lift') return 'scheme';
-      if (B.phase === 'stomp') return 'roar';
+      if (B.phase === 'lift' || B.phase === 'windup') return 'scheme'; // Khủng Long dùng chung bảng mặt này: lấy đà = mặt mưu mô, xoay lao = gầm
+      if (B.phase === 'stomp' || B.phase === 'spin') return 'roar';
       if (B.hp === 1) return 'panic';
       if (B.hp <= 2) return 'rage';
       return 'grumpy';
@@ -888,6 +888,93 @@ window.StarWorld = (function () {
       if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.05 + bo.wob.position.y - bo.wobHome, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
       if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
     }
+    // ---- Đợt 4: KHỦNG LONG LỐC XOÁY — đi lạch bạch → lấy đà (cúi thấp, vòng xoáy báo trên đất) → xoay tít lao tới → chóng mặt ngồi bệt (lúc đánh được) → mừng ----
+    let dinoA = null, swirlN = null; const LEAF = ['#86efac', '#4ade80', '#bef264', '#fde68a'];
+    function drawDino(B, F, st, dt, clock) {
+      const bo = dinoA;
+      if (!B) { bo.root.visible = false; if (swirlN) swirlN.g.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight', dir = B.spinDir || 1;
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const windup = fight && B.phase === 'windup', spin = fight && B.phase === 'spin', walking = fight && B.phase === 'walk', step = Math.sin(clock * 8);
+      // mức ngồi (0 đứng → 1 ngồi bệt), mức cúi lấy đà, góc xoay (đang lao thì quay tít; hết lao thì quay chậm dần về mặt trước)
+      const sitTo = B.state === 'sleep' ? 0.8 : fight && B.phase === 'rest' ? 1 : 0;
+      bo.sit = (bo.sit || 0) + (sitTo - (bo.sit || 0)) * Math.min(1, dt * 9);
+      bo.crouch = (bo.crouch || 0) + ((windup ? 1 : 0) - (bo.crouch || 0)) * Math.min(1, dt * 8);
+      if (spin) bo.spinA = (bo.spinA || 0) + dt * 22 * dir; else { if (bo.wasSpin) bo.spinA %= TAU; bo.spinA = (bo.spinA || 0) * Math.max(0, 1 - dt * 5); }
+      bo.wasSpin = spin;
+      let y = Y(B.y), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.6;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      if (spin) y += 0.14 + Math.sin(clock * 30) * 0.04;
+      bo.root.position.set(X(B.x) + (windup ? Math.sin(clock * 50) * 0.03 : 0), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.6));
+      sx = 1 + br * 0.02; sy = 1 - br * 0.025;
+      if (walking) rz = step * 0.08;
+      if (bo.crouch > 0.02) { sy *= 1 - 0.14 * bo.crouch; sx *= 1 + 0.08 * bo.crouch; rz = dir * 0.2 * bo.crouch; } // lấy đà: cúi thấp, ngả người ra sau
+      if (spin) { sx = 1.06; sy = 0.96; rz = -dir * 0.14; }                                                          // đang lao: chúi về phía trước
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.11;
+      bo.wob.position.y = bo.wobHome - bo.sit * 0.42 * R + (walking ? Math.abs(step) * 0.06 * R : 0);
+      bo.wob.scale.set(sx, sy, 1);
+      bo.wob.rotation.set(0, (fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0) + bo.spinA, rz);
+      // chân: đi thì nhấc so le; ngồi thì duỗi ra trước
+      for (let i = 0; i < 2; i++) {
+        const L = bo.legs[i], s = i ? 1 : -1;
+        let ly = -0.62 * R, lz = 0.05 * R;
+        if (walking) ly += Math.max(0, step * s) * 0.16 * R;
+        if (spin) ly += Math.max(0, Math.sin(clock * 30 + i * 3)) * 0.1 * R;
+        lz += bo.sit * 0.45 * R; ly += bo.sit * 0.1 * R;
+        L.position.set(s * 0.42 * R, ly, lz); L.rotation.x = -bo.sit * 0.9;
+      }
+      // tay tí hon: đi thì ve vẩy; lấy đà thì co lại; xoay thì dang ngang; chóng mặt thì buông thõng; mừng thì vẫy
+      for (let i = 0; i < 2; i++) {
+        const A = bo.arms[i], s = i ? 1 : -1; let az = 0, ax = 0;
+        if (walking) ax = -step * s * 0.4;
+        if (bo.crouch > 0.02) ax = 0.7 * bo.crouch;
+        if (spin) az = s * 1.3;
+        if (face === 'dizzy') az = s * (0.3 + Math.sin(clock * 3 + i) * 0.2);
+        if (face === 'happy' || face === 'gloat') az = s * (1.7 + Math.sin(clock * 10 + i) * 0.4);
+        if (face === 'hurt') az = s * 0.9;
+        A.rotation.set(ax, 0, az);
+      }
+      bo.tail.rotation.set(0, Math.sin(clock * (walking ? 6 : 2.5)) * 0.3, face === 'dizzy' ? -0.35 : bo.crouch * 0.5 + Math.sin(clock * 2.2) * 0.08);
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const s = (0.5 + t * 0.7) * R * 0.45; z.scale.set(s, s, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // vòng xoáy trên đất báo chỗ nó sẽ lao tới (hiện từ lúc lấy đà tới khi lao xong) + lá cuốn quanh vòng
+      const gy = Y(B.y) - R + 0.09, sw = windup || spin;
+      if (sw && !swirlN) {
+        swirlN = { g: new THREE.Group() };
+        const mk = function (geo, col, op, blend) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, blending: blend || THREE.NormalBlending, side: THREE.DoubleSide })); m.material.userData.own = true; m.material.name = 'swirlWarn'; swirlN.g.add(m); return m; };
+        swirlN.disc = mk(W_GEO.disc, 0x14532d, 0.4); swirlN.disc.material.map = TEX.soft;
+        swirlN.r1 = mk(W_GEO.ring, G.hdr(0x7dffa0, 1.7), 0.8, THREE.AdditiveBlending); swirlN.r2 = mk(W_GEO.ring, G.hdr(0xeaffb0, 1.4), 0.7, THREE.AdditiveBlending);
+        swirlN.g.renderOrder = 4; FX3.add(swirlN.g);
+      }
+      if (swirlN) {
+        swirlN.g.visible = sw;
+        if (sw) {
+          const kk = windup ? clamp(1 - B.pt, 0, 1) : 1, pulse = 0.5 + 0.5 * Math.sin(clock * 22 * (0.5 + kk)), cx = X(B.spinX);
+          swirlN.g.position.set(cx, gy, 0.2);
+          swirlN.disc.scale.setScalar(0.8 + 0.8 * kk); swirlN.disc.material.opacity = 0.25 + 0.35 * kk;
+          swirlN.r1.scale.setScalar(1.7 - 0.5 * kk); swirlN.r1.material.opacity = (0.3 + 0.6 * pulse) * (0.35 + 0.65 * kk);
+          swirlN.r2.scale.setScalar(0.5 + 0.4 * (0.5 + 0.5 * Math.sin(clock * 9))); swirlN.r2.material.opacity = 0.25 + 0.45 * kk;
+          if (Math.random() < dt * 40) { const a = clock * 9 + Math.random() * 1.2, rr = 0.5 + Math.random() * 0.9; psNorm.add({ x: cx + Math.cos(a) * rr, y: gy + 0.1 + Math.random() * 0.2, z: 0.2 + Math.sin(a) * rr * 0.5, vx: -Math.sin(a) * 3.2, vy: 1.4 + Math.random() * 1.6, vz: Math.cos(a) * 1.6, col: LEAF[Math.floor(Math.random() * 4)], size: 0.22, life: 0.55, a: 0.9 }); }
+        }
+      }
+      // đang xoay lao: lá + vệt gió cuốn quanh người, bụi dưới chân; đi thì bụi nhẹ; chóng mặt thì sao quay quanh đầu (= dấu "tới lượt bạn"); mừng thì sao
+      if (spin) {
+        for (let i = 0; i < 2; i++) { const a = Math.random() * TAU, hh = (Math.random() - 0.4) * R * 1.8; psNorm.add({ x: X(B.x) + Math.cos(a) * R * 1.15, y: y + hh, z: Math.sin(a) * R * 0.9 + 0.3, vx: -Math.sin(a) * 7 * dir, vy: 1 + Math.random() * 2, vz: Math.cos(a) * 4 * dir, col: LEAF[Math.floor(Math.random() * 4)], size: 0.24, life: 0.4, a: 0.9 }); }
+        if (Math.random() < dt * 30) psPuff.add({ x: X(B.x) - dir * R * 0.6 + (Math.random() - 0.5) * R, y: y - R * 0.9, z: 0.4, vx: -dir * 2, vy: 0.8, vz: 0, col: '#f1f5d9', size: 0.9, life: 0.5, grow: 1.5, a: 0.45, drag: 1 });
+      }
+      if (walking && Math.abs(step) > 0.97 && Math.random() < 0.5) psPuff.add({ x: X(B.x) + (Math.random() - 0.5) * R, y: y - R * 0.95, z: 0.4, vx: (Math.random() - 0.5), vy: 0.6, vz: 0, col: '#e7efd2', size: 0.6, life: 0.45, grow: 1.4, a: 0.35, drag: 1 });
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.2 + bo.wob.position.y - bo.wobHome, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
     function dropFrame(F, st, dt, clock) { // bóng báo chỗ đá rơi + tảng đá đang rơi + đá nằm lại cho baby nhặt
       const drops = F.drops || [], loot = F.loot || [];
       for (const D of drops) {
@@ -929,7 +1016,11 @@ window.StarWorld = (function () {
         case 'enemy_poof': burst(psPuff, ex, ey, 10, ['#ffffff', '#e2e8f0'], 2.5, { size: 0.9, life: 0.6, grow: 1.6, a: 0.7 }); burst(psSpark, ex, ey, 14, '#ffe58a', 5, { size: 0.5, life: 0.5 }); shake(0.1, 0.1); break;
         case 'hit_boss': burst(psSpark, ex, ey, 30, SPARK.concat(['#c084fc']), 8.5, { size: 0.6, life: 0.7, grav: 5 }); shake(0.14, 0.16); flashK = Math.max(flashK, 0.25); if (bossA) bossA.crownV += 6; break;
         case 'boss_intro': shake(1.6, 0.09); break;
-        case 'boss_fight': shake(0.4, 0.26); if (curKind !== 'rock') flashK = 1; break;
+        case 'boss_fight': shake(0.4, 0.26); if (curKind === 'thunder') flashK = 1; break;
+        // Đợt 4 — Khủng Long Lốc Xoáy
+        case 'dino_windup': burst(psPuff, ex, ey + 0.1, 5, '#e7efd2', 1.4, { size: 0.6, life: 0.5, grow: 1.3, a: 0.4 }); break;
+        case 'dino_spin': shake(0.3, 0.18); burst(psNorm, ex, ey, 18, LEAF, 6, { size: 0.24, life: 0.6, up: 2, a: 0.9 }); break;
+        case 'dino_toss': burst(psSpark, ex, ey, 14, '#ffffff', 5, { size: 0.45, life: 0.4 }); burst(psNorm, ex, ey, 10, LEAF, 4, { size: 0.22, life: 0.5, up: 2.5 }); break;
         // Đợt 4 — Người Đá
         case 'rock_lift': burst(psPuff, ex, ey + 0.1, 4, '#d6cdbd', 1.2, { size: 0.6, life: 0.5, grow: 1.3, a: 0.4 }); break;
         case 'stomp': shake(0.5, 0.3); burst(psPuff, ex, ey + 0.15, 14, ['#d6cdbd', '#b8ad9a'], 3.2, { size: 1.0, life: 0.7, grow: 1.6, a: 0.55, up: 0.6 }); break;
@@ -978,7 +1069,9 @@ window.StarWorld = (function () {
       if (bk === 'rock' && !rockA && bossKit && window.SFBossRock) rockA = window.SFBossRock.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
       if (bossA) drawBoss(bk === 'thunder' ? F.boss : null, F, st, dt, clock);
       if (rockA) drawRock(bk === 'rock' ? F.boss : null, F, st, dt, clock);
-      curA = bk === 'thunder' ? bossA : bk === 'rock' ? rockA : null;
+      if (bk === 'dino' && !dinoA && bossKit && window.SFBossDino) dinoA = window.SFBossDino.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (dinoA) drawDino(bk === 'dino' ? F.boss : null, F, st, dt, clock);
+      curA = bk === 'thunder' ? bossA : bk === 'rock' ? rockA : bk === 'dino' ? dinoA : null;
       dropFrame(F, st, dt, clock);
       // sét báo trước (vòng sáng trên đất) + tia sét
       for (const L of F.bolts) if (L.phase === 'warn') {
@@ -1001,7 +1094,8 @@ window.StarWorld = (function () {
       if (play && stormK > 0.2 && Math.random() < dt * 30 * stormK) { const rx = lookX + (Math.random() - 0.5) * 22; burst(psNorm, rx, Y(st.groundBelow(rx * CELL, 0)) + 0.05, 3, '#c9dcff', 1.6, { size: 0.12, life: 0.3, grav: 14, up: 1.6, z: (Math.random() - 0.3) * 5, a: 0.7 }); }
     }
     function fightInfo() { // cho bộ kiểm
-      return { boss: curA ? [curA.root.position.x, curA.root.position.y, curA.root.visible ? 1 : 0, curA.face] : null, kind: curKind, sit: rockA ? rockA.sit || 0 : 0, lift: rockA ? rockA.lift || 0 : 0, vis: { thunder: !!bossA && bossA.root.visible, rock: !!rockA && rockA.root.visible },
+      return { boss: curA ? [curA.root.position.x, curA.root.position.y, curA.root.visible ? 1 : 0, curA.face] : null, kind: curKind, sit: rockA ? rockA.sit || 0 : 0, lift: rockA ? rockA.lift || 0 : 0, vis: { thunder: !!bossA && bossA.root.visible, rock: !!rockA && rockA.root.visible, dino: !!dinoA && dinoA.root.visible },
+        dino: dinoA ? { sit: dinoA.sit || 0, crouch: dinoA.crouch || 0, rotY: dinoA.wob.rotation.y } : null, swirl: swirlN && swirlN.g.visible ? 1 : 0,
         drops: dropN.size, dropFall: Array.from(dropN.values()).filter(n => n.rock.visible).length, loot: lootM.filter(m => m.visible).length, fire: fireM.filter(m => m.visible).length, rock: rockM.filter(m => m.visible).length,
         lock: lockG && lockG.visible ? 1 : 0, held: heldG && heldG.visible ? heldG.children.filter(m => m.visible).map(m => m.userData.t).join(',') : '', slash: slashM && slashM.visible ? 1 : 0,
         storm: stormK, flash: flashK, rings: rings.size, bolts: boltsG.length, autoRock: autoRockN && autoRockN.group.visible ? 1 : 0, rain: rainNear ? rainNear.uniforms.uA.value : 0 };

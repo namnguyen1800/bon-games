@@ -96,10 +96,14 @@
   const FIRE_V = 600, FIRE_CD = 0.36, ROCK_CD = 0.5, SWORD_CD = 0.42, SWORD_REACH = 78;
   const BOSS_R = 60, BOSS_HP = 5, BOSS_TRIG = 10 * 32, RAGE_K = 1.6, WIND_MAX = 110;
   // Đợt 4: nhiều loại boss. Bon chọn trong bảng "Pick a boss!" (Nam chọn 11-14: giống bảng chọn baby). Boss trong màn: { t: 'boss', id } — không có id = Vua Sấm (save cũ y nguyên)
-  const BOSS_KINDS = ['thunder', 'rock']; // thêm dần theo thứ tự làm
-  const BOSS_NAME = { thunder: 'Thunder King', rock: 'Rock Giant' };
+  const BOSS_KINDS = ['thunder', 'rock', 'dino']; // thêm dần theo thứ tự làm
+  const BOSS_NAME = { thunder: 'Thunder King', rock: 'Rock Giant', dino: 'Twister Dino' };
+  const GROUND_BOSS = { rock: 1, dino: 1 }; // boss đứng trên đất (đặt lơ lửng thì rơi xuống) + chỉ đánh trúng được lúc nó ngồi nghỉ
   // Người Đá (ý ChatGPT, mình chọn bản sửa 11-14): đi chậm tới gần → nhấc chân (bóng báo chỗ đá rơi) → dậm → đá rơi đúng chỗ đã báo → ngồi xoa chân = LÚC ĐÁNH ĐƯỢC
   const ROCK_WALK_V = 70, ROCK_WARN = 1.0, ROCK_REST = 3.2, ROCK_DROP_H = 8 * 32, ROCK_LOOT_T = 8; // mốc thử
+  // Khủng Long Lốc Xoáy (ý ChatGPT, bản sửa 11-14): đi tới gần → lấy đà (vòng xoáy báo chỗ nó sẽ lao tới, CHỐT từ lúc báo) → xoay lao 1 đoạn ngắn tới đúng chỗ đó → chóng mặt ngồi xuống = LÚC ĐÁNH ĐƯỢC
+  // Bị nó quẹt trúng = baby chỉ bị nhấc thấp rồi đáp gần chỗ cũ (KHÔNG về Start). Né = chạy ra xa khỏi vòng xoáy. Không gió, không bão, không đụng tới khối / nét Bon xếp.
+  const DINO_WALK_V = 80, DINO_WARN = 1.0, DINO_SPIN_V = 430, DINO_REACH = 7 * 32, DINO_REST = 3.2, DINO_TOSS_VY = 460; // mốc thử
   let bossPick = 'thunder';
 
   // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
@@ -793,13 +797,13 @@
     const kind = bossObj ? (bossObj.id || 'thunder') : 'thunder'; // công tắc "boss canh star" = Vua Sấm
     const B = { kind: kind, state: 'sleep', t: 0, x: h.x, y: h.y, hx: h.x, hy: h.y, tx: h.tx, ty: h.ty, hp: BOSS_HP, hurtT: 0, atkT: 2.4, n: 0,
       phase: 'hover', pt: 0, diveT: 1.8, diveX: 0, diveY: 0, misses: 0, hitDive: false, gloatT: 0 };
-    if (kind === 'rock') { B.phase = 'walk'; B.restT = ROCK_REST; B.hitRest = false; } // Build hiện đúng chỗ Bon đặt; vào Play nó rơi xuống đất (bossStep)
+    if (GROUND_BOSS[kind]) { B.phase = 'walk'; B.restT = kind === 'dino' ? DINO_REST : ROCK_REST; B.hitRest = false; } // Build hiện đúng chỗ Bon đặt; vào Play nó rơi xuống đất (bossStep)
     return B;
   }
-  function bossOpen(B) { return B.kind !== 'rock' || B.phase === 'rest'; } // lúc đánh trúng được: Vua Sấm = lúc nào cũng được (tới được khi nó sà xuống) · Người Đá = lúc ngồi nghỉ
+  function bossOpen(B) { return !GROUND_BOSS[B.kind] || B.phase === 'rest'; } // lúc đánh trúng được: Vua Sấm = lúc nào cũng được (tới được khi nó sà xuống) · Người Đá / Khủng Long = lúc ngồi nghỉ
   function bossClang(x, y) { // đánh trúng lúc boss chưa hở: không mất tim, nhắc nhẹ (không chê)
     fx('clang', x, y); tone(1400, 0.06, 'square', 0.05);
-    if (clangT <= 0) { showHint('Wait till it sits down!'); clangT = 3; }
+    if (clangT <= 0) { showHint(boss && boss.kind === 'dino' ? 'Wait till it gets dizzy!' : 'Wait till it sits down!'); clangT = 3; }
   }
   function resetFight() {
     drops = []; loot = []; clangT = 0;
@@ -857,7 +861,7 @@
     if (!thunder || B.state !== 'fight') { wind.dir = 0; wind.str = approach(wind.str, 0, 400 * dt); }
     if (!B) return;
     B.t += dt; if (B.hurtT > 0) B.hurtT -= dt; if (B.gloatT > 0) B.gloatT -= dt;
-    if (B.kind === 'rock') { const g0 = groundBelow(B.x, B.y - BOSS_R); B.y = approach(B.y, (g0 < 1e8 ? g0 : LVB) - BOSS_R, 600 * dt); } // Người Đá đứng trên đất: đặt lơ lửng thì rơi xuống đất ngay dưới chỗ đặt
+    if (GROUND_BOSS[B.kind]) { const g0 = groundBelow(B.x, B.y - BOSS_R); B.y = approach(B.y, (g0 < 1e8 ? g0 : LVB) - BOSS_R, 600 * dt); } // Người Đá / Khủng Long đứng trên đất: đặt lơ lửng thì rơi xuống đất ngay dưới chỗ đặt
     if (B.state === 'sleep') { // ngủ tới khi baby lại gần
       if (Math.abs(b.x - B.tx) < BOSS_TRIG && Math.abs(b.y - B.ty) < 14 * CELL) { B.state = 'intro'; B.t = 0; showHint('The ' + BOSS_NAME[B.kind] + ' woke up!'); tone(140, 0.5, 'sawtooth', 0.12, 70); shakeT = 0.3; fx('boss_intro', B.x, B.y); }
       return;
@@ -866,7 +870,7 @@
       if (B.t > 1.8) {
         B.state = 'fight'; fx('boss_fight', B.x, B.y);
         if (thunder) { B.phase = 'hover'; B.atkT = 1.6; rage = true; wind.t = 0.5; showHint('Hit it when it dives down!'); }
-        else { B.phase = 'walk'; B.atkT = 1.4; showHint('Hit it when it sits down!'); }
+        else { B.phase = 'walk'; B.atkT = 1.4; showHint(B.kind === 'dino' ? 'Hit it when it gets dizzy!' : 'Hit it when it sits down!'); }
       }
       return;
     }
@@ -876,6 +880,7 @@
       return;
     }
     if (B.kind === 'rock') { rockStep(B, dt); return; }
+    if (B.kind === 'dino') { dinoStep(B, dt); return; }
     wind.t -= dt;
     if (wind.t <= 0) { wind.t = 2.5 + Math.random() * 2; wind.dir = [-1, 0, 1][Math.floor(Math.random() * 3)]; fx('wind', b.x, b.y, wind.dir); }
     wind.str = approach(wind.str, wind.dir ? WIND_MAX : 0, 300 * dt);
@@ -916,15 +921,47 @@
     } else if (B.phase === 'lift') {
       B.pt -= dt; if (B.pt <= 0) { B.phase = 'stomp'; B.pt = 0.4; shakeT = 0.25; tone(70, 0.35, 'sawtooth', 0.14, 40); fx('stomp', B.x, B.y + BOSS_R); }
     } else if (B.phase === 'stomp') {
-      B.pt -= dt; if (B.pt <= 0) { B.phase = 'rest'; B.pt = B.restT; B.hitRest = false; fx('rest', B.x, B.y); showHint('Now! Hit it!'); tone(660, 0.1, 'triangle', 0.1); tone(880, 0.14, 'triangle', 0.1, 0, 0.12); }
-    } else { // rest: ngồi xoa chân — LÚC NÀY đánh trúng được; hụt 2 lần liền thì lần sau ngồi lâu hơn
+      B.pt -= dt; if (B.pt <= 0) goRest(B);
+    } else restStep(B, dt);
+    bodyStep(B, dt);
+  }
+  // ---- 3 mẩu dùng chung cho boss đứng trên đất (Người Đá, Khủng Long): ngồi xuống nghỉ · hết giờ nghỉ · thân boss đụng baby ----
+  function goRest(B) { B.phase = 'rest'; B.pt = B.restT; B.hitRest = false; fx('rest', B.x, B.y); showHint('Now! Hit it!'); tone(660, 0.1, 'triangle', 0.1); tone(880, 0.14, 'triangle', 0.1, 0, 0.12); }
+  function restStep(B, dt) { // đang ngồi nghỉ — LÚC NÀY đánh trúng được; hụt 2 lượt liền thì lượt sau ngồi lâu hơn
       B.pt -= dt;
       if (B.pt <= 0) { if (!B.hitRest && ++B.misses >= 2) { B.restT = Math.min(4.2, B.restT + 0.6); B.misses = 0; } B.phase = 'walk'; B.atkT = B.hp <= 2 ? 1.6 : 2.4; }
-    }
+  }
+  function bodyStep(B, dt) {
+    const b = hero;
     // lúc ngồi nghỉ: baby lỡ đứng lọt vào thân boss (bị đá hất vào) thì bị đẩy nhẹ ra mép, không khuất trong thân
     if (B.phase === 'rest') { const dx = b.x - B.x, pen = BOSS_R + RC - 6 - Math.abs(dx); if (pen > 0 && Math.abs(b.y - B.y) < BOSS_R + RC) { const s = dx >= 0 ? 1 : -1, nx = b.x + s * Math.min(pen, 260 * dt); if (!solidAt(nx + s * RC, b.y)) b.x = nx; } }
     // đụng thân lúc nó đang đứng / đi = bị hất (lúc ngồi nghỉ thì không, để baby lại gần đánh)
     if (B.phase !== 'rest' && b.hurtT <= 0 && !won) { const dx = b.x - B.x, dy = b.y - B.y; if (dx * dx + dy * dy < (BOSS_R + RC - 10) * (BOSS_R + RC - 10)) { bump({ x: B.x }, dx); B.gloatT = 1.3; } }
+  }
+  function dinoStep(B, dt) { // Khủng Long Lốc Xoáy: đi → lấy đà (vòng xoáy báo) → xoay lao tới đúng chỗ đã báo → chóng mặt ngồi xuống (đánh được) → đi
+    const b = hero;
+    if (B.phase === 'walk') { // đi về phía baby (không ra khỏi vùng quanh chỗ đặt), đứng lại khi còn cách một quãng
+      const tx = clamp(clamp(b.x, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R);
+      if (Math.abs(tx - B.x) > BOSS_R + 90) { const nx = approach(B.x, tx, DINO_WALK_V * dt); if (!solidAt(nx + Math.sign(tx - B.x) * BOSS_R, B.y)) B.x = nx; }
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // lấy đà: chỗ lao tới = chỗ baby đang đứng (xa quá thì chỉ lao 7 ô) — CHỐT từ lúc này
+        B.phase = 'windup'; B.pt = DINO_WARN; B.n++;
+        B.spinX = clamp(clamp(b.x, B.x - DINO_REACH, B.x + DINO_REACH), BOSS_R, levelW() - BOSS_R); B.spinDir = B.spinX >= B.x ? 1 : -1;
+        tone(260, 0.1, 'triangle', 0.08); tone(390, 0.1, 'triangle', 0.08, 0, 0.3); tone(520, 0.1, 'triangle', 0.08, 0, 0.6); fx('dino_windup', B.spinX, B.y + BOSS_R); showHint('Run away from the swirl!');
+      }
+    } else if (B.phase === 'windup') {
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'spin'; B.pt = 1.2; tone(200, 0.5, 'sawtooth', 0.1, 520); fx('dino_spin', B.x, B.y); }
+    } else if (B.phase === 'spin') { // xoay lao tới chỗ đã báo; gặp khối / nét vẽ chắn đường thì dừng sớm (không xuyên qua đồ Bon xếp)
+      const nx = approach(B.x, B.spinX, DINO_SPIN_V * dt), blocked = solidAt(nx + B.spinDir * BOSS_R, B.y);
+      if (!blocked) B.x = nx;
+      B.pt -= dt;
+      if (b.hurtT <= 0 && b.ouchT <= 0 && !won) { // quẹt trúng baby: nhấc thấp lên rồi đáp gần chỗ cũ (KHÔNG về Start)
+        const dx = b.x - B.x, dy = b.y - B.y;
+        if (dx * dx + dy * dy < (BOSS_R + RC) * (BOSS_R + RC)) { bump({ x: B.x }, dx || B.spinDir); b.vx = (dx >= 0 ? 1 : -1) * 60; b.vy = -DINO_TOSS_VY; b.hurtT = 1.0; fightN.zaps++; B.gloatT = 1.3; fx('dino_toss', b.x, b.y); }
+      }
+      if (blocked || B.x === B.spinX || B.pt <= 0) goRest(B);
+    } else restStep(B, dt);
+    bodyStep(B, dt);
   }
   function dropStep(dt) { // đá rơi: báo bằng bóng → rơi thẳng xuống đúng chỗ đã báo → trúng baby = hất văng (KHÔNG về Start) → nằm lại thành đá nhặt
     const b = hero;
@@ -1004,7 +1041,7 @@
     }
   }
   function drawBoss2D(B, t, mini) { // mây đội vương miện, vẽ quanh gốc toạ độ, bán kính ~BOSS_R (mini = ô ở thanh món / nút Boss level: không tim, không chữ)
-    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && (B.phase === 'warn' || B.phase === 'lift');
+    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && (B.phase === 'warn' || B.phase === 'lift' || B.phase === 'windup');
     ctx.save(); ctx.translate(warn ? Math.sin(t * 60) * 4 : 0, happy ? -Math.abs(Math.sin(t * 6)) * 16 : asleep ? Math.sin(t * 1.6) * 3 : 0);
     if (B.kind === 'rock') { // Người Đá: tảng đá tròn có rêu trên đầu, 2 tay 2 chân cục đá (ngồi nghỉ thì thấp xuống)
       const sit = B.state === 'fight' && B.phase === 'rest' ? 14 : 0; ctx.translate(0, sit);
@@ -1013,6 +1050,15 @@
       for (const q of [[0, 4, 50], [-26, -20, 30], [24, -22, 30]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
       ctx.fillStyle = '#65a30d'; ctx.beginPath(); ctx.ellipse(0, -44, 34, 12, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(14, -52, 5, 0, TAU); ctx.fill();
+    } else if (B.kind === 'dino') { // Khủng Long Lốc Xoáy: thân tròn xanh lá, 3 gai cam trên lưng, đuôi, bụng kem (chóng mặt ngồi thì thấp xuống; đang xoay thì có vệt gió quanh người)
+      const spin = B.state === 'fight' && B.phase === 'spin'; ctx.translate(0, B.state === 'fight' && B.phase === 'rest' ? 14 : 0);
+      ctx.fillStyle = '#f59e0b'; for (const q of [[-26, -50], [0, -60], [26, -50]]) { ctx.beginPath(); ctx.moveTo(q[0] - 11, q[1] + 14); ctx.lineTo(q[0], q[1] - 12); ctx.lineTo(q[0] + 11, q[1] + 14); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#86efac' : '#4ade80';
+      ctx.beginPath(); ctx.moveTo(-40, 32); ctx.quadraticCurveTo(-88, 42, -94, 10); ctx.quadraticCurveTo(-70, 26, -44, 4); ctx.closePath(); ctx.fill();
+      for (const q of [[-26, 52, 15], [26, 52, 15]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(0, 2, 54, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fef9c3'; ctx.beginPath(); ctx.ellipse(0, 42, 26, 11, 0, 0, TAU); ctx.fill();
+      if (spin) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 4; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(0, -30 + i * 30, 72 - i * 8, 9, 0, t * 20 + i, t * 20 + i + 4); ctx.stroke(); } }
     } else {
     ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#ffffff' : asleep ? '#e2e8f0' : '#a8b3c4';
     for (const q of [[-40, 11, 33], [40, 11, 33], [-16, -16, 38], [20, -13, 36], [0, 18, 40]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
@@ -1057,6 +1103,10 @@
       if (D.phase === 'fall') { ctx.fillStyle = '#9a8f80'; ctx.strokeStyle = '#57534e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(D.x, D.fy, 22, 0, TAU); ctx.fill(); ctx.stroke(); }
     }
     for (const L of loot) { ctx.save(); ctx.translate(L.x, L.y); ctx.globalAlpha = Math.min(1, L.life); drawWeaponIcon('rocks'); ctx.restore(); }
+    if (boss && boss.kind === 'dino' && boss.state === 'fight' && (boss.phase === 'windup' || boss.phase === 'spin')) { // Khủng Long: vòng xoáy trên đất báo chỗ nó sẽ lao tới
+      ctx.strokeStyle = 'rgba(22,163,74,' + (0.5 + 0.3 * Math.sin(t * 20)) + ')'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(boss.spinX, boss.y + BOSS_R - 3, 46 - i * 13, 11 - i * 3, 0, t * 9 + i * 2, t * 9 + i * 2 + 4.4); ctx.stroke(); }
+    }
     if (boss) { ctx.save(); ctx.translate(boss.x, boss.y); drawBoss2D(boss, t, false); ctx.restore(); }
     for (const s of shots) {
       if (s.k === 'fire') { ctx.fillStyle = '#fb923c'; ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, TAU); ctx.fill(); ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, TAU); ctx.fill(); }
@@ -1998,7 +2048,7 @@
   function drop3D(why) { W3 = null; w3Pending = null; w3Why = why; glc.style.display = 'none'; }
   function boot3D() {
     const list = ['lib/three.min.js', 'lib/pp/CopyShader.js', 'lib/pp/LuminosityHighPassShader.js', 'lib/pp/EffectComposer.js', 'lib/pp/RenderPass.js', 'lib/pp/ShaderPass.js',
-      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'boss_rock.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
+      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'boss_rock.js', 'boss_dino.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
     let left = list.length, bad = false;
     for (const f of list) {
       const el = document.createElement('script'); el.src = 'starfinder3d/' + f; el.async = false; // async = false: tải song song nhưng chạy đúng thứ tự
