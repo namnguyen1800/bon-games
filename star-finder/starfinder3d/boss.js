@@ -205,7 +205,7 @@ window.SFBoss = (function () {
       fragmentShader: 'uniform float uA; varying float vT; varying float vX; void main(){ float a = (1.0 - vT) * (1.0 - abs(vX)) * uA; gl_FragColor = vec4(vec3(0.62, 0.74, 1.0) * 1.3, a * ' + alpha.toFixed(2) + '); }' });
     const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 6; scene.add(mesh); return m;
   }
-    return { build: buildBoss, FACES: BOSS_FACES, makeRain: makeRain };
+    return { build: buildBoss, FACES: BOSS_FACES, makeRain: makeRain, faceCanvases: faceCanvases }; // faceCanvases: Đợt 4 — boss khác mượn bộ mặt vẽ tay
   }
   return { create: create };
 })();

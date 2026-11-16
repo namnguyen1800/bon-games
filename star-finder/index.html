@@ -95,6 +95,12 @@
   // Đợt 3: vũ khí + boss Vua Sấm (số tim, tốc độ enemy giận, nhịp đánh = mốc thử, chỉnh sau khi Bon chơi)
   const FIRE_V = 600, FIRE_CD = 0.36, ROCK_CD = 0.5, SWORD_CD = 0.42, SWORD_REACH = 78;
   const BOSS_R = 60, BOSS_HP = 5, BOSS_TRIG = 10 * 32, RAGE_K = 1.6, WIND_MAX = 110;
+  // Đợt 4: nhiều loại boss. Bon chọn trong bảng "Pick a boss!" (Nam chọn 11-14: giống bảng chọn baby). Boss trong màn: { t: 'boss', id } — không có id = Vua Sấm (save cũ y nguyên)
+  const BOSS_KINDS = ['thunder', 'rock']; // thêm dần theo thứ tự làm
+  const BOSS_NAME = { thunder: 'Thunder King', rock: 'Rock Giant' };
+  // Người Đá (ý ChatGPT, mình chọn bản sửa 11-14): đi chậm tới gần → nhấc chân (bóng báo chỗ đá rơi) → dậm → đá rơi đúng chỗ đã báo → ngồi xoa chân = LÚC ĐÁNH ĐƯỢC
+  const ROCK_WALK_V = 70, ROCK_WARN = 1.0, ROCK_REST = 3.2, ROCK_DROP_H = 8 * 32, ROCK_LOOT_T = 8; // mốc thử
+  let bossPick = 'thunder';
 
   // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
   const SAMPLES = [
@@ -136,6 +142,7 @@
     if (stars.length > 1) { const keep = stars.reduce((a, b) => (b.x > a.x ? b : a)); L.objs = L.objs.filter(o => o.t !== 'star' || o === keep); }
     const bosses = L.objs.filter(o => o.t === 'boss'); // mỗi màn tối đa 1 boss
     if (bosses.length > 1) L.objs = L.objs.filter(o => o.t !== 'boss' || o === bosses[0]);
+    for (const o of L.objs) if (o.t === 'boss' && !(BOSS_KINDS.indexOf(o.id) > 0)) delete o.id; // Vua Sấm / loại lạ = không có id
     if (L.hitMode !== 'bounce') delete L.hitMode; // luật của màn (bảng Rules): hitMode 'bounce' hoặc không có (= kill) · bossStar true hoặc không có
     if (!L.bossStar) delete L.bossStar;
     return L;
@@ -562,6 +569,7 @@
   let weaponObjs = [], bossObj = null, weaponList = [], autoRock = null, palPage = 0;
   let weapon = null, atkCd = 0, atkKey = false, shots = [], slashT = 0, slashDir = 1, boss = null, bolts = [], wind = { dir: 0, t: 2, str: 0 }, storm = 0, rage = false, lockT = 0, noWpT = 0;
   let fightN = { fired: 0, kills: 0, bounces: 0, bossHits: 0, zaps: 0 };
+  let drops = [], loot = [], clangT = 0; // Đợt 4 — Người Đá: đá rơi (có bóng báo trước) · đá rơi xong nằm lại cho baby nhặt · nhắc "đợi nó ngồi xuống"
   const anim = new Map();       // lò xo nhún: object → thời gian còn lại (không lưu vào file)
   const inp = { left: false, right: false, jumpPressed: false };
   const keys = { left: false, right: false };
@@ -782,10 +790,19 @@
   }
   function newBoss() {
     const h = hasBoss() ? bossHome() : null; if (!h) return null;
-    return { state: 'sleep', t: 0, x: h.x, y: h.y, hx: h.x, hy: h.y, tx: h.tx, ty: h.ty, hp: BOSS_HP, hurtT: 0, atkT: 2.4, n: 0,
+    const kind = bossObj ? (bossObj.id || 'thunder') : 'thunder'; // công tắc "boss canh star" = Vua Sấm
+    const B = { kind: kind, state: 'sleep', t: 0, x: h.x, y: h.y, hx: h.x, hy: h.y, tx: h.tx, ty: h.ty, hp: BOSS_HP, hurtT: 0, atkT: 2.4, n: 0,
       phase: 'hover', pt: 0, diveT: 1.8, diveX: 0, diveY: 0, misses: 0, hitDive: false, gloatT: 0 };
+    if (kind === 'rock') { B.phase = 'walk'; B.restT = ROCK_REST; B.hitRest = false; } // Build hiện đúng chỗ Bon đặt; vào Play nó rơi xuống đất (bossStep)
+    return B;
+  }
+  function bossOpen(B) { return B.kind !== 'rock' || B.phase === 'rest'; } // lúc đánh trúng được: Vua Sấm = lúc nào cũng được (tới được khi nó sà xuống) · Người Đá = lúc ngồi nghỉ
+  function bossClang(x, y) { // đánh trúng lúc boss chưa hở: không mất tim, nhắc nhẹ (không chê)
+    fx('clang', x, y); tone(1400, 0.06, 'square', 0.05);
+    if (clangT <= 0) { showHint('Wait till it sits down!'); clangT = 3; }
   }
   function resetFight() {
+    drops = []; loot = []; clangT = 0;
     weapon = null; atkCd = 0; shots = []; slashT = 0; bolts = []; boss = newBoss(); wind = { dir: 0, t: 2, str: 0 }; storm = 0; rage = false; lockT = 0; noWpT = 0;
     fightN = { fired: 0, kills: 0, bounces: 0, bossHits: 0, zaps: 0 };
     // màn có boss mà Bon quên đặt vũ khí → tự có đống đá cạnh Start (star bị khoá thì phải luôn có cách hạ boss)
@@ -807,7 +824,7 @@
       atkCd = SWORD_CD; slashT = 0.22; slashDir = d; tone(900, 0.12, 'sawtooth', 0.08, 300); fx('slash', b.x + d * 44, b.y, d);
       for (const e of enemies) { if (e.gone) continue; const dx = (e.x - b.x) * d; if (dx > -10 && dx < SWORD_REACH + e.rc && Math.abs(e.y - b.y) < 40 + e.rc) hitEnemy(e, d); }
       const B = boss;
-      if (B && B.state === 'fight' && B.hurtT <= 0) { const dx = (B.x - b.x) * d; if (dx > -BOSS_R && dx < SWORD_REACH + BOSS_R && Math.abs(B.y - b.y) < BOSS_R + 40) hitBoss(B.x - d * BOSS_R * 0.6, B.y, 2); }
+      if (B && B.state === 'fight' && B.hurtT <= 0) { const dx = (B.x - b.x) * d; if (dx > -BOSS_R && dx < SWORD_REACH + BOSS_R && Math.abs(B.y - b.y) < BOSS_R + 40) { if (bossOpen(B)) hitBoss(B.x - d * BOSS_R * 0.6, B.y, 2); else bossClang(B.x - d * BOSS_R * 0.6, B.y); } }
     }
   }
   function hitEnemy(e, s) {
@@ -818,10 +835,10 @@
     }
   }
   function hitBoss(x, y, dmg) {
-    const B = boss; B.hp = Math.max(0, B.hp - dmg); B.hurtT = 0.45; B.hitDive = true; fightN.bossHits++; shakeT = 0.15;
+    const B = boss; B.hp = Math.max(0, B.hp - dmg); B.hurtT = 0.45; B.hitDive = true; B.hitRest = true; fightN.bossHits++; shakeT = 0.15;
     tone(180, 0.2, 'square', 0.12, 90); fx('hit_boss', x, y);
     if (B.hp <= 0) { // thua = hết giận, ở lại ăn mừng cùng baby; star mở khoá; trời quang lại
-      B.state = 'happy'; B.t = 0; rage = false; bolts = [];
+      B.state = 'happy'; B.t = 0; rage = false; bolts = []; drops = [];
       showHint('You did it! The boss is your friend now!');
       tone(523, 0.14, 'triangle', 0.12); tone(659, 0.14, 'triangle', 0.12, 0, 0.14); tone(784, 0.22, 'triangle', 0.12, 0, 0.28);
       fx('boss_happy', B.x, B.y);
@@ -835,23 +852,30 @@
   }
   function bossStep(dt) {
     const B = boss, b = hero;
-    storm = approach(storm, B && (B.state === 'intro' || B.state === 'fight') ? 1 : 0, dt * 0.7); // trời tối dần khi boss dậy, quang lại khi boss thua
-    if (!B || B.state !== 'fight') { wind.dir = 0; wind.str = approach(wind.str, 0, 400 * dt); }
+    const thunder = !!B && B.kind === 'thunder';
+    storm = approach(storm, thunder && (B.state === 'intro' || B.state === 'fight') ? 1 : 0, dt * 0.7); // Vua Sấm: trời tối dần khi boss dậy, quang lại khi boss thua
+    if (!thunder || B.state !== 'fight') { wind.dir = 0; wind.str = approach(wind.str, 0, 400 * dt); }
     if (!B) return;
     B.t += dt; if (B.hurtT > 0) B.hurtT -= dt; if (B.gloatT > 0) B.gloatT -= dt;
+    if (B.kind === 'rock') { const g0 = groundBelow(B.x, B.y - BOSS_R); B.y = approach(B.y, (g0 < 1e8 ? g0 : LVB) - BOSS_R, 600 * dt); } // Người Đá đứng trên đất: đặt lơ lửng thì rơi xuống đất ngay dưới chỗ đặt
     if (B.state === 'sleep') { // ngủ tới khi baby lại gần
-      if (Math.abs(b.x - B.tx) < BOSS_TRIG && Math.abs(b.y - B.ty) < 14 * CELL) { B.state = 'intro'; B.t = 0; showHint('The Thunder King woke up!'); tone(140, 0.5, 'sawtooth', 0.12, 70); shakeT = 0.3; fx('boss_intro', B.x, B.y); }
+      if (Math.abs(b.x - B.tx) < BOSS_TRIG && Math.abs(b.y - B.ty) < 14 * CELL) { B.state = 'intro'; B.t = 0; showHint('The ' + BOSS_NAME[B.kind] + ' woke up!'); tone(140, 0.5, 'sawtooth', 0.12, 70); shakeT = 0.3; fx('boss_intro', B.x, B.y); }
       return;
     }
     if (B.state === 'intro') {
-      if (B.t > 1.8) { B.state = 'fight'; B.phase = 'hover'; B.atkT = 1.6; rage = true; wind.t = 0.5; showHint('Hit it when it dives down!'); fx('boss_fight', B.x, B.y); }
+      if (B.t > 1.8) {
+        B.state = 'fight'; fx('boss_fight', B.x, B.y);
+        if (thunder) { B.phase = 'hover'; B.atkT = 1.6; rage = true; wind.t = 0.5; showHint('Hit it when it dives down!'); }
+        else { B.phase = 'walk'; B.atkT = 1.4; showHint('Hit it when it sits down!'); }
+      }
       return;
     }
     if (B.state === 'happy') { // hạ xuống gần mặt đất chỗ nó đang đứng, nhảy mừng (hình tự nhún)
       const gy = groundBelow(B.x, B.y - BOSS_R);
-      B.y = approach(B.y, (gy < 1e8 ? gy : LVB) - BOSS_R - 26, 260 * dt);
+      B.y = approach(B.y, (gy < 1e8 ? gy : LVB) - BOSS_R - (thunder ? 26 : 0), 260 * dt);
       return;
     }
+    if (B.kind === 'rock') { rockStep(B, dt); return; }
     wind.t -= dt;
     if (wind.t <= 0) { wind.t = 2.5 + Math.random() * 2; wind.dir = [-1, 0, 1][Math.floor(Math.random() * 3)]; fx('wind', b.x, b.y, wind.dir); }
     wind.str = approach(wind.str, wind.dir ? WIND_MAX : 0, 300 * dt);
@@ -877,9 +901,55 @@
       }
     }
   }
+  function rockStep(B, dt) { // Người Đá: đi → nhấc chân (báo) → dậm (đá rơi) → ngồi xoa chân (đánh được) → đi
+    const b = hero;
+    if (B.phase === 'walk') { // đi chậm về phía baby (không ra khỏi vùng quanh chỗ đặt), đứng lại khi đã sát
+      const tx = clamp(clamp(b.x, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R);
+      if (Math.abs(tx - B.x) > BOSS_R + 30) { const nx = approach(B.x, tx, ROCK_WALK_V * dt); if (!solidAt(nx + Math.sign(tx - B.x) * BOSS_R, B.y)) B.x = nx; }
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // nhấc chân: bóng hiện ngay chỗ baby đang đứng — chỗ đá rơi CHỐT từ lúc này
+        B.phase = 'lift'; B.pt = ROCK_WARN; B.n++;
+        const x = clamp(b.x, 40, levelW() - 40), gy = groundBelow(x, b.y - 40);
+        drops.push({ x: x, y: gy < 1e8 ? gy : LVB, phase: 'warn', warn: ROCK_WARN, w0: ROCK_WARN, fy: 0, vy: 0 });
+        tone(330, 0.12, 'triangle', 0.08); tone(330, 0.12, 'triangle', 0.08, 0, 0.3); fx('rock_lift', x, gy < 1e8 ? gy : LVB); showHint('Run away from the shadow!');
+      }
+    } else if (B.phase === 'lift') {
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'stomp'; B.pt = 0.4; shakeT = 0.25; tone(70, 0.35, 'sawtooth', 0.14, 40); fx('stomp', B.x, B.y + BOSS_R); }
+    } else if (B.phase === 'stomp') {
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'rest'; B.pt = B.restT; B.hitRest = false; fx('rest', B.x, B.y); showHint('Now! Hit it!'); tone(660, 0.1, 'triangle', 0.1); tone(880, 0.14, 'triangle', 0.1, 0, 0.12); }
+    } else { // rest: ngồi xoa chân — LÚC NÀY đánh trúng được; hụt 2 lần liền thì lần sau ngồi lâu hơn
+      B.pt -= dt;
+      if (B.pt <= 0) { if (!B.hitRest && ++B.misses >= 2) { B.restT = Math.min(4.2, B.restT + 0.6); B.misses = 0; } B.phase = 'walk'; B.atkT = B.hp <= 2 ? 1.6 : 2.4; }
+    }
+    // lúc ngồi nghỉ: baby lỡ đứng lọt vào thân boss (bị đá hất vào) thì bị đẩy nhẹ ra mép, không khuất trong thân
+    if (B.phase === 'rest') { const dx = b.x - B.x, pen = BOSS_R + RC - 6 - Math.abs(dx); if (pen > 0 && Math.abs(b.y - B.y) < BOSS_R + RC) { const s = dx >= 0 ? 1 : -1, nx = b.x + s * Math.min(pen, 260 * dt); if (!solidAt(nx + s * RC, b.y)) b.x = nx; } }
+    // đụng thân lúc nó đang đứng / đi = bị hất (lúc ngồi nghỉ thì không, để baby lại gần đánh)
+    if (B.phase !== 'rest' && b.hurtT <= 0 && !won) { const dx = b.x - B.x, dy = b.y - B.y; if (dx * dx + dy * dy < (BOSS_R + RC - 10) * (BOSS_R + RC - 10)) { bump({ x: B.x }, dx); B.gloatT = 1.3; } }
+  }
+  function dropStep(dt) { // đá rơi: báo bằng bóng → rơi thẳng xuống đúng chỗ đã báo → trúng baby = hất văng (KHÔNG về Start) → nằm lại thành đá nhặt
+    const b = hero;
+    for (const D of drops) {
+      if (D.phase === 'warn') { D.warn -= dt; if (D.warn <= 0) { D.phase = 'fall'; D.fy = D.y - ROCK_DROP_H; D.vy = 0; } }
+      else if (D.phase === 'fall') {
+        D.vy += GRAV * dt; D.fy += D.vy * dt;
+        if (D.fy >= D.y - 14) {
+          D.phase = 'done'; shakeT = 0.18; tone(90, 0.3, 'square', 0.12, 50); fx('rock_land', D.x, D.y);
+          const dx = b.x - D.x;
+          if (Math.abs(dx) < 46 && b.y > D.y - 150 && b.y < D.y + 40 && b.hurtT <= 0 && b.ouchT <= 0 && !won) { bump({ x: D.x }, boss ? (b.x >= boss.x ? 1 : -1) : (dx || 1)); b.hurtT = 1.0; fightN.zaps++; } // hất RA XA boss (không văng vào thân nó)
+          loot.push({ x: D.x, y: D.y - 14, life: ROCK_LOOT_T }); if (loot.length > 3) loot.shift();
+        }
+      }
+    }
+    drops = drops.filter(D => D.phase !== 'done');
+    for (const L of loot) { // đá nằm lại: baby tay không chạm vào = cầm đá (đang cầm món khác thì để yên, khỏi đổi ngang)
+      L.life -= dt;
+      if (!weapon && (b.x - L.x) * (b.x - L.x) + (b.y - L.y) * (b.y - L.y) < (RC + 18) * (RC + 18)) { weapon = 'rocks'; L.life = 0; noise('wing'); fx('weapon', L.x, L.y); showHint('Rocks! Hold Attack to throw'); }
+    }
+    loot = loot.filter(L => L.life > 0);
+  }
   function fightStep(dt) { // gọi trong physStep (mỗi 1/120 giây lúc Play)
     const b = hero;
-    if (atkCd > 0) atkCd -= dt; if (lockT > 0) lockT -= dt; if (noWpT > 0) noWpT -= dt; if (slashT > 0) slashT -= dt;
+    if (atkCd > 0) atkCd -= dt; if (lockT > 0) lockT -= dt; if (noWpT > 0) noWpT -= dt; if (slashT > 0) slashT -= dt; if (clangT > 0) clangT -= dt;
     for (const it of weaponList) { // chạm là cầm; đang cầm món khác thì đổi (món vẫn nằm đó để đổi lại)
       const cx = (it.x + 0.5) * CELL, cy = BAR + (it.y + 0.5) * CELL;
       if (weapon !== it.t && (b.x - cx) * (b.x - cx) + (b.y - cy) * (b.y - cy) < (RC + 18) * (RC + 18)) {
@@ -898,10 +968,11 @@
       for (const e of enemies) { if (e.gone) continue; const r = e.rc + 12; if ((s.x - e.x) * (s.x - e.x) + (s.y - e.y) * (s.y - e.y) < r * r) { hitE = e; break; } }
       if (hitE) { s.life = 0; hitEnemy(hitE, s.vx >= 0 ? 1 : -1); continue; }
       const B = boss;
-      if (B && B.state === 'fight' && B.hurtT <= 0 && (s.x - B.x) * (s.x - B.x) + (s.y - B.y) * (s.y - B.y) < (BOSS_R + 10) * (BOSS_R + 10)) { s.life = 0; hitBoss(s.x, s.y, 1); }
+      if (B && B.state === 'fight' && B.hurtT <= 0 && (s.x - B.x) * (s.x - B.x) + (s.y - B.y) * (s.y - B.y) < (BOSS_R + 10) * (BOSS_R + 10)) { s.life = 0; if (bossOpen(B)) hitBoss(s.x, s.y, 1); else bossClang(s.x, s.y); }
     }
     shots = shots.filter(s => s.life > 0);
     bossStep(dt);
+    dropStep(dt);
     for (const L of bolts) {
       if (L.phase === 'warn') {
         L.warn -= dt;
@@ -933,12 +1004,21 @@
     }
   }
   function drawBoss2D(B, t, mini) { // mây đội vương miện, vẽ quanh gốc toạ độ, bán kính ~BOSS_R (mini = ô ở thanh món / nút Boss level: không tim, không chữ)
-    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && B.phase === 'warn';
+    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && (B.phase === 'warn' || B.phase === 'lift');
     ctx.save(); ctx.translate(warn ? Math.sin(t * 60) * 4 : 0, happy ? -Math.abs(Math.sin(t * 6)) * 16 : asleep ? Math.sin(t * 1.6) * 3 : 0);
+    if (B.kind === 'rock') { // Người Đá: tảng đá tròn có rêu trên đầu, 2 tay 2 chân cục đá (ngồi nghỉ thì thấp xuống)
+      const sit = B.state === 'fight' && B.phase === 'rest' ? 14 : 0; ctx.translate(0, sit);
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#d6cfc4' : '#9a8f80';
+      for (const q of [[-30, 50, 16], [30, 50, 16], [-58, 12, 20], [58, 12, 20]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
+      for (const q of [[0, 4, 50], [-26, -20, 30], [24, -22, 30]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
+      ctx.fillStyle = '#65a30d'; ctx.beginPath(); ctx.ellipse(0, -44, 34, 12, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(14, -52, 5, 0, TAU); ctx.fill();
+    } else {
     ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#ffffff' : asleep ? '#e2e8f0' : '#a8b3c4';
     for (const q of [[-40, 11, 33], [40, 11, 33], [-16, -16, 38], [20, -13, 36], [0, 18, 40]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
     ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#ca8a04'; ctx.lineWidth = 2.5; ctx.beginPath();
     ctx.moveTo(-24, -45); ctx.lineTo(-24, -71); ctx.lineTo(-12, -57); ctx.lineTo(0, -76); ctx.lineTo(12, -57); ctx.lineTo(24, -71); ctx.lineTo(24, -45); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
     ctx.lineCap = 'round'; ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5;
     if (asleep) {
       ctx.beginPath(); ctx.moveTo(-27, -4); ctx.lineTo(-9, -4); ctx.moveTo(9, -4); ctx.lineTo(27, -4); ctx.stroke();
@@ -972,6 +1052,11 @@
         for (let i = 1; i < 6; i++) ctx.lineTo(boss.x + (L.x - boss.x) * i / 6 + (Math.random() - 0.5) * 36, boss.y + (L.y - boss.y) * i / 6);
         ctx.lineTo(L.x, L.y); ctx.stroke(); }
     }
+    for (const D of drops) { // Người Đá: bóng báo chỗ đá rơi + tảng đá đang rơi
+      ctx.fillStyle = 'rgba(30,41,59,' + (0.25 + 0.2 * Math.sin(t * 20)) + ')'; ctx.beginPath(); ctx.ellipse(D.x, D.y - 3, 40, 9, 0, 0, TAU); ctx.fill();
+      if (D.phase === 'fall') { ctx.fillStyle = '#9a8f80'; ctx.strokeStyle = '#57534e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(D.x, D.fy, 22, 0, TAU); ctx.fill(); ctx.stroke(); }
+    }
+    for (const L of loot) { ctx.save(); ctx.translate(L.x, L.y); ctx.globalAlpha = Math.min(1, L.life); drawWeaponIcon('rocks'); ctx.restore(); }
     if (boss) { ctx.save(); ctx.translate(boss.x, boss.y); drawBoss2D(boss, t, false); ctx.restore(); }
     for (const s of shots) {
       if (s.k === 'fire') { ctx.fillStyle = '#fb923c'; ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, TAU); ctx.fill(); ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, TAU); ctx.fill(); }
@@ -982,7 +1067,7 @@
   function drawBossHud() { // tên + tim của boss, giữa màn, ngay dưới ô chữ nhắc (vẽ 2D cho cả hai đường vẽ)
     const B = boss; if (!B || mode !== 'play' || (B.state !== 'intro' && B.state !== 'fight')) return;
     rr(WW / 2 - 150, BAR + 62, 300, 50, 16); ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fill();
-    text('THUNDER KING', WW / 2 - 66, BAR + 88, 17, '#fde68a');
+    text(BOSS_NAME[B.kind].toUpperCase(), WW / 2 - 66, BAR + 88, 17, '#fde68a');
     for (let i = 0; i < BOSS_HP; i++) text('♥', WW / 2 + 18 + i * 25, BAR + 88, 24, i < B.hp ? '#ef4444' : 'rgba(255,255,255,0.3)');
   }
   function drawRules() { // bảng luật của màn (mở từ ô "Rules" ở trang 2 thanh món)
@@ -1145,14 +1230,16 @@
   function placeAt(x, y) {
     const k = KINDS[tool], before = snapshot();
     let gx = Math.floor(x / CELL), gy = Math.floor((y - BAR) / CELL);
-    if (tool === 'start' || tool === 'star' || tool === 'boss') { // chỉ có 1 → đặt cái mới = dời cái cũ
+    if (tool === 'start' || tool === 'star' || tool === 'boss') { // chỉ có 1 → đặt cái mới = dời cái cũ (boss: đổi luôn sang con vừa chọn)
       const s = level.objs.find(o => o.t === tool);
-      if (s) { s.x = gx; s.y = gy; fitObj(s); sel = s; pushUndo(before); afterEdit(); noise('place'); return; }
+      if (s) { s.x = gx; s.y = gy; if (tool === 'boss') setBossId(s, bossPick); fitObj(s); sel = s; pushUndo(before); afterEdit(); noise('place'); return; }
     }
     const o = { t: tool, x: gx, y: gy, w: k.w, h: k.h };
+    if (tool === 'boss') setBossId(o, bossPick);
     fitObj(o); level.objs.push(o); sel = o; pushUndo(before); afterEdit(); noise('place');
     if (tool === 'enemy') showHint('Drag the blue dot to make it bigger');
   }
+  function setBossId(o, id) { if (id && id !== 'thunder') o.id = id; else delete o.id; }
   function afterEdit() { rebuild(); respawn(); persist(); }
   function buildDown(id, x, y) {
     if (sel) {
@@ -1240,7 +1327,7 @@
       const h = hits[i];
       if (h.layer === layer && inRect(x, y, h)) { h.fn(); return; }
     }
-    if (overlay) { if (overlay === 'pick' || overlay === 'levels' || overlay === 'rules') overlay = null; return; }
+    if (overlay) { if (overlay === 'pick' || overlay === 'levels' || overlay === 'rules' || overlay === 'bosspick') overlay = null; return; }
     if (y < BAR) return;
     if (mode !== 'play') {
       const a = arrowAt(x, y);
@@ -1309,7 +1396,7 @@
   window.addEventListener('keydown', function(e) {
     sfxUnlock();
     const k = e.key;
-    if (k === 'Escape' && (overlay === 'pick' || overlay === 'levels' || overlay === 'rules')) { overlay = null; return; }
+    if (k === 'Escape' && (overlay === 'pick' || overlay === 'levels' || overlay === 'rules' || overlay === 'bosspick')) { overlay = null; return; }
     if (mode !== 'play' || overlay) return;
     if (k === 'ArrowLeft' || k === 'a') { keys.left = true; syncHold(); e.preventDefault(); }
     if (k === 'ArrowRight' || k === 'd') { keys.right = true; syncHold(); e.preventDefault(); }
@@ -1488,7 +1575,7 @@
         if (isPlay && L === level) continue; // đang chơi: con enemy đang đi được vẽ riêng (drawEnemies)
         drawEnemy(enemyFromObj(o, k, L), false); // Build/Draw/ô Levels: đứng yên ở chỗ đặt
       } else if (o.t === 'boss' && L !== level) { // thẻ Levels: boss ngủ ở chỗ đặt (màn đang mở thì drawFight2D vẽ con boss đang sống)
-        ctx.save(); ctx.translate((o.x + 1.5) * CELL, BAR + (o.y + 1.5) * CELL); drawBoss2D({ state: 'sleep', hurtT: 0 }, 0, true); ctx.restore();
+        ctx.save(); ctx.translate((o.x + 1.5) * CELL, BAR + (o.y + 1.5) * CELL); drawBoss2D({ kind: o.id || 'thunder', state: 'sleep', hurtT: 0 }, 0, true); ctx.restore();
       }
     }
   }
@@ -1552,7 +1639,7 @@
     else if (kind === 'star') drawStar(CELL / 2, CELL / 2, 0, 12);
     else if (kind === 'start') drawStart(0, 0, t);
     else if (KINDS[kind].wp) { ctx.translate(CELL / 2, CELL / 2); drawWeaponIcon(kind); }
-    else if (kind === 'boss') { ctx.translate(CELL / 2, CELL / 2 + 5); ctx.scale(0.21, 0.21); drawBoss2D({ state: 'fight', phase: 'hover', hp: 0, hurtT: 0 }, t, true); }
+    else if (kind === 'boss') { ctx.translate(CELL / 2, CELL / 2 + 5); ctx.scale(0.21, 0.21); drawBoss2D({ kind: bossPick, state: 'fight', phase: 'hover', hp: 0, hurtT: 0 }, t, true); }
     ctx.restore();
   }
   function drawTopBar() {
@@ -1694,6 +1781,7 @@
         } else {
           const on = tool === kd;
           button(bx, P.y, P.w, P.h, on ? '#fde68a' : '#f8fafc', on ? '#d97706' : '#cbd5e1', function() {
+            if (kd === 'boss' && tool !== 'boss') { overlay = 'bosspick'; sel = null; noise('click'); return; } // Đợt 4: chọn con boss trước (như chọn baby)
             tool = tool === kd ? null : kd; noise('click');
             showHint(tool ? 'Tap the level to put it down' : 'Pick a piece below, then tap the level');
           });
@@ -1801,6 +1889,23 @@
       text(ch.name, x + 84, y + 280, ch.name.length > 12 ? 17 : 21, '#334155');
     }
   }
+  function bossCardRect(i) { // thẻ thứ i trong bảng chọn boss: tối đa 5 thẻ 1 hàng, canh giữa
+    const n = BOSS_KINDS.length, per = Math.min(5, n), cw = 140, gap = 16, x0 = WW / 2 - (per * cw + (per - 1) * gap) / 2;
+    return { x: x0 + (i % per) * (cw + gap), y: 214 + Math.floor(i / per) * 186, w: cw, h: 170 };
+  }
+  function drawBossPick() { // Đợt 4: bảng chọn boss (giống bảng chọn baby) — chạm 1 con → cầm món Boss của con đó → chạm màn để đặt
+    panel(112, 120, 800, 470);
+    text('Pick a boss!', WW / 2, 172, 38, '#b45309');
+    closeX(872, 160);
+    for (let i = 0; i < BOSS_KINDS.length; i++) {
+      const id = BOSS_KINDS[i], r = bossCardRect(i), x = r.x, y = r.y, cw = r.w, on = bossPick === id;
+      button(x, y, cw, 170, on ? '#fef3c7' : '#ffffff', on ? '#f59e0b' : '#e2e8f0', function() {
+        bossPick = id; tool = 'boss'; overlay = null; noise('click'); showHint('Tap the level to put the ' + BOSS_NAME[id] + ' down');
+      }, 1);
+      ctx.save(); ctx.translate(x + cw / 2, y + 72 + Math.sin(clock * 2 + i) * 3); ctx.scale(0.62, 0.62); drawBoss2D({ kind: id, state: 'fight', phase: 'hover', hp: 0, hurtT: 0 }, clock, true); ctx.restore();
+      text(BOSS_NAME[id], x + cw / 2, y + 148, 17, '#334155');
+    }
+  }
   const CARD = { x0: 150, y0: 142, w: 225, h: 170, gx: 24, gy: 12, ps: 0.2 };
   function drawLevels() {
     panel(72, 72, 880, 640);
@@ -1893,7 +1998,7 @@
   function drop3D(why) { W3 = null; w3Pending = null; w3Why = why; glc.style.display = 'none'; }
   function boot3D() {
     const list = ['lib/three.min.js', 'lib/pp/CopyShader.js', 'lib/pp/LuminosityHighPassShader.js', 'lib/pp/EffectComposer.js', 'lib/pp/RenderPass.js', 'lib/pp/ShaderPass.js',
-      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
+      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'boss_rock.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
     let left = list.length, bad = false;
     for (const f of list) {
       const el = document.createElement('script'); el.src = 'starfinder3d/' + f; el.async = false; // async = false: tải song song nhưng chạy đúng thứ tự
@@ -1914,7 +2019,7 @@
     if (!W3) return;
     if (w3Dirty) { W3.syncLevel(level, stroke); w3Dirty = false; }
     W3.frame({ dt: dt, raw: rawDt, clock: clock, mode: mode, camX: camX, camY: camY, rows: level.rows || ROWS, cols: level.cols, hero: hero, enemies: enemies, got: got, gotWing: gotWing, anim: anim, groundBelow: groundBelow,
-      fight: { weapon: weapon, shots: shots, slashT: slashT, slashDir: slashDir, boss: boss, bolts: bolts, storm: storm, wind: wind, locked: starLocked(), autoRock: autoRock, rage: rage } });
+      fight: { weapon: weapon, shots: shots, slashT: slashT, slashDir: slashDir, boss: boss, bolts: bolts, storm: storm, wind: wind, locked: starLocked(), autoRock: autoRock, rage: rage, drops: drops, loot: loot } });
   }
   function drawStrokeNow() { // nét ĐANG vẽ dở: vẫn vẽ 2D (rẻ, khớp từng điểm ảnh); buông tay thì thành dải 3D
     if (!stroke || stroke.length < 4) return;
@@ -2003,6 +2108,7 @@
     drawTopBar();
     if (FPSHUD && on3) { const i3 = W3.info(); text(Math.round(i3.fps) + ' fps · low ' + (i3.low === null ? '--' : Math.round(i3.low)) + ' · Q' + i3.q, WW - 8, BAR + 14, 14, 'rgba(255,255,255,0.9)', 'right', '700'); }
     if (overlay === 'pick') drawPick();
+    else if (overlay === 'bosspick') drawBossPick();
     else if (overlay === 'levels') drawLevels();
     else if (overlay === 'confirm') drawConfirm();
     else if (overlay === 'win') drawWin();
@@ -2069,6 +2175,8 @@
       attack: attack, holdAttack: function(on) { atkKey = !!on; },
       rules: function(bossOn, hitMode) { if (bossOn) level.bossStar = true; else delete level.bossStar; if (hitMode === 'bounce') level.hitMode = 'bounce'; else delete level.hitMode; afterEdit(); },
       setBoss: function(o) { Object.assign(boss, o); }, // test: đưa boss vào đúng tình huống cần kiểm (vd. còn 1 tim)
+      // Đợt 4: loại boss · con đang chọn trong bảng · đá rơi / đá nhặt
+      boss4: function() { return { kinds: BOSS_KINDS.slice(), names: clone(BOSS_NAME), pick: bossPick, tool: tool, overlay: overlay, cards: BOSS_KINDS.map((id, i) => Object.assign({ id: id }, bossCardRect(i))), drops: clone(drops), loot: clone(loot), open: boss ? bossOpen(boss) : null }; },
     };
   }
 
