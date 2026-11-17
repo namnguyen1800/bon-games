@@ -24,6 +24,12 @@
   .opts button { border:2px solid #cfd8e3; background:#f6f9fc; border-radius:14px; padding:9px 12px; font-size:15px; cursor:pointer; }
   .opts button.on { border-color:var(--accent); background:#fff1e6; font-weight:700; }
   .opts button.scream { border-style:dashed; color:#b3261e; }
+  .tabs { display:flex; gap:8px; margin-bottom:12px; }
+  .tab { flex:1; border:3px solid #dfe6ee; background:#f6f9fc; border-radius:16px; padding:4px 2px 8px; cursor:pointer; font-size:14px; font-weight:700; color:var(--ink); }
+  .tab canvas { width:64px; height:64px; display:block; margin:0 auto; }
+  .tab.on { border-color:var(--accent); background:#fff1e6; }
+  .shift { display:block; margin-top:12px; font-size:15px; color:#445; }
+  .shift input { width:20px; height:20px; vertical-align:middle; margin-right:6px; }
   .close { display:block; margin:14px auto 6px; font-size:18px; padding:12px 34px; border-radius:16px; border:none; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; }
   .tip { position:fixed; left:50%; bottom:max(12px, env(safe-area-inset-bottom)); transform:translateX(-50%); background:#ffffffdd; padding:8px 16px; border-radius:14px; font-size:16px; z-index:4; pointer-events:none; }
 </style>
@@ -38,7 +44,7 @@
 <div class="sheet" id="sheet">
   <div class="card">
     <h2>Pick a laugh 🔊</h2>
-    <p class="sub">Bấm từng nút để nghe. Nút đang tô cam = tiếng em đó dùng trong game khi anh vẽ trượt. Nút gạch đỏ = tiếng hét khi bị trúng (giọng có sẵn).</p>
+    <p class="sub">Chọn 1 em ở hàng trên, rồi bấm từng tiếng để nghe — bấm tiếng nào thì em đó dùng tiếng đó khi anh vẽ trượt (nút tô cam). Đây là tiếng cười thật thu sẵn, không phải giọng máy.</p>
     <div id="rows"></div>
     <button class="close" id="btnClose">Play!</button>
   </div>
@@ -48,7 +54,7 @@
 <script src="lib/froggy_sprites.js"></script>
 <script src="lib/friend_sprites.js"></script>
 <script src="lib/friend_sounds.js"></script>
-<script src="lib/laugh_sounds.js"></script>
+<script src="lib/real_laughs.js"></script>
 <script>
 (function () {
   'use strict';
@@ -131,20 +137,24 @@
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     SFX.ctx.decodeAudioData(arr.buffer, b => { SFX.buf[key] = b; cb(b); }, () => SFX.log.push('decodeErr:' + key));
   }
-  function play(key, dataUrl) {
+  function play(key, dataUrl, rate) {
     SFX.log.push(key);
     if (!SFX.ctx) return;
     if (SFX.ctx.state === 'suspended') SFX.ctx.resume();
     decode(key, dataUrl, b => {
       if (SFX.mouth) { try { SFX.mouth.stop(); } catch (e) {} }
-      const s = SFX.ctx.createBufferSource(); s.buffer = b; s.connect(SFX.ctx.destination); s.start(); SFX.mouth = s;
+      const s = SFX.ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate || 1;
+      s.connect(SFX.ctx.destination); s.start(); SFX.mouth = s;
     });
   }
-  const LS_KEY = 'bonsmash_mau_laughpick';          // khoá lưu RIÊNG của mẫu (file:// dùng chung chỗ lưu)
-  let pick = { froggy: 'laugh1', chicken: 'laugh1', babyfrog: 'laugh1', pillow: 'laugh1' };
+  // Tiếng cười THẬT thu sẵn (mixkit.co, giấy phép Mixkit Free) — giọng máy đọc "ha ha" bị Nam chê 11-16.
+  // Mỗi em phát cùng tiếng nhưng kéo cao/thấp khác nhau cho ra "giọng riêng": Froggy trầm, Baby Froggy cao.
+  const PITCH = { froggy: 0.85, chicken: 1.05, babyfrog: 1.3, pillow: 1.15 };
+  const LS_KEY = 'bonsmash_mau_laughpick2';         // khoá lưu RIÊNG của mẫu (file:// dùng chung chỗ lưu); 2 = bộ tiếng thật
+  let pick = { froggy: 'm107', chicken: 'm2882', babyfrog: 'm743', pillow: 'm2885', shift: true };
   try { Object.assign(pick, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); } catch (e) {}
   function savePick() { try { localStorage.setItem(LS_KEY, JSON.stringify(pick)); } catch (e) {} }
-  const sayLaugh = (id, k) => play(id + ':' + (k || pick[id]), (window.LAUGH_SOUNDS[id] || {})[k || pick[id]]);
+  const sayLaugh = (id, k) => { k = k || pick[id]; play(id + ':' + k, (window.REAL_LAUGHS || {})[k], pick.shift ? PITCH[id] : 1); };
   const sayScream = id => play(id + ':scream', (window.FRIEND_SOUNDS[id] || {}).scream);
 
   // ================= Vật lý =================
@@ -415,24 +425,34 @@
 
   // ================= Bảng nghe thử tiếng cười =================
   const ORDER = ['froggy', 'chicken', 'babyfrog', 'pillow'];
+  // chọn 1 em ở hàng trên → bấm tiếng nào thì em đó cười bằng tiếng đó (nghe luôn + gán luôn)
+  let sheetFriend = 'froggy';
   function buildSheet() {
     const rows = document.getElementById('rows'); rows.innerHTML = '';
+    const tabs = document.createElement('div'); tabs.className = 'tabs';
     for (const id of ORDER) {
-      const row = document.createElement('div'); row.className = 'row';
-      const cv = document.createElement('canvas'); cv.width = 140; cv.height = 140; row.appendChild(cv);
-      const g = cv.getContext('2d'); g.translate(70, 76); setTimeout(() => drawFriendAt(g, id, 'laugh', 28, 0), 150);
-      const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = CHAR[id].name; row.appendChild(nm);
-      const opts = document.createElement('div'); opts.className = 'opts';
-      for (const k of Object.keys(window.LAUGH_TEXT)) {
-        const b = document.createElement('button'); b.textContent = window.LAUGH_TEXT[k];
-        if (pick[id] === k) b.classList.add('on');
-        b.onclick = () => { pick[id] = k; savePick(); sayLaugh(id, k); opts.querySelectorAll('button:not(.scream)').forEach(x => x.classList.toggle('on', x === b)); };
-        opts.appendChild(b);
-      }
-      const sc = document.createElement('button'); sc.className = 'scream'; sc.textContent = 'Ouch! (hét)'; sc.onclick = () => sayScream(id);
-      opts.appendChild(sc);
-      row.appendChild(opts); rows.appendChild(row);
+      const t = document.createElement('button'); t.className = 'tab' + (id === sheetFriend ? ' on' : '');
+      const cv = document.createElement('canvas'); cv.width = 140; cv.height = 140; t.appendChild(cv);
+      const g = cv.getContext('2d'); g.translate(70, 76); setTimeout(() => drawFriendAt(g, id, 'laugh', 28, 0), 120);
+      const nm = document.createElement('div'); nm.textContent = CHAR[id].name; t.appendChild(nm);
+      t.onclick = () => { sheetFriend = id; buildSheet(); };
+      tabs.appendChild(t);
     }
+    rows.appendChild(tabs);
+    const opts = document.createElement('div'); opts.className = 'opts';
+    for (const k of Object.keys(window.REAL_LAUGH_NAMES || {})) {
+      const b = document.createElement('button'); b.textContent = '▶ ' + window.REAL_LAUGH_NAMES[k];
+      if (pick[sheetFriend] === k) b.classList.add('on');
+      b.onclick = () => { pick[sheetFriend] = k; savePick(); sayLaugh(sheetFriend, k); opts.querySelectorAll('button:not(.scream)').forEach(x => x.classList.toggle('on', x === b)); };
+      opts.appendChild(b);
+    }
+    const sc = document.createElement('button'); sc.className = 'scream'; sc.textContent = 'Ouch! (hét khi trúng)'; sc.onclick = () => sayScream(sheetFriend);
+    opts.appendChild(sc);
+    rows.appendChild(opts);
+    const sw = document.createElement('label'); sw.className = 'shift';
+    sw.innerHTML = '<input type="checkbox"' + (pick.shift ? ' checked' : '') + '> Đổi giọng theo từng em (Froggy trầm, Baby Froggy cao)';
+    sw.querySelector('input').onchange = e => { pick.shift = e.target.checked; savePick(); };
+    rows.appendChild(sw);
   }
   const sheet = document.getElementById('sheet');
   document.getElementById('btnLaugh').onclick = () => { buildSheet(); sheet.classList.add('open'); };
