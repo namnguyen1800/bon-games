@@ -76,7 +76,8 @@
   #mk { position:fixed; left:8px; top:50%; transform:translateY(-50%); z-index:30; display:flex; align-items:flex-start; gap:8px; }
   .card { position:relative; }
   #siteHome { position:absolute; left:14px; top:14px; }
-  .card h1 { padding: 0 58px; }
+  .card h1 { padding: 0 54px; font-size: clamp(24px, 4.2vw, 38px); }
+  @media (min-width: 600px) { .card h1 { white-space: nowrap; } } /* iPad: tiêu đề 1 dòng, ◯ không rớt xuống */
   #siteHome[hidden] { display:none; }
   #mkBtn { width:52px; height:52px; border-radius:50%; background:#ffd23f; color:#3a2a00; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,.35); }
   #mkBox { display:none; background:#fffdf5; color:#2b2b2b; border-radius:18px; padding:12px 14px; width:280px; box-shadow:0 10px 40px rgba(0,0,0,.4); font-family: system-ui, sans-serif; }
