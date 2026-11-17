@@ -122,6 +122,7 @@
 <div id="mk"><button id="mkBtn">⚙</button>
   <div id="mkBox">
     <b>🆕 Kết hợp Neon + Gỗ</b><div class="r"><button data-m="theme" data-v="nw1">① Gỗ + đèn neon</button><button data-m="theme" data-v="nw2">② Gỗ tối khắc sáng</button><button data-m="theme" data-v="nw3">③ Khung gỗ, mặt neon</button></div>
+    <b>🆕 Loại gỗ (ảnh gỗ thật)</b><div class="r"><button data-m="wood" data-v="soi">Sồi sáng</button><button data-m="wood" data-v="gu">Gụ đỏ</button><button data-m="wood" data-v="mun">Gỗ sẫm</button></div>
     <b>Kiểu bàn cũ</b><div class="r"><button data-m="theme" data-v="neon">Neon tối</button><button data-m="theme" data-v="sky">Trời xanh</button><button data-m="theme" data-v="wood">Bàn gỗ</button></div>
     <b>Cách ngồi (2 người)</b><div class="r"><button data-m="seat" data-v="tb">Trên – dưới</button><button data-m="seat" data-v="lr">Trái – phải</button></div>
     <b>Mức nổ khi thắng</b><div class="r"><button data-m="boom" data-v="strong">Mạnh</button><button data-m="boom" data-v="light">Nhẹ</button></div>
@@ -137,7 +138,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const TAU = Math.PI * 2;
-  const S = { theme: 'nw1', seat: 'tb', boom: 'strong', face: '1', mode: '2p', diff: 'easy', pieces: 'xo', baby: ['froggy', 'chicken'], n: 3, k: 3 };
+  const S = { theme: 'nw1', wood: 'gu', seat: 'tb', boom: 'strong', face: '1', mode: '2p', diff: 'easy', pieces: 'xo', baby: ['froggy', 'chicken'], n: 3, k: 3 };
   const N_MIN = 3, N_MAX = 15, K_MIN = 3, K_MAX = 7;
   const BABIES = ['froggy', 'chicken', 'babyfrog', 'pillow'];
   const BABY_NAME = { froggy: 'Froggy', chicken: 'Chicken Banana', babyfrog: 'Baby Froggy', pillow: 'Gối chút chút' };
@@ -195,10 +196,10 @@
   // 3 kiểu KẾT HỢP neon + gỗ (Nam thích cả 2): nền tối + quân phát sáng của neon, mặt/khung gỗ của bàn gỗ
   const NEON_BITS = { line: '#3df2ff', lineGlow: 16, p1: '#22e6ff', p2: '#ff3df2', neonPieces: true, css: 'neon',
     core: '#ffffff', glow: '#7df9ff', glow2: '#c77dff', sparks: ['#ffffff', '#7df9ff', '#ff8cf7', '#c77dff'], flash: '#bff8ff' };
-  TH.neon.neonPieces = true;
-  TH.nw1 = Object.assign({}, NEON_BITS, { board: 'wood', inlay: true, neonEdge: '#3df2ff', plateEdge: '#3df2ff' });   // gỗ sáng, đèn neon cẩn trong gỗ
-  TH.nw2 = Object.assign({}, NEON_BITS, { board: 'walnut', inlay: true, neonEdge: '#ff3df2', plateEdge: '#ff3df2' }); // gỗ óc chó tối, rãnh khắc phát sáng
-  TH.nw3 = Object.assign({}, NEON_BITS, { board: 'frame', plate: 'rgba(8,8,30,.92)', plateEdge: 'rgba(125,249,255,.7)' }); // khung gỗ dày, mặt kính neon
+  TH.neon.neonPieces = true; TH.wood.wood = 'soi';
+  TH.nw1 = Object.assign({}, NEON_BITS, { board: 'wood', inlay: true, neonEdge: '#3df2ff', plateEdge: '#3df2ff', wood: 'gu' });   // gỗ sáng, đèn neon cẩn trong gỗ
+  TH.nw2 = Object.assign({}, NEON_BITS, { board: 'walnut', inlay: true, neonEdge: '#ff3df2', plateEdge: '#ff3df2', wood: 'mun' }); // gỗ óc chó tối, rãnh khắc phát sáng
+  TH.nw3 = Object.assign({}, NEON_BITS, { board: 'frame', plate: 'rgba(8,8,30,.92)', plateEdge: 'rgba(125,249,255,.7)', wood: 'soi' }); // khung gỗ dày, mặt kính neon
   const T = () => TH[S.theme];
 
   // ================= âm thanh (tự tạo bằng code, không file) =================
@@ -369,11 +370,27 @@
 
   // ================= vẽ bàn =================
   let woodTex = null, woodKey = '';
+  // ẢNH GỖ THẬT (Poly Haven, CC0 — dùng tự do): sồi sáng / gụ đỏ / mun đen. Ảnh chưa tải xong thì vẽ vân bằng code.
+  const WOOD_SRC = { soi: 'wood/oak.jpg', gu: 'wood/mahogany.jpg', mun: 'wood/ebony.jpg' }, WOOD_IMG = {};
+  for (const k in WOOD_SRC) { const im = new Image(); im.onload = () => { woodTex = null; }; im.src = WOOD_SRC[k]; WOOD_IMG[k] = im; }
+  const woodReady = k => { const im = WOOD_IMG[k]; return !!(im && im.complete && im.naturalWidth); };
   const WOOD_PAL = { wood: ['#d39a5c', '#b8773d', '#9a5d2b', '90,45,15', '240,190,130'], walnut: ['#4b2e1a', '#35200f', '#22140a', '10,5,2', '150,100,60'] };
-  function woodPlate(size, kind) { // vân gỗ vẽ 1 lần
-    const pal = WOOD_PAL[kind] || WOOD_PAL.wood;
-    const key = Math.round(size * DPR) + kind; if (woodTex && woodKey === key) return woodTex;
+  function woodPlate(size, kind) { // mặt gỗ vẽ 1 lần rồi dùng lại
+    const photo = S.wood, ready = woodReady(photo);
+    const key = Math.round(size * DPR) + kind + photo + ready; if (woodTex && woodKey === key) return woodTex;
     const px = Math.round(size * DPR), c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+    if (ready) {
+      g.drawImage(WOOD_IMG[photo], 0, 0, px, px);
+      // lớp véc-ni: vệt bóng chéo + tối dần ra mép (như mặt bàn được đánh bóng, có đèn chiếu)
+      const sh = g.createLinearGradient(0, 0, px, px);
+      sh.addColorStop(0, 'rgba(255,255,255,.16)'); sh.addColorStop(0.35, 'rgba(255,255,255,.02)'); sh.addColorStop(0.5, 'rgba(255,255,255,.09)');
+      sh.addColorStop(0.62, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.22)');
+      g.fillStyle = sh; g.fillRect(0, 0, px, px);
+      const vg = g.createRadialGradient(px / 2, px / 2, px * 0.3, px / 2, px / 2, px * 0.75);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.38)'); g.fillStyle = vg; g.fillRect(0, 0, px, px);
+      woodTex = c; woodKey = key; return c;
+    }
+    const pal = WOOD_PAL[photo === 'mun' ? 'walnut' : 'wood'];
     const gr = g.createLinearGradient(0, 0, px, px); gr.addColorStop(0, pal[0]); gr.addColorStop(0.5, pal[1]); gr.addColorStop(1, pal[2]);
     g.fillStyle = gr; g.fillRect(0, 0, px, px);
     for (let i = 0; i < 70; i++) { const y = Math.random() * px; g.strokeStyle = `rgba(${Math.random() < 0.5 ? pal[3] : pal[4]},${0.06 + Math.random() * 0.12})`;
@@ -381,6 +398,11 @@
     woodTex = c; woodKey = key; return c;
   }
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function bevel(g, x, y, s, r) { // cạnh vát của tấm gỗ dày: mép trên sáng, mép dưới tối
+    const gr = g.createLinearGradient(0, y, 0, y + s);
+    gr.addColorStop(0, 'rgba(255,236,210,.55)'); gr.addColorStop(0.5, 'rgba(255,236,210,.05)'); gr.addColorStop(1, 'rgba(0,0,0,.55)');
+    g.save(); g.strokeStyle = gr; g.lineWidth = 5; rr(g, x + 2.5, y + 2.5, s - 5, s - 5, Math.max(0, r - 2.5)); g.stroke(); g.restore();
+  }
   const cellC = i => { const n = G.n, c = BS / n; return [BX + (i % n + 0.5) * c, BY + (Math.floor(i / n) + 0.5) * c]; };
   function drawBoard(t) {
     const th = T(), n = G.n, c = BS / n, g = ctx, rad = Math.min(28, BS * 0.05);
@@ -391,6 +413,7 @@
       if (glowE) { g.shadowColor = glowE; g.shadowBlur = 34 * pulse; } else { g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 14; }
       rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.fillStyle = B === 'walnut' ? '#2a170b' : '#7a4a22'; g.fill(); g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
       g.save(); rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.clip(); g.drawImage(woodPlate(BS + 20, B), BX - 10, BY - 10, BS + 20, BS + 20); g.restore();
+      bevel(g, BX - 10, BY - 10, BS + 20, rad);
       if (glowE) { g.strokeStyle = glowE; g.lineWidth = 3; g.shadowColor = glowE; g.shadowBlur = 14; }
       else { g.strokeStyle = '#5a3415'; g.lineWidth = 3; }
       rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.stroke(); g.shadowColor = 'transparent';
@@ -400,6 +423,7 @@
       g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 40; g.shadowOffsetY = 12; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.fillStyle = '#7a4a22'; g.fill();
       g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
       g.save(); rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.clip(); g.drawImage(woodPlate(fs, 'wood'), fx, fx - BX + BY, fs, fs); g.restore();
+      bevel(g, fx, fx - BX + BY, fs, rad + f * 0.6);
       g.strokeStyle = '#4a2a12'; g.lineWidth = 2; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.stroke();
       rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad * 0.6); g.fillStyle = th.plate; g.fill();
       g.strokeStyle = th.plateEdge; g.lineWidth = 2.5; g.shadowColor = th.plateEdge; g.shadowBlur = 16 * pulse; g.stroke(); g.shadowColor = 'transparent';
@@ -414,7 +438,8 @@
     g.lineCap = 'round';
     // mỗi lớp = 1 lần kẻ: màu, bề dày, phát sáng, độ đậm, lệch
     const passes = th.inlay
-      ? [{ s: 'rgba(0,0,0,.55)', w: lw * 1.9, glow: 0, a: 1, off: 0 },              // rãnh khắc tối trong gỗ
+      ? [{ s: 'rgba(255,228,195,.28)', w: lw * 1.9, glow: 0, a: 1, off: lw * 0.55 }, // mép dưới rãnh bắt sáng (như gỗ bị khắc thật)
+         { s: 'rgba(0,0,0,.6)', w: lw * 1.9, glow: 0, a: 1, off: 0 },                // rãnh khắc tối trong gỗ
          { s: th.line, w: lw * 0.85, glow: th.lineGlow * pulse, a: 1, off: 0 },        // ống đèn neon nằm trong rãnh
          { s: 'rgba(255,255,255,.75)', w: lw * 0.25, glow: 0, a: 1, off: 0 }]          // lõi trắng của ống đèn
       : S.theme === 'wood'
@@ -608,7 +633,8 @@
   // ================= nút của MẪU =================
   function syncMk() { document.querySelectorAll('#mkBox [data-m]').forEach(b => b.classList.toggle('on', S[b.dataset.m] === b.dataset.v)); }
   document.querySelectorAll('#mkBox [data-m]').forEach(b => b.onclick = () => {
-    S[b.dataset.m] = b.dataset.v; document.body.className = 't-' + (T().css || S.theme); woodTex = null;
+    S[b.dataset.m] = b.dataset.v; if (b.dataset.m === 'theme' && T().wood) S.wood = T().wood; // mỗi kiểu có loại gỗ hợp sẵn, đổi tay được
+    document.body.className = 't-' + (T().css || S.theme); woodTex = null;
     for (const k in BC) delete BC[k]; syncMk(); layout(); if (G) updatePanels(); syncStart();
   });
   $('mkBtn').onclick = () => $('mk').classList.toggle('open');
@@ -621,7 +647,7 @@
     const p = G.turn, line = []; for (let j = 0; j < k; j++) { const i = (r0 + d[0] * j) * n + (c0 + d[1] * j); G.cells[i] = p; G.born[i] = now() - 1; line.push(i); }
     finish(p, line); $('mk').classList.remove('open');
   };
-  window.__ttt = { S, get G() { return G; }, place, showGame, newGame, layout, FX, sprites: () => ({ frog: frogReady, ...friendReady }) };
+  window.__ttt = { S, get G() { return G; }, place, showGame, newGame, layout, FX, sprites: () => ({ frog: frogReady, ...friendReady, ...Object.fromEntries(Object.keys(WOOD_SRC).map(k => ['wood_' + k, woodReady(k)])) }) };
 
   addEventListener('resize', () => { layout(); if (G) updatePanels(); drawPreviews(); thumbs.forEach(t => t.drawn = false); });
   layout(); syncStart(); syncMk(); requestAnimationFrame(frame);
