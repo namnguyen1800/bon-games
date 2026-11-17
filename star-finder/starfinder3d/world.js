@@ -744,9 +744,9 @@ window.StarWorld = (function () {
     BUILDERS.gun = buildWeapon('gun'); BUILDERS.sword = buildWeapon('sword'); BUILDERS.rocks = buildWeapon('rocks');
 
     const FX3 = new THREE.Group(); scene.add(FX3);
-    let autoRockN = null, heldG = null, lockG = null, slashM = null, bossA = null, bossKit = null, rainNear = null, rainFar = null, flashK = 0, stormK = 0;
+    let autoRockN = null, heldG = null, lockG = null, slashM = null, bossA = null, bossKit = null, rainNear = null, rainFar = null, flashK = 0, stormK = 0, duskK = 0; const hemiDay = hemi.color.clone();
     const fireM = [], rockM = [], rings = new Map(), boltsG = [];
-    const colSleep = lin(0x9aa6c4), colStorm = lin(0x2e3954), colHappy = lin(0xf1f4fb), tintN = new THREE.Color(1, 1, 1), tintR = new THREE.Color(1.9, 0.62, 0.5), fogStorm = new THREE.Color(0x4a5a78), SPARK = ['#fff7c2', '#ffd34d', '#ffffff'];
+    const colSleep = lin(0x9aa6c4), colStorm = lin(0x2e3954), colHappy = lin(0xf1f4fb), tintN = new THREE.Color(1, 1, 1), tintR = new THREE.Color(1.9, 0.62, 0.5), fogStorm = new THREE.Color(0x4a5a78), fogDusk = new THREE.Color(0xb39ad6), hemiDusk = new THREE.Color(0xd8c4ff), SPARK = ['#fff7c2', '#ffd34d', '#ffffff'];
     function fightInit() { // dựng 1 lần, lúc màn đầu tiên cần tới
       heldG = new THREE.Group(); for (const t of ['gun', 'sword', 'rocks']) { const m = weaponMesh(t); m.scale.setScalar(0.62); m.userData.t = t; heldG.add(m); } FX3.add(heldG);
       lockG = new THREE.Group(); const lb = new THREE.Mesh(W_GEO.lockBody, lockMat), la = new THREE.Mesh(W_GEO.lockArc, lockMat), lk = new THREE.Mesh(W_GEO.ball, plateMat);
@@ -826,8 +826,9 @@ window.StarWorld = (function () {
       if (B.hurtT > 0) return 'hurt';
       if (B.phase === 'rest') return 'dizzy';
       if (B.gloatT > 0) return 'gloat';
-      if (B.phase === 'lift' || B.phase === 'windup') return 'scheme'; // Khủng Long dùng chung bảng mặt này: lấy đà = mặt mưu mô, xoay lao = gầm
-      if (B.phase === 'stomp' || B.phase === 'spin') return 'roar';
+      if (B.phase === 'sneeze') return 'hurt';                                     // Nữ Hoàng Băng hắt xì: nhăn mặt
+      if (B.phase === 'lift' || B.phase === 'windup' || B.phase === 'puff' || B.phase === 'charge' || B.phase === 'buzz' || B.phase === 'hoot' || B.phase === 'wand' || B.phase === 'glow' || B.phase === 'bubble') return 'scheme'; // các boss Đợt 4 dùng chung bảng mặt này: lúc báo = mặt mưu mô, lúc ra chiêu = gầm
+      if (B.phase === 'stomp' || B.phase === 'spin' || B.phase === 'blow' || B.phase === 'pull' || B.phase === 'swarm' || B.phase === 'swoop' || B.phase === 'roll' || B.phase === 'flame' || B.phase === 'slam') return 'roar';
       if (B.hp === 1) return 'panic';
       if (B.hp <= 2) return 'rage';
       return 'grumpy';
@@ -975,6 +976,420 @@ window.StarWorld = (function () {
       if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.2 + bo.wob.position.y - bo.wobHome, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
       if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
     }
+    // ---- Đợt 4: CÁ VOI GIÓ — bay lơ lửng → hạ thấp, phồng má (hàng mũi tên báo hướng gió) → thổi → xẹp bụng nằm nghỉ (lúc đánh được) → mừng ----
+    let whaleA = null, gustG = null; const GUST_LEN = 10, WIND_COLS = ['#ffffff', '#e0f2fe', '#bae6fd'];
+    function drawWhale(B, F, st, dt, clock) {
+      const bo = whaleA;
+      if (!B) { bo.root.visible = false; if (gustG) gustG.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight', dir = B.gustDir || 1;
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const puff = fight && B.phase === 'puff', blow = fight && B.phase === 'blow', rest = fight && B.phase === 'rest';
+      // mức phồng má (lớn dần trong lúc báo, xẹp dần trong lúc thổi) và mức xẹp bụng lúc nghỉ, chuyển mượt
+      const puffTo = puff ? clamp(1.15 - B.pt, 0.3, 1) : blow ? clamp(B.pt / 1.2, 0, 1) : 0;
+      bo.puffK = (bo.puffK || 0) + (puffTo - (bo.puffK || 0)) * Math.min(1, dt * 10);
+      bo.flatK = (bo.flatK || 0) + ((rest ? 1 : 0) - (bo.flatK || 0)) * Math.min(1, dt * 8);
+      let y = Y(B.y) + (rest ? 0 : Math.sin(clock * 1.7) * 0.12), rz = 0;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.5;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x) + (puff ? Math.sin(clock * 50) * 0.03 : 0) - (blow ? dir * 0.15 : 0), y, 0);
+      const s = 1 + 0.24 * bo.puffK, br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.2));
+      let sx = s * (1 + br * 0.02) * (1 + 0.1 * bo.flatK), sy = s * (1 - br * 0.025) * (1 - 0.2 * bo.flatK);
+      if (blow) rz = -dir * 0.12;                                                                                     // đang thổi: chúi về phía trước
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx *= 1.06 * k; sy *= 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx *= 1 - k * 0.1; sy *= 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.1;
+      bo.wob.scale.set(sx, sy, s);
+      bo.wob.rotation.set(0, puff || blow ? dir * 0.5 : fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz);
+      // vây: quạt nhẹ khi bay; nghỉ thì rũ xuống; mừng thì vẫy nhanh. Đuôi: vẫy qua lại
+      for (let i = 0; i < 2; i++) {
+        const A = bo.fins[i], sd = i ? 1 : -1;
+        A.rotation.z = rest ? -sd * 0.6 : sd * ((face === 'happy' || face === 'gloat' ? 0.9 : 0.15) + Math.sin(clock * (face === 'happy' ? 12 : 4) + i) * 0.3);
+      }
+      bo.tail.rotation.set(0, Math.sin(clock * 3) * 0.3, rest ? -0.3 : Math.sin(clock * 2.2) * 0.1); bo.flukes.rotation.x = Math.sin(clock * 3 + 1) * 0.4;
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // hàng mũi tên báo hướng gió: chạy chậm lúc phồng má (báo), chạy nhanh + sáng lúc thổi; trải hết chiều dài luồng, ngang tầm baby
+      const ga = puff || blow;
+      if (ga && !gustG) {
+        gustG = new THREE.Group();
+        const sh = new THREE.Shape(); sh.moveTo(-0.35, 0.45); sh.lineTo(-0.1, 0.45); sh.lineTo(0.35, 0); sh.lineTo(-0.1, -0.45); sh.lineTo(-0.35, -0.45); sh.lineTo(0.1, 0); sh.closePath();
+        const geo = new THREE.ShapeGeometry(sh);
+        for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: G.hdr(0xbfe9ff, 1.6), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })); m.material.userData.own = true; m.material.name = 'gustArrow'; gustG.add(m); }
+        gustG.renderOrder = 4; FX3.add(gustG);
+      }
+      if (gustG) {
+        gustG.visible = ga;
+        if (ga) {
+          const span = GUST_LEN - R - 1.2, pulse = 0.5 + 0.5 * Math.sin(clock * 16);
+          gustG.position.set(X(B.x), Y(B.y), 0);
+          for (let i = 0; i < 5; i++) { const m = gustG.children[i], off = (i * span / 5 + clock * (blow ? 12 : 2.5)) % span; m.position.set(dir * (R + 0.8 + off), -0.4, 0.5); m.scale.x = dir; m.material.opacity = (blow ? 0.85 : 0.3 + 0.35 * pulse) * Math.sqrt(Math.sin(off / span * Math.PI)); }
+        }
+      }
+      // đang thổi: vệt gió trắng bay dọc luồng; đang bay / phồng má: thỉnh thoảng phun nước trên đầu; nghỉ: sao quay quanh đầu (= dấu "tới lượt bạn"); mừng: sao
+      if (blow) for (let i = 0; i < 2; i++) psNorm.add({ x: X(B.x) + dir * (R * 0.9 + Math.random() * 1.5), y: y - 0.4 + (Math.random() - 0.5) * 1.6, z: 0.3 + (Math.random() - 0.5) * 0.8, vx: dir * (11 + Math.random() * 6), vy: (Math.random() - 0.5) * 0.8, vz: 0, col: WIND_COLS[Math.floor(Math.random() * 3)], size: 0.2, life: 0.45, a: 0.8 });
+      if (!rest && !blow && face !== 'sleep' && Math.random() < dt * 10) psNorm.add({ x: X(B.x) + (Math.random() - 0.5) * 0.2, y: y + R * 0.98 * sy, z: 0.1, vx: (Math.random() - 0.5) * 1.4, vy: 3.2 + Math.random() * 1.6, vz: (Math.random() - 0.5) * 0.6, col: WIND_COLS[1 + Math.floor(Math.random() * 2)], size: 0.2, life: 0.6, grav: 9, a: 0.9 });
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 0.95, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: ROBOT NAM CHÂM — đi lạch cạch → sạc (nam châm nháy đỏ theo 3 nhịp, vòng vùng hút trên đất) → hút (nam châm sáng rực, tia sáng chạy vào) → mở nắp bụng nghỉ (lõi vàng = chỗ đánh) → mừng ----
+    let robotA = null, fieldN = null; const MAG_COLS = ['#fca5a5', '#ffffff', '#bfdbfe'];
+    function drawRobot(B, F, st, dt, clock) {
+      const bo = robotA;
+      if (!B) { bo.root.visible = false; if (fieldN) fieldN.g.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const charge = fight && B.phase === 'charge', pull = fight && B.phase === 'pull', rest = fight && B.phase === 'rest', walking = fight && B.phase === 'walk', step = Math.sin(clock * 9);
+      // nam châm: lúc sạc nháy theo 3 nhịp, lúc hút sáng rực; nắp bụng: mở lúc nghỉ; lõi: sáng lúc nắp mở
+      const beat = charge ? 0.5 + 0.5 * Math.max(0, Math.sin((1 - B.pt) * 3 * Math.PI * 2 - Math.PI / 2)) : 0;
+      const magTo = pull ? 1 : charge ? 0.45 + 0.55 * beat : 0;
+      bo.mag = (bo.mag || 0) + (magTo - (bo.mag || 0)) * Math.min(1, dt * 14);
+      bo.hatchK = (bo.hatchK || 0) + ((rest ? 1 : 0) - (bo.hatchK || 0)) * Math.min(1, dt * 7);
+      bo.coreK = (bo.coreK || 0) + ((rest ? 1 : 0) - (bo.coreK || 0)) * Math.min(1, dt * 6);
+      bo.magMat.emissiveIntensity = bo.mag * 2.2; bo.tipMat.emissiveIntensity = bo.mag * 1.6;
+      bo.hatch.rotation.x = bo.hatchK * 1.45;
+      bo.coreMat.emissiveIntensity = 0.3 + bo.coreK * (1.8 + 0.6 * Math.sin(clock * 8));
+      let y = Y(B.y), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.55;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x) + (pull ? Math.sin(clock * 60) * 0.025 : 0), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.4));
+      sx = 1 + br * 0.012; sy = 1 - br * 0.015;
+      if (walking) rz = step * 0.05;
+      if (charge) { sy *= 1 + 0.03 * beat; }
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.05;
+      bo.wob.position.y = bo.wobHome + (walking ? Math.abs(step) * 0.04 * R : 0) - (rest ? 0.06 * R : 0);
+      bo.wob.scale.set(sx, sy, 1); bo.wob.rotation.set(0, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz);
+      bo.head.rotation.z = face === 'dizzy' ? Math.sin(clock * 2.5) * 0.18 : 0; bo.magnet.rotation.z = face === 'dizzy' ? 0.35 : 0;
+      // chân: đi thì nhấc so le
+      for (let i = 0; i < 2; i++) { const L = bo.legs[i], s = i ? 1 : -1; L.position.set(s * 0.42 * R, -0.86 * R + (walking ? Math.max(0, step * s) * 0.12 * R : 0), 0.05 * R); }
+      // tay: đi thì đánh nhẹ; sạc / hút thì giơ 2 càng lên (như đang điều khiển nam châm); nghỉ thì buông thõng; mừng thì vẫy
+      for (let i = 0; i < 2; i++) {
+        const A = bo.arms[i], s = i ? 1 : -1; let az = 0, ax = 0;
+        if (walking) ax = -step * s * 0.35;
+        if (charge || pull) az = s * (2.3 + (pull ? Math.sin(clock * 30 + i) * 0.1 : 0));
+        if (rest) az = s * 0.15;
+        if (face === 'happy' || face === 'gloat') az = s * (1.9 + Math.sin(clock * 10 + i) * 0.35);
+        if (face === 'hurt') az = s * 0.9;
+        A.rotation.set(ax, 0, az);
+      }
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.4 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // vòng vùng hút trên đất (bán kính = vùng hút 8 ô), hiện lúc sạc + lúc hút
+      const fa = charge || pull, gy = Y(B.y) - R + 0.09;
+      if (fa && !fieldN) {
+        fieldN = { g: new THREE.Group() };
+        const mk = function (geo, col, op) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })); m.material.userData.own = true; m.material.name = 'magField'; fieldN.g.add(m); return m; };
+        const thin = new THREE.RingGeometry(0.965, 1.0, 72).rotateX(-Math.PI / 2); // vòng mảnh (vòng chung W_GEO.ring dày quá khi phóng to 8 ô)
+        fieldN.r1 = mk(thin, G.hdr(0xff5a5a, 1.6), 0.7); fieldN.r2 = mk(thin, G.hdr(0xffb4b4, 1.3), 0.5);
+        fieldN.g.renderOrder = 4; FX3.add(fieldN.g);
+      }
+      if (fieldN) {
+        fieldN.g.visible = fa;
+        if (fa) {
+          const RR = 8, pulse = 0.5 + 0.5 * Math.sin(clock * 18); // bán kính vùng hút = 8 ô (ROBOT_RANGE bên luật)
+          fieldN.g.position.set(X(B.x), gy, 0.2);
+          fieldN.r1.scale.setScalar(RR); fieldN.r1.material.opacity = pull ? 0.8 : 0.3 + 0.4 * beat;
+          fieldN.r2.scale.setScalar(RR * (pull ? 1 - ((clock * 1.6) % 1) : 0.6 + 0.1 * pulse)); fieldN.r2.material.opacity = pull ? 0.6 : 0.25;
+        }
+      }
+      // đang hút: tia sáng nhỏ chạy từ rìa vùng hút vào nam châm; nghỉ: sao quay quanh đầu (= dấu "tới lượt bạn") + lõi tỏa sáng; mừng: sao
+      if (pull) for (let i = 0; i < 2; i++) { const a = Math.random() * TAU, rr = 3 + Math.random() * 5, px = X(B.x) + Math.cos(a) * rr, py = Y(B.y) + Math.sin(a) * rr * 0.4 + 0.3, tx = X(B.x), ty = Y(B.y) + R * 1.15; psSpark.add({ x: px, y: py, z: 0.3, vx: (tx - px) * 2.2, vy: (ty - py) * 2.2, vz: 0, col: MAG_COLS[Math.floor(Math.random() * 3)], size: 0.25, life: 0.42, spin: 4 }); }
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.7, y: y + R * 1.4, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (rest && Math.random() < dt * 12) psAdd.add({ x: X(B.x) + (Math.random() - 0.5) * 0.4, y: Y(B.y) - 0.3 * R + (Math.random() - 0.5) * 0.4, z: R * 0.75, vx: (Math.random() - 0.5) * 1.2, vy: 0.6 + Math.random(), vz: 0.6, col: '#fde047', size: 0.32, life: 0.4, a: 0.8 });
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: ONG CHÚA — bay đập cánh → tổ rung + 3 chú ong ló ra, hàng chấm vàng báo đường bay → đàn 3 chú ong bay theo đường rồi về → hạ xuống ôm tổ nghỉ (lúc đánh được) → mừng ----
+    let beeA = null, beeKit = null, swarmG = null, pathG = null; const honeyM = [], HONEY_COLS = ['#fbbf24', '#f59e0b', '#fde68a'];
+    function drawBee(B, F, st, dt, clock) {
+      const bo = beeA;
+      if (!B) { bo.root.visible = false; if (swarmG) swarmG.visible = false; if (pathG) pathG.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const buzz = fight && B.phase === 'buzz', rest = fight && B.phase === 'rest', flying = !rest && face !== 'sleep';
+      // mức ôm tổ (nghỉ = ôm chặt tổ, cánh cụp), tổ rung lúc báo
+      bo.hug = (bo.hug || 0) + ((rest ? 1 : 0) - (bo.hug || 0)) * Math.min(1, dt * 8);
+      let y = Y(B.y) + (rest || face === 'sleep' ? 0 : Math.sin(clock * 3.1) * 0.15), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.5;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.4)); sx = 1 + br * 0.02; sy = 1 - br * 0.025;
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.08;
+      bo.wob.scale.set(sx, sy, 1); bo.wob.rotation.set(0, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz);
+      // cánh: bay thì đập nhanh (vù vù), nghỉ thì cụp lại, ngủ thì khép hờ
+      const fl = flying ? Math.sin(clock * 55) * 0.55 : 0;
+      for (let i = 0; i < 2; i++) { const s = i ? 1 : -1; bo.wings[i].rotation.set(0.2, -s * (0.3 + 0.6 * bo.hug), s * (0.35 + fl) * (1 - bo.hug * 0.7)); }
+      for (let i = 0; i < 2; i++) bo.antennae[i].rotation.z = Math.sin(clock * 4 + i * 2) * 0.15 + (face === 'dizzy' ? (i ? -0.5 : 0.5) : 0);
+      // tổ: rung lúc báo; nghỉ thì được ôm sát vào bụng, sáng lên chút (= chỗ đánh)
+      bo.hive.position.set(buzz ? Math.sin(clock * 48) * 0.06 : 0, (-0.86 + 0.08 * bo.hug) * R, (0.55 + 0.1 * bo.hug) * R); bo.hive.rotation.z = buzz ? Math.sin(clock * 40) * 0.12 : 0;
+      bo.hiveMat.emissiveIntensity = 0.2 + bo.hug * (0.5 + 0.3 * Math.sin(clock * 8));
+      for (let i = 0; i < 2; i++) { const s = i ? 1 : -1; bo.arms[i].rotation.z = s * (0.2 + 0.5 * bo.hug); }
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // hàng chấm vàng báo đường bay (chỉ lúc báo), ngang tầm baby, từ tổ tới cuối đường
+      if (buzz && !pathG) {
+        pathG = new THREE.Group();
+        for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(W_GEO.ball, new THREE.MeshBasicMaterial({ color: G.hdr(0xffd84a, 1.8), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending })); m.material.userData.own = true; m.material.name = 'beePath'; m.scale.setScalar(0.11); pathG.add(m); }
+        pathG.renderOrder = 4; FX3.add(pathG);
+      }
+      if (pathG) {
+        pathG.visible = buzz;
+        if (buzz) { const x0 = X(B.x), x1 = X(B.pathX), py = Y(B.pathY), n = pathG.children.length; for (let i = 0; i < n; i++) { const m = pathG.children[i], k = i / (n - 1); m.position.set(x0 + (x1 - x0) * k, py, 0.4); m.material.opacity = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(clock * 14 - i * 0.7)); } }
+      }
+      // đàn 3 chú ong: bay quanh tâm đàn (swX, swY); lúc báo thì ló đầu ra khỏi tổ
+      if ((B.swarm || buzz) && !swarmG) { swarmG = new THREE.Group(); for (let i = 0; i < 3; i++) swarmG.add(beeKit.buildMini()); FX3.add(swarmG); }
+      if (swarmG) {
+        swarmG.visible = !!B.swarm || buzz;
+        if (swarmG.visible) {
+          const cx = B.swarm ? X(B.swX) : X(B.x) + Math.sin(clock * 9) * 0.1, cy = B.swarm ? Y(B.swY) : Y(B.y) - 0.86 * R + 0.25, dir = B.swarm === 2 ? -(B.pathDir || 1) : (B.pathDir || 1);
+          for (let i = 0; i < 3; i++) {
+            const m = swarmG.children[i], a = clock * 7 + i * Math.PI * 2 / 3, rr = B.swarm ? 0.45 : 0.32;
+            m.position.set(cx + Math.cos(a) * rr, cy + Math.sin(a * 1.3) * rr * 0.6, 0.5 + Math.sin(a) * 0.3); m.scale.x = dir < 0 ? -1 : 1;
+            for (const w of m.userData.wings) w.rotation.x = Math.sin(clock * 60 + i) * 0.7;
+          }
+          if (B.swarm && Math.random() < dt * 20) psNorm.add({ x: cx, y: cy, z: 0.4, vx: -dir * 1.5, vy: 0.3, vz: 0, col: '#fff7c2', size: 0.14, life: 0.35, a: 0.7 });
+        }
+      }
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.35, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: CÚ BÓNG ĐÊM — bay đập cánh → kêu "hú" (vệt chấm + vòng tím báo chỗ đáp) → khép cánh lao xuống → đáp, xù lông nghỉ (lúc đánh được) → mừng ----
+    let owlA = null, owlLine = null; const FEATHER = ['#8b6a4a', '#c4a27a', '#f5e6c8'];
+    function drawOwl(B, F, st, dt, clock) {
+      const bo = owlA;
+      if (!B) { bo.root.visible = false; if (owlLine) owlLine.g.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const hoot = fight && B.phase === 'hoot', swoop = fight && B.phase === 'swoop', rest = fight && B.phase === 'rest', flying = !rest && face !== 'sleep' && !swoop;
+      bo.fluff = (bo.fluff || 0) + ((rest ? 1 : 0) - (bo.fluff || 0)) * Math.min(1, dt * 7);
+      let y = Y(B.y) + (flying ? Math.sin(clock * 2.6) * 0.14 : 0), rz = 0;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.5;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.4)), puff = 1 + 0.12 * bo.fluff + (hoot ? Math.max(0, Math.sin((1 - B.pt) * Math.PI * 4)) * 0.05 : 0); // kêu "hú": phồng ngực theo 2 tiếng
+      let sx = puff * (1 + br * 0.02), sy = puff * (1 - br * 0.025);
+      if (swoop) { const dx = (B.tgX || B.x) - B.x; rz = -Math.sign(dx) * 0.35; sx *= 0.94; sy *= 1.06; } // lao: chúi về phía trước, thân thon lại
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx *= 1 - k * 0.1; sy *= 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.07;
+      bo.wob.scale.set(sx, sy, puff); bo.wob.rotation.set(0, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz);
+      // cánh: bay thì đập chậm rãi; lao thì khép sát; nghỉ thì xù ra hai bên; mừng thì vỗ nhanh
+      const flap = flying ? Math.sin(clock * 9) * 0.7 : 0;
+      for (let i = 0; i < 2; i++) { const s = i ? 1 : -1; bo.wings[i].rotation.set(0, 0, s * (swoop ? 0.05 : rest ? 0.55 : face === 'happy' ? 1.4 + Math.sin(clock * 16) * 0.5 : 0.35 + flap)); }
+      for (let i = 0; i < 2; i++) bo.tufts[i].rotation.z = -(i ? 1 : -1) * (0.42 + (hoot ? 0.2 : 0) + (rest ? 0.25 : 0)) + Math.sin(clock * 3 + i) * 0.04;
+      for (let i = 0; i < 2; i++) bo.legs[i].visible = !swoop;
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // vệt chấm tím báo đường lao (chỉ lúc kêu) + vòng tím dưới chân chỗ nó sẽ đáp (lúc kêu + lúc lao)
+      const la = hoot || swoop;
+      if (la && !owlLine) {
+        owlLine = { g: new THREE.Group(), dots: [] };
+        for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(W_GEO.ball, new THREE.MeshBasicMaterial({ color: G.hdr(0xc4b5fd, 1.8), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending })); m.material.userData.own = true; m.material.name = 'owlLine'; m.scale.setScalar(0.12); owlLine.g.add(m); owlLine.dots.push(m); }
+        owlLine.ring = new THREE.Mesh(W_GEO.ring, new THREE.MeshBasicMaterial({ color: G.hdr(0xa78bfa, 1.7), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })); owlLine.ring.material.userData.own = true; owlLine.ring.material.name = 'owlLine'; owlLine.g.add(owlLine.ring);
+        owlLine.g.renderOrder = 4; FX3.add(owlLine.g);
+      }
+      if (owlLine) {
+        owlLine.g.visible = la;
+        if (la) {
+          const pulse = 0.5 + 0.5 * Math.sin(clock * 16), x0 = X(B.x), y0 = Y(B.y), x1 = X(B.tgX), y1 = Y(B.tgY);
+          for (let i = 0; i < owlLine.dots.length; i++) { const m = owlLine.dots[i], k = (i + 1) / (owlLine.dots.length + 1); m.visible = hoot; m.position.set(x0 + (x1 - x0) * k, y0 + (y1 - y0) * k, 0.4); m.material.opacity = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(clock * 14 - i * 0.8)); }
+          owlLine.ring.position.set(x1, Y(B.tgY + 64) + 0.09, 0.2); // mặt đất ngay dưới chỗ đáp (tâm cú khi đáp cao hơn đất 64px) owlLine.ring.scale.setScalar(1.2 + 0.2 * pulse); owlLine.ring.material.opacity = 0.45 + 0.4 * pulse;
+        }
+      }
+      // lao: lông bay theo vệt; đáp: xù lông (vài cọng lông rơi), sao quay quanh đầu (= dấu "tới lượt bạn"); mừng: sao
+      if (swoop && Math.random() < dt * 30) psNorm.add({ x: X(B.x) + (Math.random() - 0.5) * R, y: y + (Math.random() - 0.5) * R, z: 0.3, vx: (Math.random() - 0.5) * 1.5, vy: 0.5, vz: 0, col: FEATHER[Math.floor(Math.random() * 3)], size: 0.2, life: 0.6, grav: 1.5, a: 0.9 });
+      if (rest && Math.random() < dt * 4) psNorm.add({ x: X(B.x) + (Math.random() - 0.5) * R * 1.6, y: y + R * 0.5, z: 0.6, vx: (Math.random() - 0.5) * 1.2, vy: 0.8, vz: 0, col: FEATHER[Math.floor(Math.random() * 3)], size: 0.22, life: 0.9, grav: 1.2, a: 0.9 });
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.4, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: NỮ HOÀNG BĂNG — bay sau khiên băng → giơ đũa (sao sáng, hàng bông tuyết báo đường lăn) → cầu tuyết lăn → hắt xì, khiên vỡ → hạ xuống nghỉ (lúc đánh được) → mừng ----
+    let iceA = null, iceKit = null, laneG = null, ballM = null; const SNOW = ['#ffffff', '#e0f2fe', '#bae6fd'];
+    function drawIce(B, F, st, dt, clock) {
+      const bo = iceA;
+      if (!B) { bo.root.visible = false; if (laneG) laneG.visible = false; if (ballM) ballM.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const wand = fight && B.phase === 'wand', sneeze = fight && B.phase === 'sneeze', rest = fight && B.phase === 'rest', open = sneeze || rest;
+      // khiên: hiện khi cô chưa hắt xì (và cả lúc ngủ / thua thì ẩn); hắt xì thì vỡ tung (co nhanh + mảnh băng bay)
+      const shTo = fight && !open ? 1 : 0;
+      if (bo.shieldK > 0.5 && shTo === 0 && sneeze) burst(psSpark, X(B.x), Y(B.y), 26, SNOW, 6, { size: 0.35, life: 0.6, grav: 6 });
+      bo.shieldK = (bo.shieldK || 0) + (shTo - (bo.shieldK || 0)) * Math.min(1, dt * (shTo ? 4 : 20));
+      bo.shield.visible = bo.shieldK > 0.03; bo.shield.scale.setScalar(0.85 + 0.15 * bo.shieldK + Math.sin(clock * 2) * 0.01); bo.shieldMat.opacity = 0.22 * bo.shieldK; bo.shield.rotation.y = clock * 0.3;
+      let y = Y(B.y) + (rest || face === 'sleep' ? 0 : Math.sin(clock * 2.2) * 0.12), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.5;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.4)); sx = 1 + br * 0.02; sy = 1 - br * 0.025;
+      if (sneeze) { const k = Math.max(0, B.pt) / 0.6; sy *= 1 + 0.12 * Math.sin((1 - k) * Math.PI); rz = Math.sin(clock * 40) * 0.05; } // hắt xì: giật người
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt' && !sneeze) { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.07;
+      bo.wob.scale.set(sx, sy, 1); bo.wob.rotation.set(0, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz);
+      // đũa: giơ cao + sao sáng rực khi báo; mừng thì vẫy; tay trái đung đưa
+      bo.wandK = (bo.wandK || 0) + ((wand ? 1 : 0) - (bo.wandK || 0)) * Math.min(1, dt * 10);
+      bo.arm.rotation.set(0, 0, -0.2 + bo.wandK * 0.9 + (face === 'happy' ? Math.sin(clock * 10) * 0.4 : 0));
+      bo.starMat.emissiveIntensity = 0.6 + bo.wandK * (2 + Math.sin(clock * 20)); bo.star.rotation.y = clock * 3;
+      bo.armL.rotation.z = Math.sin(clock * 2 + 1) * 0.15;
+      bo.mat.emissive.setScalar(face === 'hurt' && !sneeze ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // hàng bông tuyết báo đường lăn (chỉ lúc giơ đũa), sát mặt đất từ dưới chân cô tới cuối đường
+      if (wand && !laneG) {
+        laneG = new THREE.Group();
+        for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(W_GEO.ball, new THREE.MeshBasicMaterial({ color: G.hdr(0x9fdcff, 1.8), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending })); m.material.userData.own = true; m.material.name = 'iceLane'; m.scale.setScalar(0.12); laneG.add(m); }
+        laneG.renderOrder = 4; FX3.add(laneG);
+      }
+      if (laneG) {
+        laneG.visible = wand;
+        if (wand) { const x0 = X(B.x), x1 = X(B.sbEnd), gy = Y(B.sbY + 26) + 0.15, n = laneG.children.length; for (let i = 0; i < n; i++) { const m = laneG.children[i], k = i / (n - 1); m.position.set(x0 + (x1 - x0) * k, gy, 0.3); m.material.opacity = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(clock * 14 - i * 0.7)); } }
+      }
+      // quả cầu tuyết đang lăn
+      if (B.sbOn && !ballM) { ballM = iceKit.buildBall(26 / CELL); FX3.add(ballM); }
+      if (ballM) {
+        ballM.visible = !!B.sbOn;
+        if (ballM.visible) { ballM.position.set(X(B.sbX), Y(B.sbY), 0.3); ballM.rotation.z = -(B.sbX / 26); if (Math.random() < dt * 25) psPuff.add({ x: X(B.sbX) - (B.sbDir || 1) * 0.6, y: Y(B.sbY) - 0.6, z: 0.3, vx: -(B.sbDir || 1) * 1.2, vy: 0.6, vz: 0, col: '#ffffff', size: 0.5, life: 0.4, grow: 1.4, a: 0.5 }); }
+      }
+      // tuyết rơi nhẹ quanh cô trong trận (chỉ làm cảnh); nghỉ: sao quay quanh đầu (= dấu "tới lượt bạn"); mừng: sao
+      if (fight && Math.random() < dt * 14) psNorm.add({ x: lookX + (Math.random() - 0.5) * 26, y: Y(B.y) + 6 + Math.random() * 3, z: (Math.random() - 0.3) * 4, vx: (Math.random() - 0.5) * 0.6, vy: -1.2 - Math.random() * 0.6, vz: 0, col: SNOW[Math.floor(Math.random() * 3)], size: 0.16, life: 4, a: 0.9 });
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.4, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: RỒNG DUNG NHAM — đi → bụng sáng rực (dải đất tô cam) → phun lửa đúng dải đó → ho khói, cúi đầu nghỉ (lúc đánh được; đứng trong nước thì bốc hơi nhẹ) → mừng ----
+    let dragonA = null, stripN = null; const FIRE3 = ['#fde047', '#fb923c', '#f97316', '#ef4444'];
+    function drawDragon(B, F, st, dt, clock) {
+      const bo = dragonA;
+      if (!B) { bo.root.visible = false; if (stripN) stripN.g.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const glow = fight && B.phase === 'glow', flame = fight && B.phase === 'flame', rest = fight && B.phase === 'rest', walking = fight && B.phase === 'walk', step = Math.sin(clock * 7);
+      // bụng: sáng dần trong lúc báo, rực lúc phun, tắt khi nghỉ; cúi đầu lúc nghỉ
+      const bellyTo = glow ? clamp(1.2 - B.pt, 0.3, 1) : flame ? 1 : 0;
+      bo.belly = (bo.belly || 0) + (bellyTo - (bo.belly || 0)) * Math.min(1, dt * 10);
+      bo.bellyMat.emissiveIntensity = bo.belly * (2.2 + 0.6 * Math.sin(clock * 24));
+      bo.bow = (bo.bow || 0) + ((rest ? 1 : 0) - (bo.bow || 0)) * Math.min(1, dt * 7);
+      let y = Y(B.y), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.6;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.7 : 0;
+      bo.root.position.set(X(B.x) + (glow ? Math.sin(clock * 50) * 0.025 : 0), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.4)); sx = 1 + br * 0.02; sy = 1 - br * 0.025;
+      if (walking) rz = step * 0.07;
+      if (glow) { sx *= 1 + 0.05 * bo.belly; sy *= 1 + 0.05 * bo.belly; }                 // hít hơi phồng ngực
+      if (flame) { rz = 0; sy *= 1.04; }
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      bo.wob.position.y = bo.wobHome - bo.bow * 0.3 * R + (walking ? Math.abs(step) * 0.05 * R : 0);
+      bo.wob.scale.set(sx, sy, 1); bo.wob.rotation.set(bo.bow * 0.45, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz); // nghỉ: cúi đầu ra trước
+      for (let i = 0; i < 2; i++) { const s = i ? 1 : -1; bo.wings[i].rotation.set(0, 0, s * (face === 'happy' ? 0.6 + Math.sin(clock * 14) * 0.4 : 0.2 + Math.sin(clock * 3 + i) * 0.1 - bo.bow * 0.25)); }
+      for (let i = 0; i < 2; i++) { const L = bo.legs[i], s = i ? 1 : -1; L.position.set(s * 0.42 * R, -0.66 * R + (walking ? Math.max(0, step * s) * 0.14 * R : 0), 0.05 * R); }
+      bo.tail.rotation.set(0, Math.sin(clock * (walking ? 6 : 2.4)) * 0.3, bo.bow * 0.3);
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.2 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // dải đất báo: tấm cam sát mặt đất (rộng 4 ô) nhấp nháy lúc báo; lúc phun: lửa bùng dọc dải
+      const sa = glow || flame;
+      if (sa && !stripN) {
+        stripN = { g: new THREE.Group() };
+        stripN.plate = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: G.hdr(0xff8a1f, 1.6), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending })); stripN.plate.material.userData.own = true; stripN.plate.material.name = 'dragonStrip'; stripN.g.add(stripN.plate);
+        stripN.g.renderOrder = 4; FX3.add(stripN.g);
+      }
+      if (stripN) {
+        stripN.g.visible = sa;
+        if (sa) {
+          const w = 128 / CELL; stripN.g.position.set(X(B.flX), Y(B.flY) + 0.07, 0.3); stripN.plate.scale.set(w, 1, 1.4);
+          stripN.plate.material.opacity = flame ? 0.85 : 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(clock * 18));
+          if (flame) for (let i = 0; i < 4; i++) psAdd.add({ x: X(B.flX) + (Math.random() - 0.5) * w, y: Y(B.flY) + 0.1, z: 0.3 + (Math.random() - 0.5) * 0.8, vx: (Math.random() - 0.5) * 0.8, vy: 4 + Math.random() * 3.5, vz: 0, col: FIRE3[Math.floor(Math.random() * 4)], size: 0.55, life: 0.45, a: 0.9 });
+          if (glow && Math.random() < dt * 20) psAdd.add({ x: X(B.flX) + (Math.random() - 0.5) * w, y: Y(B.flY) + 0.1, z: 0.3, vx: 0, vy: 1 + Math.random(), vz: 0, col: '#fdba74', size: 0.2, life: 0.4, a: 0.7 });
+        }
+      }
+      // phun: luồng lửa từ miệng xuống dải; nghỉ: ho khói xám từ miệng + (đứng trong nước) hơi nước trắng; tàn lửa bay lơ thơ quanh rồng (làm cảnh)
+      if (flame) for (let i = 0; i < 2; i++) { const mx = X(B.x) + Math.sign(B.flX - B.x || 1) * R * 0.8, my = y + 0.2 * R, tx = X(B.flX) + (Math.random() - 0.5) * 2, ty = Y(B.flY) + 0.5; psAdd.add({ x: mx, y: my, z: 0.6, vx: (tx - mx) * 2.4, vy: (ty - my) * 2.4, vz: 0, col: FIRE3[Math.floor(Math.random() * 4)], size: 0.5, life: 0.4, a: 0.9 }); }
+      if (rest && Math.random() < dt * 8) psPuff.add({ x: X(B.x) + (hb.x >= B.x ? 1 : -1) * R * 0.7, y: y + 0.1 * R, z: 0.6, vx: (Math.random() - 0.5), vy: 1.2, vz: 0, col: '#9ca3af', size: 0.7, life: 0.9, grow: 1.6, a: 0.5, drag: 1 });
+      if (rest && B.wet && Math.random() < dt * 10) psPuff.add({ x: X(B.x) + (Math.random() - 0.5) * R * 2, y: Y(B.y) - R * 0.6, z: 0.4, vx: 0, vy: 1.4, vz: 0, col: '#ffffff', size: 0.8, life: 0.8, grow: 1.6, a: 0.45, drag: 1 });
+      if (fight && Math.random() < dt * 6) psAdd.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.3) * R * 2, z: (Math.random() - 0.3) * 2, vx: (Math.random() - 0.5) * 0.4, vy: 0.6 + Math.random() * 0.6, vz: 0, col: '#fb923c', size: 0.14, life: 1.2, a: 0.8 });
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.8, y: y + R * 1.2 - bo.bow * 0.3 * R, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    // ---- Đợt 4: BẠCH TUỘC — ngồi trong bồn → bọt nổi + vòng báo → xúc tu dài giơ lên đập xuống → xúc tu nằm yên (đánh được; trúng thì cúi đầu) → mừng ----
+    let octoA = null, ringO = null; const BUBBLE = ['#e0f2fe', '#bae6fd', '#ffffff'];
+    function drawOcto(B, F, st, dt, clock) {
+      const bo = octoA;
+      if (!B) { bo.root.visible = false; bo.arm.visible = false; if (ringO) ringO.visible = false; return; }
+      const hb = st.hero, R = bo.R, face = rockFace(B), fight = B.state === 'fight';
+      if (face !== bo.face) { bo.face = face; bo.paint.map = bo.FACE[face].paint; bo.glow.map = bo.FACE[face].glow; bo.paint.needsUpdate = bo.glow.needsUpdate = true; }
+      bo.root.visible = true;
+      const bubble = fight && B.phase === 'bubble', slam = fight && B.phase === 'slam', rest = fight && B.phase === 'rest';
+      bo.bow = (bo.bow || 0) + ((rest && B.bowed ? 1 : 0) - (bo.bow || 0)) * Math.min(1, dt * 8);
+      let y = Y(B.y), rz = 0, sx = 1, sy = 1;
+      if (B.state === 'happy') y += Math.abs(Math.sin(clock * 5)) * 0.35;
+      if (B.state === 'intro') y += B.t < 0.55 ? Math.sin(Math.min(1, B.t / 0.3) * Math.PI) * 0.5 : 0;
+      bo.root.position.set(X(B.x), y, 0);
+      const br = Math.sin(clock * (face === 'sleep' ? 1.4 : 2.2)); sx = 1 + br * 0.025; sy = 1 - br * 0.03;
+      if (bubble) { sy *= 1 + 0.04 * Math.sin(clock * 20); }
+      if (face === 'roar' && B.state === 'intro') { const k = 1 + Math.abs(Math.sin(clock * 30)) * 0.04; sx = 1.06 * k; sy = 1.03 * k; }
+      if (face === 'hurt') { const k = Math.max(0, B.hurtT) / 0.45; sx = 1 - k * 0.1; sy = 1 + k * 0.08; rz += Math.sin(clock * 50) * 0.06 * k; }
+      if (face === 'happy' || face === 'gloat') rz = Math.sin(clock * 7) * 0.08;
+      if (face === 'dizzy') rz = Math.sin(clock * 3) * 0.06;
+      bo.head.scale.set(sx, sy, 1); bo.head.position.y = 0.12 * R - bo.bow * 0.32 * R;
+      bo.head.rotation.set(bo.bow * 0.5, fight || B.state === 'happy' ? clamp((hb.x - B.x) / 500, -0.45, 0.45) : 0, rz); // cúi đầu ra trước khi bị trúng lúc nghỉ
+      for (let i = 0; i < bo.stubs.length; i++) bo.stubs[i].rotation.z = Math.sin(clock * 2.5 + i * 1.3) * 0.25 + (face === 'happy' ? Math.sin(clock * 12 + i) * 0.4 : 0);
+      bo.water.position.y = 0.3 * R + Math.sin(clock * 3) * 0.02;
+      bo.mat.emissive.setScalar(face === 'hurt' ? Math.max(0, B.hurtT) / 0.45 * 0.55 : 0);
+      if (face === 'rage' || face === 'panic') bo.mat.emissive.setRGB(0.16 + 0.06 * Math.sin(clock * 9), 0.02, 0);
+      const pale = face === 'wake' || face === 'panic';
+      bo.glow.color.setScalar(face === 'sleep' ? 0 : pale ? 1.1 : face === 'rage' ? 2.6 : 1.9);
+      for (let i = 0; i < 3; i++) { const z = bo.zs[i], t = (clock * 0.45 + i / 3) % 1; z.visible = face === 'sleep'; z.position.set(R * (0.9 + t * 1.1), R * (0.4 + t * 1.4), R * 0.6); const zz = (0.5 + t * 0.7) * R * 0.45; z.scale.set(zz, zz, 1); z.material.opacity = Math.sin(t * Math.PI); }
+      // vòng báo + bọt nổi ở chỗ sắp đập (chỉ lúc báo)
+      if (bubble && !ringO) { ringO = new THREE.Mesh(W_GEO.ring, new THREE.MeshBasicMaterial({ color: G.hdr(0x7dd3fc, 1.8), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })); ringO.material.userData.own = true; ringO.material.name = 'octoRing'; ringO.renderOrder = 4; FX3.add(ringO); }
+      if (ringO) { ringO.visible = bubble; if (bubble) { const p = 0.5 + 0.5 * Math.sin(clock * 16); ringO.position.set(X(B.tx), Y(B.ty) + 0.09, 0.3); ringO.scale.setScalar(1.1 + 0.15 * p); ringO.material.opacity = 0.45 + 0.4 * p; if (Math.random() < dt * 22) psNorm.add({ x: X(B.tx) + (Math.random() - 0.5) * 2.4, y: Y(B.ty) + 0.1, z: 0.3 + (Math.random() - 0.5), vx: 0, vy: 1.6 + Math.random() * 1.4, vz: 0, col: BUBBLE[Math.floor(Math.random() * 3)], size: 0.22, life: 0.6, a: 0.85 }); } }
+      // xúc tu dài: lúc đập = giơ cao rồi quất xuống; lúc nghỉ = nằm dài trên đất tới đúng chỗ đã báo (đó là chỗ đánh được); lúc báo / ngồi = ẩn
+      const armOn = slam || rest; bo.arm.visible = armOn;
+      if (armOn) {
+        const up = slam ? clamp(B.pt / 0.3, 0, 1) : 0, d = B.tx >= B.x ? 1 : -1;
+        const x0 = X(B.x) + d * R * 0.9, y0 = Y(B.y) - 0.15 * R, x2 = X(B.tx), y2 = Y(B.ty) + 0.22 + up * 4, x1 = (x0 + x2) / 2, y1 = Math.max(y0, y2) + 0.5 + up * 5;
+        for (let i = 0; i < bo.segs.length; i++) { const k = i / (bo.segs.length - 1), a = 1 - k; const px = a * a * x0 + 2 * a * k * x1 + k * k * x2, py = a * a * y0 + 2 * a * k * y1 + k * k * y2; bo.segs[i].position.set(px, py + (rest ? Math.sin(clock * 3 + i) * 0.02 : 0), 0.3); }
+      }
+      if (face === 'dizzy' && Math.random() < dt * 9) { const a = clock * 4 + Math.random() * 6.28; psSpark.add({ x: X(B.x) + Math.cos(a) * R * 0.7, y: y + R * 1.25 - bo.bow * 0.3 * R, z: R * 0.5 + Math.sin(a) * 0.4, vx: -Math.sin(a) * 1.5, vy: 0.4, vz: 0, col: '#fff3a0', size: 0.4, life: 0.5, spin: 3 }); }
+      if (face === 'happy' && Math.random() < dt * 14) psSpark.add({ x: X(B.x) + (Math.random() - 0.5) * R * 3, y: y + (Math.random() - 0.2) * R * 1.6, z: R * 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 0, col: SPARK[Math.floor(Math.random() * 3)], size: 0.45, life: 0.7, spin: 2 });
+    }
+    function honeyFrame(F, clock) { // vũng mật trên đất (tự mờ dần rồi tan)
+      const hs = F.honey || [];
+      for (let i = 0; i < Math.max(hs.length, honeyM.length); i++) {
+        if (i >= hs.length) { honeyM[i].visible = false; continue; }
+        if (!honeyM[i]) { const m = new THREE.Mesh(W_GEO.disc, new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85, emissive: 0x5a2a00, emissiveIntensity: 0.35 })); m.material.userData.own = true; m.material.name = 'honey'; m.renderOrder = 3; FX3.add(m); honeyM.push(m); }
+        const H = hs[i], m = honeyM[i]; m.visible = true; m.position.set(X(H.x), Y(H.y) + 0.06, 0.25); m.scale.set(1.3, 1, 0.55); m.material.opacity = Math.min(0.85, H.life * 0.9);
+      }
+    }
     function dropFrame(F, st, dt, clock) { // bóng báo chỗ đá rơi + tảng đá đang rơi + đá nằm lại cho baby nhặt
       const drops = F.drops || [], loot = F.loot || [];
       for (const D of drops) {
@@ -1020,6 +1435,17 @@ window.StarWorld = (function () {
         // Đợt 4 — Khủng Long Lốc Xoáy
         case 'dino_windup': burst(psPuff, ex, ey + 0.1, 5, '#e7efd2', 1.4, { size: 0.6, life: 0.5, grow: 1.3, a: 0.4 }); break;
         case 'dino_spin': shake(0.3, 0.18); burst(psNorm, ex, ey, 18, LEAF, 6, { size: 0.24, life: 0.6, up: 2, a: 0.9 }); break;
+        // Đợt 4 — Ong Chúa
+        case 'bee_buzz': burst(psNorm, ex, ey - BR * 0.8, 8, HONEY_COLS, 1.6, { size: 0.2, life: 0.5 }); break;
+        case 'bee_swarm': burst(psNorm, ex, ey - BR * 0.8, 12, ['#fff7c2', '#fde68a'], 3, { size: 0.2, life: 0.4 }); break;
+        case 'honey': burst(psNorm, ex, ey + 0.15, 12, HONEY_COLS, 2.6, { size: 0.24, life: 0.5, grav: 10, up: 2 }); break;
+        // Đợt 4 — Robot Nam Châm
+        case 'robot_charge': burst(psSpark, ex, ey + BR * 1.15, 8, MAG_COLS, 2.5, { size: 0.3, life: 0.4 }); break;
+        case 'robot_pull': shake(0.25, 0.12); burst(psSpark, ex, ey + BR * 1.15, 18, MAG_COLS, 5, { size: 0.35, life: 0.5 }); break;
+        // Đợt 4 — Cá Voi Gió
+        case 'whale_puff': burst(psPuff, ex, ey, 6, '#e0f2fe', 1.6, { size: 0.7, life: 0.5, grow: 1.4, a: 0.4 }); break;
+        case 'whale_blow': shake(0.25, 0.14); burst(psNorm, ex + (o || 1) * BR, ey - 0.3, 20, WIND_COLS, 7, { size: 0.24, life: 0.5, a: 0.9 }); break;
+        case 'whale_hit': burst(psPuff, ex, ey, 8, '#ffffff', 2.4, { size: 0.7, life: 0.45, grow: 1.4, a: 0.5 }); break;
         case 'dino_toss': burst(psSpark, ex, ey, 14, '#ffffff', 5, { size: 0.45, life: 0.4 }); burst(psNorm, ex, ey, 10, LEAF, 4, { size: 0.22, life: 0.5, up: 2.5 }); break;
         // Đợt 4 — Người Đá
         case 'rock_lift': burst(psPuff, ex, ey + 0.1, 4, '#d6cdbd', 1.2, { size: 0.6, life: 0.5, grow: 1.3, a: 0.4 }); break;
@@ -1071,7 +1497,22 @@ window.StarWorld = (function () {
       if (rockA) drawRock(bk === 'rock' ? F.boss : null, F, st, dt, clock);
       if (bk === 'dino' && !dinoA && bossKit && window.SFBossDino) dinoA = window.SFBossDino.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
       if (dinoA) drawDino(bk === 'dino' ? F.boss : null, F, st, dt, clock);
-      curA = bk === 'thunder' ? bossA : bk === 'rock' ? rockA : bk === 'dino' ? dinoA : null;
+      if (bk === 'whale' && !whaleA && bossKit && window.SFBossWhale) whaleA = window.SFBossWhale.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (whaleA) drawWhale(bk === 'whale' ? F.boss : null, F, st, dt, clock);
+      if (bk === 'robot' && !robotA && bossKit && window.SFBossRobot) robotA = window.SFBossRobot.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (robotA) drawRobot(bk === 'robot' ? F.boss : null, F, st, dt, clock);
+      if (bk === 'bee' && !beeA && bossKit && window.SFBossBee) { beeKit = window.SFBossBee.create({ G: G, scene: scene, R: BR, kit: bossKit }); beeA = beeKit.build(); }
+      if (beeA) drawBee(bk === 'bee' ? F.boss : null, F, st, dt, clock);
+      honeyFrame(F, clock);
+      if (bk === 'owl' && !owlA && bossKit && window.SFBossOwl) owlA = window.SFBossOwl.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (owlA) drawOwl(bk === 'owl' ? F.boss : null, F, st, dt, clock);
+      if (bk === 'ice' && !iceA && bossKit && window.SFBossIce) { iceKit = window.SFBossIce.create({ G: G, scene: scene, R: BR, kit: bossKit }); iceA = iceKit.build(); }
+      if (iceA) drawIce(bk === 'ice' ? F.boss : null, F, st, dt, clock);
+      if (bk === 'dragon' && !dragonA && bossKit && window.SFBossDragon) dragonA = window.SFBossDragon.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (dragonA) drawDragon(bk === 'dragon' ? F.boss : null, F, st, dt, clock);
+      if (bk === 'octo' && !octoA && bossKit && window.SFBossOcto) octoA = window.SFBossOcto.create({ G: G, scene: scene, R: BR, kit: bossKit }).build();
+      if (octoA) drawOcto(bk === 'octo' ? F.boss : null, F, st, dt, clock);
+      curA = bk === 'thunder' ? bossA : bk === 'rock' ? rockA : bk === 'dino' ? dinoA : bk === 'whale' ? whaleA : bk === 'robot' ? robotA : bk === 'bee' ? beeA : bk === 'owl' ? owlA : bk === 'ice' ? iceA : bk === 'dragon' ? dragonA : bk === 'octo' ? octoA : null;
       dropFrame(F, st, dt, clock);
       // sét báo trước (vòng sáng trên đất) + tia sét
       for (const L of F.bolts) if (L.phase === 'warn') {
@@ -1089,12 +1530,21 @@ window.StarWorld = (function () {
       G.shared.uWind.value = wd * 0.6; G.shared.uGust.value = 0.3 + stormK * 0.9;
       if (stormK > 0.02 && !rainNear && bossKit) { rainNear = bossKit.makeRain(500, 3, 12, 1.15, 0.016, 0.7); rainFar = bossKit.makeRain(1100, -16, 2, 0.9, 0.013, 0.48); rainNear.name = rainFar.name = 'rain'; }
       if (rainNear) for (const rm of [rainNear, rainFar]) { rm.uniforms.uA.value = stormK > 0.1 ? stormK : 0; rm.uniforms.uCam.value.set(lookX, lookY); rm.uniforms.uSlant.value = 0.18 + wd * 0.35; }
-      scene.fog.color.copy(fogDay).lerp(fogStorm, stormK * 0.8);
-      hemi.intensity = 1.05 - 0.3 * stormK + flashK * 0.9; sun.intensity = 0.55 - 0.3 * stormK + flashK * 1.2;
+      duskK = F.dusk || 0; // Cú: chạng vạng tím ấm — chỉ ngả màu, vẫn sáng rõ (không tối đen)
+      scene.fog.color.copy(fogDay).lerp(fogStorm, stormK * 0.8).lerp(fogDusk, duskK * 0.5);
+      hemi.intensity = 1.05 - 0.3 * stormK - 0.15 * duskK + flashK * 0.9; sun.intensity = 0.55 - 0.3 * stormK - 0.1 * duskK + flashK * 1.2;
+      hemi.color.copy(hemiDay).lerp(hemiDusk, duskK * 0.6);
       if (play && stormK > 0.2 && Math.random() < dt * 30 * stormK) { const rx = lookX + (Math.random() - 0.5) * 22; burst(psNorm, rx, Y(st.groundBelow(rx * CELL, 0)) + 0.05, 3, '#c9dcff', 1.6, { size: 0.12, life: 0.3, grav: 14, up: 1.6, z: (Math.random() - 0.3) * 5, a: 0.7 }); }
     }
     function fightInfo() { // cho bộ kiểm
-      return { boss: curA ? [curA.root.position.x, curA.root.position.y, curA.root.visible ? 1 : 0, curA.face] : null, kind: curKind, sit: rockA ? rockA.sit || 0 : 0, lift: rockA ? rockA.lift || 0 : 0, vis: { thunder: !!bossA && bossA.root.visible, rock: !!rockA && rockA.root.visible, dino: !!dinoA && dinoA.root.visible },
+      return { boss: curA ? [curA.root.position.x, curA.root.position.y, curA.root.visible ? 1 : 0, curA.face] : null, kind: curKind, sit: rockA ? rockA.sit || 0 : 0, lift: rockA ? rockA.lift || 0 : 0, vis: { thunder: !!bossA && bossA.root.visible, rock: !!rockA && rockA.root.visible, dino: !!dinoA && dinoA.root.visible, whale: !!whaleA && whaleA.root.visible, robot: !!robotA && robotA.root.visible, bee: !!beeA && beeA.root.visible, owl: !!owlA && owlA.root.visible, ice: !!iceA && iceA.root.visible, dragon: !!dragonA && dragonA.root.visible, octo: !!octoA && octoA.root.visible },
+        octo: octoA ? { bow: octoA.bow || 0, arm: octoA.arm.visible ? 1 : 0, armEnd: octoA.arm.visible ? [octoA.segs[octoA.segs.length - 1].position.x, octoA.segs[octoA.segs.length - 1].position.y] : null } : null, oring: ringO && ringO.visible ? 1 : 0,
+        dragon: dragonA ? { belly: dragonA.belly || 0, bow: dragonA.bow || 0 } : null, strip: stripN && stripN.g.visible ? (stripN.plate.material.opacity > 0.8 ? 2 : 1) : 0,
+        ice: iceA ? { shield: iceA.shieldK || 0, wand: iceA.wandK || 0 } : null, lane: laneG && laneG.visible ? 1 : 0, ball: ballM && ballM.visible ? 1 : 0,
+        owl: owlA ? { fluff: owlA.fluff || 0, legs: owlA.legs[0].visible ? 1 : 0 } : null, oline: owlLine && owlLine.g.visible ? (owlLine.dots[0].visible ? 2 : 1) : 0, dusk: duskK, hemi: hemi.intensity,
+        bee: beeA ? { hug: beeA.hug || 0, wingZ: beeA.wings[1].rotation.z } : null, swarm: swarmG && swarmG.visible ? swarmG.children.length : 0, path: pathG && pathG.visible ? 1 : 0, honey: honeyM.filter(m => m.visible).length,
+        robot: robotA ? { mag: robotA.mag || 0, hatch: robotA.hatchK || 0, core: robotA.coreK || 0 } : null, field: fieldN && fieldN.g.visible ? 1 : 0,
+        whale: whaleA ? { puff: whaleA.puffK || 0, flat: whaleA.flatK || 0, y: whaleA.root.position.y } : null, arrows: gustG && gustG.visible ? gustG.children.length : 0,
         dino: dinoA ? { sit: dinoA.sit || 0, crouch: dinoA.crouch || 0, rotY: dinoA.wob.rotation.y } : null, swirl: swirlN && swirlN.g.visible ? 1 : 0,
         drops: dropN.size, dropFall: Array.from(dropN.values()).filter(n => n.rock.visible).length, loot: lootM.filter(m => m.visible).length, fire: fireM.filter(m => m.visible).length, rock: rockM.filter(m => m.visible).length,
         lock: lockG && lockG.visible ? 1 : 0, held: heldG && heldG.visible ? heldG.children.filter(m => m.visible).map(m => m.userData.t).join(',') : '', slash: slashM && slashM.visible ? 1 : 0,

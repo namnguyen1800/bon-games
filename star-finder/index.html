@@ -96,14 +96,44 @@
   const FIRE_V = 600, FIRE_CD = 0.36, ROCK_CD = 0.5, SWORD_CD = 0.42, SWORD_REACH = 78;
   const BOSS_R = 60, BOSS_HP = 5, BOSS_TRIG = 10 * 32, RAGE_K = 1.6, WIND_MAX = 110;
   // Đợt 4: nhiều loại boss. Bon chọn trong bảng "Pick a boss!" (Nam chọn 11-14: giống bảng chọn baby). Boss trong màn: { t: 'boss', id } — không có id = Vua Sấm (save cũ y nguyên)
-  const BOSS_KINDS = ['thunder', 'rock', 'dino']; // thêm dần theo thứ tự làm
-  const BOSS_NAME = { thunder: 'Thunder King', rock: 'Rock Giant', dino: 'Twister Dino' };
-  const GROUND_BOSS = { rock: 1, dino: 1 }; // boss đứng trên đất (đặt lơ lửng thì rơi xuống) + chỉ đánh trúng được lúc nó ngồi nghỉ
+  const BOSS_KINDS = ['thunder', 'rock', 'dino', 'whale', 'robot', 'bee', 'owl', 'ice', 'dragon', 'octo']; // đủ 10 boss
+  const BOSS_NAME = { thunder: 'Thunder King', rock: 'Rock Giant', dino: 'Twister Dino', whale: 'Wind Whale', robot: 'Magnet Robot', bee: 'Queen Bee', owl: 'Night Owl', ice: 'Ice Queen', dragon: 'Lava Dragon', octo: 'Big Octopus' };
+  const GROUND_BOSS = { rock: 1, dino: 1, robot: 1, dragon: 1, octo: 1 }; // boss đứng trên đất (đặt lơ lửng thì rơi xuống)
+  const REST_BOSS = { rock: 1, dino: 1, whale: 1, robot: 1, bee: 1, owl: 1, ice: 1, dragon: 1, octo: 1 }; // boss chỉ đánh trúng được lúc nó nghỉ (Vua Sấm thì lúc nào tới được là đánh được)
+  const FLY_BOSS = { whale: 1, bee: 1, owl: 1, ice: 1 }; // boss bay lơ lửng ở độ cao Bon đặt (pha 'hover'), lúc nghỉ thì hạ xuống ngang tầm baby
+  const WAIT_HINT = { rock: 'Wait till it sits down!', dino: 'Wait till it gets dizzy!', whale: 'Wait till it gets tired!', robot: 'Wait till its tummy opens!', bee: 'Wait till she hugs her hive!', owl: 'Wait till it lands!', ice: 'Wait till she sneezes!', dragon: 'Wait till it coughs!', octo: 'Wait till the arm lies down!' };
+  const INTRO_HINT = { rock: 'Hit it when it sits down!', dino: 'Hit it when it gets dizzy!', whale: 'Hit it when it gets tired!', robot: 'Hit it when its tummy opens!', bee: 'Hit her when she hugs her hive!', owl: 'Hit it when it lands!', ice: 'Hit her after she sneezes!', dragon: 'Hit it when it coughs!', octo: 'Hit it when its arm lies down!' };
   // Người Đá (ý ChatGPT, mình chọn bản sửa 11-14): đi chậm tới gần → nhấc chân (bóng báo chỗ đá rơi) → dậm → đá rơi đúng chỗ đã báo → ngồi xoa chân = LÚC ĐÁNH ĐƯỢC
   const ROCK_WALK_V = 70, ROCK_WARN = 1.0, ROCK_REST = 3.2, ROCK_DROP_H = 8 * 32, ROCK_LOOT_T = 8; // mốc thử
   // Khủng Long Lốc Xoáy (ý ChatGPT, bản sửa 11-14): đi tới gần → lấy đà (vòng xoáy báo chỗ nó sẽ lao tới, CHỐT từ lúc báo) → xoay lao 1 đoạn ngắn tới đúng chỗ đó → chóng mặt ngồi xuống = LÚC ĐÁNH ĐƯỢC
   // Bị nó quẹt trúng = baby chỉ bị nhấc thấp rồi đáp gần chỗ cũ (KHÔNG về Start). Né = chạy ra xa khỏi vòng xoáy. Không gió, không bão, không đụng tới khối / nét Bon xếp.
   const DINO_WALK_V = 80, DINO_WARN = 1.0, DINO_SPIN_V = 430, DINO_REACH = 7 * 32, DINO_REST = 3.2, DINO_TOSS_VY = 460; // mốc thử
+  // Cá Voi Gió (ý ChatGPT, bản sửa 11-14): bay lơ lửng cạnh baby → hạ thấp + phồng má, mũi tên báo hướng gió (hướng CHỐT từ lúc báo) → thổi MỘT luồng ngang ngắn, không đổi chiều
+  // → xẹp bụng, nằm nghỉ ngang tầm baby = LÚC ĐÁNH ĐƯỢC → bay lên lại. Gió chỉ ĐẨY baby ra xa (không đau, không về Start), chỉ trong luồng dài 10 ô trước miệng nó; đứng sau lưng nó thì không sao.
+  const WHALE_GAP = 220, WHALE_WARN = 1.0, WHALE_BLOW = 1.2, WHALE_LEN = 10 * 32, WHALE_PUSH = 340, WHALE_REST = 3.2; // mốc thử
+  // Robot Nam Châm (ý ChatGPT, bản sửa 11-14): đi tới gần → nam châm sáng + đếm 3 nhịp (Robot đứng yên) → hút NHẸ một đợt ngắn (baby đi ngược lại vẫn thoát được)
+  // → mở nắp bụng nghỉ = LÚC ĐÁNH ĐƯỢC; lúc nắp mở, đá ném gần tới bị nam châm kéo thẳng vào bụng (hợp đá). Không tia điện; khối / lò xo không xê dịch.
+  const ROBOT_WALK_V = 60, ROBOT_WARN = 1.0, ROBOT_PULL = 1.0, ROBOT_RANGE = 8 * 32, ROBOT_PULL_V = 120, ROBOT_ROCK_V = 560; // mốc thử
+  // Ong Chúa (ý ChatGPT, bản sửa 11-14): bay lơ lửng ôm tổ → tổ rung + 3 chú ong ló đầu, hàng chấm vàng báo đường bay (đường CHỐT từ lúc báo, ngang tầm baby)
+  // → 1 nhóm ong bay chậm theo đúng đường đó tới cuối rồi QUAY VỀ tổ bay vòng phía trên (không rượt mãi) → Ong Chúa hạ xuống ôm tổ nghỉ = LÚC ĐÁNH ĐƯỢC.
+  // Đụng đàn ong lúc chúng bay ra = bị hất (KHÔNG về Start); né = nhảy qua đàn ong hoặc tránh khỏi đường bay. Cuối đường rơi 1 vũng mật nhỏ: đi qua thì chậm lại, vài giây tự tan.
+  const BEE_GAP = 240, BEE_WARN = 1.0, BEE_V = 230, BEE_LEN = 9 * 32, BEE_REST = 3.2, HONEY_T = 4, HONEY_K = 0.5; // mốc thử
+  // Cú Bóng Đêm (ý ChatGPT, bản sửa 11-14): trời CHẠNG VẠNG (vẫn nhìn rõ cầu / gai, không tối đen, không tiếng giật mình) → cú kêu "hú" nhẹ + vệt chấm báo đường lao
+  // tới 1 vòng dưới chân baby (CHỐT từ lúc báo) → lao xuống đúng chỗ đó → đáp xuống xù lông nghỉ = LÚC ĐÁNH ĐƯỢC → bay lên. Đánh trúng = trời sáng ấm dần lên (phần thưởng).
+  const OWL_GAP = 200, OWL_WARN = 1.0, OWL_V = 520, OWL_REST = 3.2; // mốc thử
+  // Nữ Hoàng Băng (ý ChatGPT, bản sửa 11-14): bay lơ lửng sau khiên băng → giơ đũa + hàng bông tuyết báo đường lăn trên đất (hướng CHỐT từ lúc báo) → lăn 1 quả cầu tuyết
+  // về phía baby, đi hết đường thì vỡ → hắt xì, khiên băng tự vỡ, hạ xuống tầm kiếm = LÚC ĐÁNH ĐƯỢC. Cầu tuyết trúng = bị hất (KHÔNG về Start); né = nhảy qua / tránh khỏi đường lăn.
+  // KHÔNG nền trơn, KHÔNG đóng băng hồ; tuyết rơi chỉ làm cảnh. Lửa không bắt buộc để phá khiên (khiên tự vỡ khi cô hắt xì).
+  const ICE_GAP = 230, ICE_WARN = 1.0, ICE_V = 260, ICE_LEN = 10 * 32, ICE_BALL_R = 26, ICE_REST = 3.2; // mốc thử
+  // Rồng Dung Nham (ý ChatGPT, bản sửa 11-14): đi tới gần → bụng sáng + tô cam MỘT dải đất ngắn dưới chân baby (CHỐT từ lúc báo) → phun lửa lên đúng dải đó (trúng = hất, KHÔNG về Start)
+  // → ho khói, cúi đầu nghỉ = LÚC ĐÁNH ĐƯỢC. Đứng trong hồ nước lúc nghỉ = rồng nguội nhanh nên nghỉ lâu hơn (cách phụ). BỎ lửa cả màn, BỎ hồ bốc hơi; lửa tắt hẳn sau mỗi lần phun.
+  const DRG_WALK_V = 70, DRG_WARN = 1.0, DRG_FLAME = 1.0, DRG_HALF = 2 * 32, DRG_H = 3 * 32, DRG_REST = 3.2, DRG_WET = 1.5; // mốc thử
+  // Bạch Tuộc Khổng Lồ (ý ChatGPT, bản sửa 11-14): ngồi YÊN trong bồn nước riêng của nó (là 1 phần hình của boss — KHÔNG dâng nước ngập màn) → bọt nổi + vòng báo dưới chân baby
+  // (CHỐT từ lúc báo) → 1 xúc tu đập xuống đúng vòng đó (trúng = hất, KHÔNG về Start) → xúc tu nằm yên đủ lâu = LÚC ĐÁNH ĐƯỢC; đánh trúng thì đầu cúi xuống, cho đánh thêm 1 lúc.
+  const OCTO_WARN = 1.0, OCTO_SLAM = 0.3, OCTO_REACH = 8 * 32, OCTO_R = 46, OCTO_REST = 3.2, OCTO_BONUS = 1.5; // mốc thử
+  let dusk = 0; // mức chạng vạng (0 = ban ngày, 1 = chạng vạng nhất — vẫn sáng rõ, chỉ ngả tím ấm); chỉ là CẢNH, không đổi luật
+  let honey = [], honeyK = 1; // vũng mật của Ong Chúa · hệ số tốc độ đi của baby (1 = bình thường; đứng trong vũng mật = chậm lại)
+  let gustV = 0; // tốc độ luồng gió của Cá Voi đang đẩy baby (px/giây, có dấu; 0 = không có gió) — tính lại mỗi bước
   let bossPick = 'thunder';
 
   // 3 màn mẫu — mỗi màn có ít nhất 1 lời giải (kiểm bằng tests/test_drawrun.py). Mỗi màn đúng 1 star (Nam chốt 10-27).
@@ -709,10 +739,10 @@
     } else if (b.grounded) {
       // đi DỌC theo mặt đang đứng (lên dốc/xuống dốc không nảy), ép nhẹ xuống mặt để khỏi lơ lửng
       const nx = b.gn[0], ny = b.gn[1], tx = -ny, ty = nx;
-      const vt = approach(b.vx * tx + b.vy * ty, dirIn * MOVE + wind.str * wind.dir * 0.15, ACC_G * dt); // gió của boss: đứng đất chỉ hơi bị đẩy
+      const vt = approach(b.vx * tx + b.vy * ty, dirIn * MOVE * honeyK + wind.str * wind.dir * 0.15 + gustV, ACC_G * dt); // gió của Vua Sấm: đứng đất chỉ hơi bị đẩy · luồng gió Cá Voi / nam châm Robot: đẩy / kéo hẳn · vũng mật: đi chậm lại
       b.vx = vt * tx - nx * 40; b.vy = vt * ty - ny * 40;
     } else {
-      if (b.knockT <= 0) b.vx = approach(b.vx, dirIn * MOVE + wind.str * wind.dir * 0.8, ACC_A * dt); // trên không thì gió đẩy rõ hơn
+      if (b.knockT <= 0) b.vx = approach(b.vx, dirIn * MOVE + wind.str * wind.dir * 0.8 + gustV, ACC_A * dt); // trên không thì gió đẩy rõ hơn
       b.vy = Math.min(MAXFALL, b.vy + GRAV * dt);
     }
     // nhảy: bấm sớm một chút vẫn tính (jbuf), hụt mép rồi vẫn kịp nhảy (coyote)
@@ -798,15 +828,21 @@
     const B = { kind: kind, state: 'sleep', t: 0, x: h.x, y: h.y, hx: h.x, hy: h.y, tx: h.tx, ty: h.ty, hp: BOSS_HP, hurtT: 0, atkT: 2.4, n: 0,
       phase: 'hover', pt: 0, diveT: 1.8, diveX: 0, diveY: 0, misses: 0, hitDive: false, gloatT: 0 };
     if (GROUND_BOSS[kind]) { B.phase = 'walk'; B.restT = kind === 'dino' ? DINO_REST : ROCK_REST; B.hitRest = false; } // Build hiện đúng chỗ Bon đặt; vào Play nó rơi xuống đất (bossStep)
+    if (kind === 'whale') { B.restT = WHALE_REST; B.hitRest = false; B.gustDir = 1; } // Cá Voi bay lơ lửng ở độ cao Bon đặt (pha 'hover' như Vua Sấm)
+    if (kind === 'octo') { B.tx = B.x; B.ty = B.y; B.bowed = false; } // Bạch Tuộc: tx / ty = chỗ xúc tu đập xuống (chốt lúc báo); bowed = đã cúi đầu cho đánh thêm trong lượt nghỉ này
+    if (kind === 'dragon') { B.flX = B.x; B.flY = B.y; B.wet = false; } // Rồng: flX / flY = giữa dải đất sẽ phun lửa (chốt lúc báo)
+    if (kind === 'ice') { B.restT = ICE_REST; B.hitRest = false; B.sbOn = 0; B.sbDir = 1; B.sbX = B.x; B.sbY = B.y; B.sbEnd = B.x; } // Nữ Hoàng Băng bay lơ lửng; sbOn: 1 = quả cầu tuyết đang lăn
+    if (kind === 'owl') { B.restT = OWL_REST; B.hitRest = false; B.duskT = 1; B.tgX = B.x; B.tgY = B.y; } // Cú bay lơ lửng ở độ cao Bon đặt; duskT = mức chạng vạng đang hướng tới (giảm dần mỗi lần bị đánh trúng)
+    if (kind === 'bee') { B.restT = BEE_REST; B.hitRest = false; B.pathDir = 1; B.swX = B.x; B.swY = B.y; B.swarm = 0; } // Ong Chúa bay lơ lửng ở độ cao Bon đặt; swarm: 0 = đàn ong ở trong tổ, 1 = đang bay ra, 2 = đang bay về
     return B;
   }
-  function bossOpen(B) { return !GROUND_BOSS[B.kind] || B.phase === 'rest'; } // lúc đánh trúng được: Vua Sấm = lúc nào cũng được (tới được khi nó sà xuống) · Người Đá / Khủng Long = lúc ngồi nghỉ
+  function bossOpen(B) { return !REST_BOSS[B.kind] || B.phase === 'rest'; } // lúc đánh trúng được: Vua Sấm = lúc nào cũng được (tới được khi nó sà xuống) · các boss khác = lúc nó nghỉ
   function bossClang(x, y) { // đánh trúng lúc boss chưa hở: không mất tim, nhắc nhẹ (không chê)
     fx('clang', x, y); tone(1400, 0.06, 'square', 0.05);
-    if (clangT <= 0) { showHint(boss && boss.kind === 'dino' ? 'Wait till it gets dizzy!' : 'Wait till it sits down!'); clangT = 3; }
+    if (clangT <= 0) { showHint((boss && WAIT_HINT[boss.kind]) || WAIT_HINT.rock); clangT = 3; }
   }
   function resetFight() {
-    drops = []; loot = []; clangT = 0;
+    drops = []; loot = []; clangT = 0; gustV = 0; honey = []; honeyK = 1; dusk = 0;
     weapon = null; atkCd = 0; shots = []; slashT = 0; bolts = []; boss = newBoss(); wind = { dir: 0, t: 2, str: 0 }; storm = 0; rage = false; lockT = 0; noWpT = 0;
     fightN = { fired: 0, kills: 0, bounces: 0, bossHits: 0, zaps: 0 };
     // màn có boss mà Bon quên đặt vũ khí → tự có đống đá cạnh Start (star bị khoá thì phải luôn có cách hạ boss)
@@ -829,6 +865,7 @@
       for (const e of enemies) { if (e.gone) continue; const dx = (e.x - b.x) * d; if (dx > -10 && dx < SWORD_REACH + e.rc && Math.abs(e.y - b.y) < 40 + e.rc) hitEnemy(e, d); }
       const B = boss;
       if (B && B.state === 'fight' && B.hurtT <= 0) { const dx = (B.x - b.x) * d; if (dx > -BOSS_R && dx < SWORD_REACH + BOSS_R && Math.abs(B.y - b.y) < BOSS_R + 40) { if (bossOpen(B)) hitBoss(B.x - d * BOSS_R * 0.6, B.y, 2); else bossClang(B.x - d * BOSS_R * 0.6, B.y); } }
+      if (octoArm(B)) { const ax = (B.tx - b.x) * d; if (ax > -OCTO_R && ax < SWORD_REACH + OCTO_R && Math.abs(B.ty - 18 - b.y) < 60) hitBoss(B.tx, B.ty - 18, 2); } // Bạch Tuộc: chém vào xúc tu đang nằm cũng trúng
     }
   }
   function hitEnemy(e, s) {
@@ -840,9 +877,11 @@
   }
   function hitBoss(x, y, dmg) {
     const B = boss; B.hp = Math.max(0, B.hp - dmg); B.hurtT = 0.45; B.hitDive = true; B.hitRest = true; fightN.bossHits++; shakeT = 0.15;
+    if (B.kind === 'owl') B.duskT = Math.max(0.1, B.duskT - 0.25); // Cú: mỗi lần trúng thì trời sáng ấm hơn một nấc
+    if (B.kind === 'octo' && B.phase === 'rest' && !B.bowed) { B.bowed = true; B.pt += OCTO_BONUS; } // Bạch Tuộc: trúng lần đầu trong lượt nghỉ → cúi đầu, cho đánh thêm 1 lúc
     tone(180, 0.2, 'square', 0.12, 90); fx('hit_boss', x, y);
     if (B.hp <= 0) { // thua = hết giận, ở lại ăn mừng cùng baby; star mở khoá; trời quang lại
-      B.state = 'happy'; B.t = 0; rage = false; bolts = []; drops = [];
+      B.state = 'happy'; B.t = 0; rage = false; bolts = []; drops = []; B.swarm = 0; B.sbOn = 0;
       showHint('You did it! The boss is your friend now!');
       tone(523, 0.14, 'triangle', 0.12); tone(659, 0.14, 'triangle', 0.12, 0, 0.14); tone(784, 0.22, 'triangle', 0.12, 0, 0.28);
       fx('boss_happy', B.x, B.y);
@@ -859,6 +898,10 @@
     const thunder = !!B && B.kind === 'thunder';
     storm = approach(storm, thunder && (B.state === 'intro' || B.state === 'fight') ? 1 : 0, dt * 0.7); // Vua Sấm: trời tối dần khi boss dậy, quang lại khi boss thua
     if (!thunder || B.state !== 'fight') { wind.dir = 0; wind.str = approach(wind.str, 0, 400 * dt); }
+    dusk = approach(dusk, B && B.kind === 'owl' && (B.state === 'intro' || B.state === 'fight') ? B.duskT : 0, dt * 0.7); // Cú: chạng vạng khi cú dậy, sáng dần khi bị đánh trúng, ban ngày khi cú thua
+    gustV = 0; honeyK = 1;
+    for (const H of honey) { H.life -= dt; if (hero.grounded && Math.abs(hero.x - H.x) < 46 && Math.abs(hero.y + RC - H.y) < 24) honeyK = HONEY_K; } // vũng mật: tự tan sau vài giây; đứng trong đó thì đi chậm lại
+    honey = honey.filter(H => H.life > 0);
     if (!B) return;
     B.t += dt; if (B.hurtT > 0) B.hurtT -= dt; if (B.gloatT > 0) B.gloatT -= dt;
     if (GROUND_BOSS[B.kind]) { const g0 = groundBelow(B.x, B.y - BOSS_R); B.y = approach(B.y, (g0 < 1e8 ? g0 : LVB) - BOSS_R, 600 * dt); } // Người Đá / Khủng Long đứng trên đất: đặt lơ lửng thì rơi xuống đất ngay dưới chỗ đặt
@@ -870,7 +913,7 @@
       if (B.t > 1.8) {
         B.state = 'fight'; fx('boss_fight', B.x, B.y);
         if (thunder) { B.phase = 'hover'; B.atkT = 1.6; rage = true; wind.t = 0.5; showHint('Hit it when it dives down!'); }
-        else { B.phase = 'walk'; B.atkT = 1.4; showHint(B.kind === 'dino' ? 'Hit it when it gets dizzy!' : 'Hit it when it sits down!'); }
+        else { B.phase = FLY_BOSS[B.kind] ? 'hover' : 'walk'; B.atkT = 1.4; showHint(INTRO_HINT[B.kind]); }
       }
       return;
     }
@@ -881,6 +924,13 @@
     }
     if (B.kind === 'rock') { rockStep(B, dt); return; }
     if (B.kind === 'dino') { dinoStep(B, dt); return; }
+    if (B.kind === 'whale') { whaleStep(B, dt); return; }
+    if (B.kind === 'robot') { robotStep(B, dt); return; }
+    if (B.kind === 'bee') { beeStep(B, dt); return; }
+    if (B.kind === 'owl') { owlStep(B, dt); return; }
+    if (B.kind === 'ice') { iceStep(B, dt); return; }
+    if (B.kind === 'dragon') { dragonStep(B, dt); return; }
+    if (B.kind === 'octo') { octoStep(B, dt); return; }
     wind.t -= dt;
     if (wind.t <= 0) { wind.t = 2.5 + Math.random() * 2; wind.dir = [-1, 0, 1][Math.floor(Math.random() * 3)]; fx('wind', b.x, b.y, wind.dir); }
     wind.str = approach(wind.str, wind.dir ? WIND_MAX : 0, 300 * dt);
@@ -929,7 +979,7 @@
   function goRest(B) { B.phase = 'rest'; B.pt = B.restT; B.hitRest = false; fx('rest', B.x, B.y); showHint('Now! Hit it!'); tone(660, 0.1, 'triangle', 0.1); tone(880, 0.14, 'triangle', 0.1, 0, 0.12); }
   function restStep(B, dt) { // đang ngồi nghỉ — LÚC NÀY đánh trúng được; hụt 2 lượt liền thì lượt sau ngồi lâu hơn
       B.pt -= dt;
-      if (B.pt <= 0) { if (!B.hitRest && ++B.misses >= 2) { B.restT = Math.min(4.2, B.restT + 0.6); B.misses = 0; } B.phase = 'walk'; B.atkT = B.hp <= 2 ? 1.6 : 2.4; }
+      if (B.pt <= 0) { if (!B.hitRest && ++B.misses >= 2) { B.restT = Math.min(4.2, B.restT + 0.6); B.misses = 0; } B.phase = FLY_BOSS[B.kind] ? 'hover' : 'walk'; B.atkT = B.hp <= 2 ? 1.6 : 2.4; }
   }
   function bodyStep(B, dt) {
     const b = hero;
@@ -962,6 +1012,172 @@
       if (blocked || B.x === B.spinX || B.pt <= 0) goRest(B);
     } else restStep(B, dt);
     bodyStep(B, dt);
+  }
+  function whaleStep(B, dt) { // Cá Voi Gió: bay cạnh baby → hạ thấp + phồng má (mũi tên báo hướng) → thổi 1 luồng ngang ngắn → xẹp bụng nằm nghỉ ngang tầm baby (đánh được) → bay lên
+    const b = hero, g0 = groundBelow(B.x, B.y - BOSS_R), lowY = (g0 < 1e8 ? g0 : LVB) - BOSS_R - 14; // độ cao lúc thổi / lúc nghỉ: sát mặt đất ngay dưới nó
+    if (B.phase === 'hover') { // bay ở độ cao Bon đặt, giữ cách baby một quãng về phía nó đang đứng (không ra khỏi vùng quanh chỗ đặt)
+      const side = B.x >= b.x ? 1 : -1;
+      B.x = approach(B.x, clamp(clamp(b.x + side * WHALE_GAP, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R), 110 * dt);
+      B.y = approach(B.y, B.hy, 260 * dt);
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // phồng má: hướng thổi = phía baby đang đứng — CHỐT từ lúc này
+        B.phase = 'puff'; B.pt = WHALE_WARN; B.n++; B.gustDir = b.x >= B.x ? 1 : -1; B.blew = false;
+        tone(196, 0.35, 'sine', 0.1, 330); tone(330, 0.12, 'triangle', 0.07, 0, 0.5); fx('whale_puff', B.x, B.y, B.gustDir); showHint('Run away from the wind!');
+      }
+    } else if (B.phase === 'puff') { // hạ xuống ngang tầm baby trong lúc phồng má (đứng yên tại chỗ)
+      B.y = approach(B.y, lowY, 520 * dt); B.pt -= dt;
+      if (B.pt <= 0) { B.phase = 'blow'; B.pt = WHALE_BLOW; noise('flap'); tone(420, 1.0, 'sawtooth', 0.05, 180); fx('whale_blow', B.x, B.y, B.gustDir); }
+    } else if (B.phase === 'blow') { // thổi: baby đứng trong luồng (trước miệng nó, dài 10 ô, ngang tầm nó) thì bị ĐẨY ra xa — không đau, không về Start
+      B.y = approach(B.y, lowY, 520 * dt); B.pt -= dt;
+      const d = (b.x - B.x) * B.gustDir;
+      if (d > 0 && d < WHALE_LEN && Math.abs(b.y - B.y) < 110 && !won) { gustV = B.gustDir * WHALE_PUSH; if (!B.blew) { B.blew = true; fightN.zaps++; say(b.id, 'dizzy', 0.8); fx('whale_hit', b.x, b.y, B.gustDir); } }
+      if (B.pt <= 0) goRest(B);
+    } else { B.y = approach(B.y, lowY, 520 * dt); restStep(B, dt); }
+    bodyStep(B, dt);
+  }
+  function robotStep(B, dt) { // Robot Nam Châm: đi → sạc nam châm (đếm 3 nhịp) → hút nhẹ 1 đợt → mở nắp bụng nghỉ (đánh được) → đi
+    const b = hero;
+    if (B.phase === 'walk') { // đi chậm về phía baby (không ra khỏi vùng quanh chỗ đặt), đứng lại khi còn cách một quãng (để lúc hút baby không bị lôi tuột vào thân)
+      const tx = clamp(clamp(b.x, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R);
+      if (Math.abs(tx - B.x) > BOSS_R + 160) { const nx = approach(B.x, tx, ROBOT_WALK_V * dt); if (!solidAt(nx + Math.sign(tx - B.x) * BOSS_R, B.y)) B.x = nx; }
+      B.atkT -= dt;
+      if (B.atkT <= 0) {
+        B.phase = 'charge'; B.pt = ROBOT_WARN; B.n++; B.pulled = false;
+        for (let i = 0; i < 3; i++) tone(520 + i * 130, 0.09, 'square', 0.06, 0, i * 0.33); // đếm nhịp: bíp — bíp — bíp
+        fx('robot_charge', B.x, B.y); showHint('Walk away from the magnet!');
+      }
+    } else if (B.phase === 'charge') {
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'pull'; B.pt = ROBOT_PULL; tone(110, 0.9, 'sawtooth', 0.06, 160); fx('robot_pull', B.x, B.y); }
+    } else if (B.phase === 'pull') { // hút: baby trong vùng 8 ô (ngang tầm) bị kéo NHẸ về phía Robot — chậm hơn tốc độ đi của baby nên đi ngược lại vẫn thoát
+      B.pt -= dt;
+      const d = b.x - B.x;
+      if (Math.abs(d) < ROBOT_RANGE && Math.abs(b.y - B.y) < 120 && !won) { gustV = -Math.sign(d) * ROBOT_PULL_V; if (!B.pulled) { B.pulled = true; fightN.zaps++; say(b.id, 'dizzy', 0.8); } }
+      if (B.pt <= 0) goRest(B);
+    } else restStep(B, dt);
+    bodyStep(B, dt);
+  }
+  function beeStep(B, dt) { // Ong Chúa: bay ôm tổ → tổ rung (chấm vàng báo đường bay) → 1 nhóm ong bay ra hết đường rồi về tổ → hạ xuống ôm tổ nghỉ (đánh được) → bay lên
+    const b = hero, g0 = groundBelow(B.x, B.y - BOSS_R), lowY = (g0 < 1e8 ? g0 : LVB) - BOSS_R - 14;
+    if (B.phase === 'hover') { // bay ở độ cao Bon đặt, giữ cách baby một quãng về phía nó đang đứng (không ra khỏi vùng quanh chỗ đặt)
+      const side = B.x >= b.x ? 1 : -1;
+      B.x = approach(B.x, clamp(clamp(b.x + side * BEE_GAP, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R), 110 * dt);
+      B.y = approach(B.y, B.hy, 260 * dt);
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // tổ rung: đường bay = ngang tầm baby, từ tổ về phía baby, vượt qua baby 2 ô (tối đa 9 ô) — CHỐT từ lúc này
+        B.phase = 'buzz'; B.pt = BEE_WARN; B.n++; B.stung = false;
+        B.pathDir = b.x >= B.x ? 1 : -1; B.pathY = b.y;
+        B.pathX = clamp(B.x + B.pathDir * Math.min(BEE_LEN, Math.abs(b.x - B.x) + 2 * CELL), 20, levelW() - 20);
+        tone(220, 0.6, 'sawtooth', 0.04, 240); fx('bee_buzz', B.x, B.y); showHint('Jump over the bees!');
+      }
+    } else if (B.phase === 'buzz') { // Ong Chúa đứng yên tại chỗ trong lúc báo
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'swarm'; B.swarm = 1; B.swX = B.x; B.swY = B.pathY; tone(330, 0.9, 'sawtooth', 0.05, 300); fx('bee_swarm', B.x, B.y); }
+    } else if (B.phase === 'swarm') { // đàn ong bay ra tới cuối đường đã báo (ngang tầm baby), rồi bay về tổ vòng phía trên — không rượt theo baby
+      if (B.swarm === 1) {
+        B.swX = approach(B.swX, B.pathX, BEE_V * dt);
+        if (b.hurtT <= 0 && b.ouchT <= 0 && !won && Math.abs(b.x - B.swX) < 26 + RC && Math.abs(b.y - B.swY) < 30 + RC) { bump({ x: B.swX }, (b.x - B.swX) || B.pathDir); if (!B.stung) { B.stung = true; fightN.zaps++; } }
+        if (B.swX === B.pathX) { // tới cuối đường: rơi 1 vũng mật nhỏ xuống đất ngay dưới, rồi quay về
+          const gy = groundBelow(B.pathX, B.pathY - 10); if (gy < 1e8) { honey.push({ x: B.pathX, y: gy, life: HONEY_T }); if (honey.length > 2) honey.shift(); }
+          B.swarm = 2; fx('honey', B.pathX, gy < 1e8 ? gy : LVB);
+        }
+      } else {
+        B.swX = approach(B.swX, B.x, BEE_V * 1.3 * dt); B.swY = approach(B.swY, B.y, BEE_V * dt);
+        if (B.swX === B.x && B.swY === B.y) { B.swarm = 0; goRest(B); }
+      }
+    } else { B.y = approach(B.y, lowY, 520 * dt); restStep(B, dt); }
+    bodyStep(B, dt);
+  }
+  function owlStep(B, dt) { // Cú Bóng Đêm: bay → kêu "hú" + vệt chấm báo đường lao → lao xuống đúng chỗ đã báo → đáp xuống xù lông nghỉ (đánh được) → bay lên
+    const b = hero;
+    if (B.phase === 'hover') { // bay ở độ cao Bon đặt, giữ cách baby một quãng về phía nó đang đứng (không ra khỏi vùng quanh chỗ đặt)
+      const side = B.x >= b.x ? 1 : -1;
+      B.x = approach(B.x, clamp(clamp(b.x + side * OWL_GAP, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R), 110 * dt);
+      B.y = approach(B.y, B.hy, 260 * dt);
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // kêu "hú": chỗ đáp = ngay dưới chân baby lúc này — CHỐT
+        B.phase = 'hoot'; B.pt = OWL_WARN; B.n++; B.stung = false;
+        B.tgX = clamp(b.x, BOSS_R, levelW() - BOSS_R); const gt = groundBelow(B.tgX, b.y - 10); B.tgY = (gt < 1e8 ? gt : LVB) - BOSS_R - 4; // đáp: chân chạm đất
+        tone(330, 0.28, 'sine', 0.07, 290); tone(290, 0.4, 'sine', 0.07, 250, 0.32); fx('owl_hoot', B.x, B.y); showHint('Run away from the circle!'); // "hú — hú" nhẹ nhàng, không giật mình
+      }
+    } else if (B.phase === 'hoot') { // đứng yên trên cao trong lúc báo
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'swoop'; tone(520, 0.35, 'sine', 0.05, 260); fx('owl_swoop', B.x, B.y); }
+    } else if (B.phase === 'swoop') { // lao thẳng tới chỗ đã báo; quẹt trúng baby = hất (KHÔNG về Start)
+      const dx = B.tgX - B.x, dy = B.tgY - B.y, dd = Math.hypot(dx, dy), stp = OWL_V * dt;
+      if (dd <= stp) { B.x = B.tgX; B.y = B.tgY; goRest(B); fx('owl_land', B.x, B.y + BOSS_R); }
+      else { B.x += dx / dd * stp; B.y += dy / dd * stp; }
+      if (b.hurtT <= 0 && b.ouchT <= 0 && !won) { const ex = b.x - B.x, ey = b.y - B.y; if (ex * ex + ey * ey < (BOSS_R + RC - 10) * (BOSS_R + RC - 10)) { bump({ x: B.x }, ex || 1); if (!B.stung) { B.stung = true; fightN.zaps++; } } }
+    } else restStep(B, dt);
+    bodyStep(B, dt);
+  }
+  function iceStep(B, dt) { // Nữ Hoàng Băng: bay sau khiên → giơ đũa (bông tuyết báo đường lăn) → lăn 1 quả cầu tuyết → hắt xì, khiên vỡ, hạ xuống nghỉ (đánh được) → bay lên
+    const b = hero, g0 = groundBelow(B.x, B.y - BOSS_R), lowY = (g0 < 1e8 ? g0 : LVB) - BOSS_R - 14;
+    if (B.phase === 'hover') { // bay ở độ cao Bon đặt, giữ cách baby một quãng về phía nó đang đứng (không ra khỏi vùng quanh chỗ đặt)
+      const side = B.x >= b.x ? 1 : -1;
+      B.x = approach(B.x, clamp(clamp(b.x + side * ICE_GAP, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R), 110 * dt);
+      B.y = approach(B.y, B.hy, 260 * dt);
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // giơ đũa: đường lăn = trên mặt đất ngay dưới cô, về phía baby, dài 10 ô — CHỐT từ lúc này
+        B.phase = 'wand'; B.pt = ICE_WARN; B.n++; B.stung = false; B.sbDir = b.x >= B.x ? 1 : -1;
+        B.sbY = (g0 < 1e8 ? g0 : LVB) - ICE_BALL_R; B.sbEnd = clamp(B.x + B.sbDir * ICE_LEN, ICE_BALL_R, levelW() - ICE_BALL_R);
+        for (let i = 0; i < 3; i++) tone(1320 + i * 180, 0.12, 'triangle', 0.05, 0, i * 0.12); // leng keng
+        fx('ice_wand', B.x, B.y); showHint('Jump over the snowball!');
+      }
+    } else if (B.phase === 'wand') { // đứng yên trên cao trong lúc báo
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'roll'; B.sbOn = 1; B.sbX = B.x; tone(160, 0.6, 'triangle', 0.08, 120); fx('ice_roll', B.x, B.sbY); }
+    } else if (B.phase === 'roll') { // quả cầu tuyết lăn theo đường đã báo; gặp khối / nét chắn thì vỡ sớm; trúng baby = hất (KHÔNG về Start)
+      const nx = approach(B.sbX, B.sbEnd, ICE_V * dt), blocked = solidAt(nx + B.sbDir * ICE_BALL_R, B.sbY);
+      if (!blocked) B.sbX = nx;
+      if (b.hurtT <= 0 && b.ouchT <= 0 && !won && Math.abs(b.x - B.sbX) < ICE_BALL_R + RC - 4 && Math.abs(b.y - B.sbY) < ICE_BALL_R + RC - 4) { bump({ x: B.sbX }, (b.x - B.sbX) || B.sbDir); if (!B.stung) { B.stung = true; fightN.zaps++; } }
+      if (blocked || B.sbX === B.sbEnd) { B.sbOn = 0; fx('snow_burst', B.sbX, B.sbY); B.phase = 'sneeze'; B.pt = 0.6; tone(700, 0.08, 'triangle', 0.08); tone(300, 0.25, 'sawtooth', 0.08, 200, 0.12); fx('ice_sneeze', B.x, B.y); } // "Ắt... xì!" → khiên vỡ
+    } else if (B.phase === 'sneeze') { // hắt xì: khiên vỡ, hạ xuống tầm kiếm
+      B.y = approach(B.y, lowY, 520 * dt); B.pt -= dt; if (B.pt <= 0) goRest(B);
+    } else { B.y = approach(B.y, lowY, 520 * dt); restStep(B, dt); }
+    bodyStep(B, dt);
+  }
+  function dragonStep(B, dt) { // Rồng Dung Nham: đi → bụng sáng (tô cam dải đất) → phun lửa đúng dải đó → ho khói, cúi đầu nghỉ (đánh được) → đi
+    const b = hero;
+    if (B.phase === 'walk') { // đi về phía baby (không ra khỏi vùng quanh chỗ đặt), đứng lại khi còn cách một quãng
+      const tx = clamp(clamp(b.x, B.hx - 9 * CELL, B.hx + 9 * CELL), BOSS_R, levelW() - BOSS_R);
+      if (Math.abs(tx - B.x) > BOSS_R + 140) { const nx = approach(B.x, tx, DRG_WALK_V * dt); if (!solidAt(nx + Math.sign(tx - B.x) * BOSS_R, B.y)) B.x = nx; }
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // bụng sáng: dải đất sẽ phun = 4 ô, giữa là chỗ baby đang đứng — CHỐT từ lúc này
+        B.phase = 'glow'; B.pt = DRG_WARN; B.n++; B.stung = false;
+        B.flX = clamp(b.x, DRG_HALF, levelW() - DRG_HALF); const gy = groundBelow(B.flX, b.y - 10); B.flY = gy < 1e8 ? gy : LVB;
+        tone(140, 0.9, 'sawtooth', 0.05, 220); fx('dragon_glow', B.flX, B.flY); showHint('Run away from the orange spot!');
+      }
+    } else if (B.phase === 'glow') { // đứng yên trong lúc báo
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'flame'; B.pt = DRG_FLAME; tone(90, 0.9, 'sawtooth', 0.1, 60); noise('fire'); fx('dragon_flame', B.flX, B.flY); }
+    } else if (B.phase === 'flame') { // lửa bùng đúng dải đã tô, cao 3 ô; đứng trong đó = bị hất ra ngoài dải (KHÔNG về Start)
+      B.pt -= dt;
+      if (b.hurtT <= 0 && b.ouchT <= 0 && !won && Math.abs(b.x - B.flX) < DRG_HALF + RC * 0.5 && b.y > B.flY - DRG_H && b.y < B.flY + 10) { bump({ x: B.flX }, b.x - B.x); /* hất RA XA Rồng (Rồng luôn đứng ngoài dải) — baby đứng yên = đúng tâm dải, hất mặc định sang phải từng hất baby vào thân Rồng rồi dội ngược vào lửa */ if (!B.stung) { B.stung = true; fightN.zaps++; } }
+      if (B.pt <= 0) { goRest(B); B.wet = !!waterAt(B.x, B.y + BOSS_R - 12); if (B.wet) { B.pt += DRG_WET; fx('dragon_steam', B.x, B.y); } fx('dragon_cough', B.x, B.y); tone(220, 0.15, 'square', 0.05); tone(180, 0.15, 'square', 0.05, 0, 0.2); } // ho khói; đứng trong nước thì nguội nhanh → nghỉ lâu hơn
+    } else restStep(B, dt);
+    bodyStep(B, dt);
+  }
+  function octoArm(B) { return !!B && B.kind === 'octo' && B.state === 'fight' && B.phase === 'rest' && B.hurtT <= 0; } // xúc tu Bạch Tuộc đang nằm yên trên đất = đánh vào được
+  function octoStep(B, dt) { // Bạch Tuộc: ngồi yên trong bồn → bọt nổi + vòng báo → 1 xúc tu đập xuống → xúc tu nằm yên (đánh được; trúng thì cúi đầu cho đánh thêm) → ngồi
+    const b = hero;
+    if (B.phase === 'walk') { // ngồi yên trong bồn (không đi đâu), đếm giờ tới lượt đập
+      B.atkT -= dt;
+      if (B.atkT <= 0) { // bọt nổi: chỗ đập = ngay dưới chân baby (xa quá thì tới hết tầm 8 ô) — CHỐT từ lúc này
+        B.phase = 'bubble'; B.pt = OCTO_WARN; B.n++; B.stung = false; B.bowed = false;
+        B.tx = clamp(clamp(b.x, B.x - OCTO_REACH, B.x + OCTO_REACH), OCTO_R, levelW() - OCTO_R); const gy = groundBelow(B.tx, b.y - 10); B.ty = gy < 1e8 ? gy : LVB;
+        for (let i = 0; i < 3; i++) tone(500 + i * 90, 0.07, 'sine', 0.05, 0, i * 0.18); // bọt lục bục
+        fx('octo_bubble', B.tx, B.ty); showHint('Run away from the bubbles!');
+      }
+    } else if (B.phase === 'bubble') {
+      B.pt -= dt; if (B.pt <= 0) { B.phase = 'slam'; B.pt = OCTO_SLAM; }
+    } else if (B.phase === 'slam') { // xúc tu giơ lên rồi đập xuống; chạm đất thì baby đứng trong vòng bị hất (KHÔNG về Start)
+      B.pt -= dt;
+      if (B.pt <= 0) {
+        if (b.hurtT <= 0 && b.ouchT <= 0 && !won && Math.abs(b.x - B.tx) < OCTO_R + RC * 0.5 && b.y > B.ty - 110 && b.y < B.ty + 10) { bump({ x: B.tx }, b.x - B.x); /* hất RA XA Bạch Tuộc (không văng vào thân nó) — xúc tu đập đúng chân baby nên mặc định sang phải từng hất baby về phía thân */ B.stung = true; fightN.zaps++; }
+        shakeT = 0.22; tone(80, 0.3, 'square', 0.12, 50); fx('octo_slam', B.tx, B.ty); goRest(B);
+      }
+    } else restStep(B, dt);
+    bodyStep(B, dt);
+  }
+  function robotPullsRock(s) { // lúc Robot mở nắp bụng: đá ném lọt vào vùng nam châm bị kéo thẳng vào bụng
+    const B = boss;
+    return s.k === 'rock' && !!B && B.kind === 'robot' && B.state === 'fight' && B.phase === 'rest' && (s.x - B.x) * (s.x - B.x) + (s.y - B.y) * (s.y - B.y) < ROBOT_RANGE * ROBOT_RANGE;
   }
   function dropStep(dt) { // đá rơi: báo bằng bóng → rơi thẳng xuống đúng chỗ đã báo → trúng baby = hất văng (KHÔNG về Start) → nằm lại thành đá nhặt
     const b = hero;
@@ -998,6 +1214,7 @@
     if (held) attack(); // giữ nút = đánh theo nhịp
     for (const s of shots) {
       s.life -= dt; if (s.k === 'rock') s.vy += GRAV * 0.9 * dt;
+      if (robotPullsRock(s)) { const dx = boss.x - s.x, dy = boss.y + 15 - s.y, dd = Math.hypot(dx, dy) || 1; s.vx = dx / dd * ROBOT_ROCK_V; s.vy = dy / dd * ROBOT_ROCK_V; } // bay thẳng vào bụng, hết rơi
       s.x += s.vx * dt; s.y += s.vy * dt;
       if (s.x < 0 || s.x > levelW() || s.y > LVB + 80) { s.life = 0; continue; }
       if (solidAt(s.x, s.y)) { s.life = 0; fx('shot_end', s.x, s.y, s.k); continue; }
@@ -1006,6 +1223,7 @@
       if (hitE) { s.life = 0; hitEnemy(hitE, s.vx >= 0 ? 1 : -1); continue; }
       const B = boss;
       if (B && B.state === 'fight' && B.hurtT <= 0 && (s.x - B.x) * (s.x - B.x) + (s.y - B.y) * (s.y - B.y) < (BOSS_R + 10) * (BOSS_R + 10)) { s.life = 0; if (bossOpen(B)) hitBoss(s.x, s.y, 1); else bossClang(s.x, s.y); }
+      if (s.life > 0 && octoArm(B) && Math.abs(s.x - B.tx) < OCTO_R && Math.abs(s.y - (B.ty - 18)) < 34) { s.life = 0; hitBoss(s.x, s.y, 1); } // Bạch Tuộc: bắn / ném trúng xúc tu đang nằm
     }
     shots = shots.filter(s => s.life > 0);
     bossStep(dt);
@@ -1041,7 +1259,7 @@
     }
   }
   function drawBoss2D(B, t, mini) { // mây đội vương miện, vẽ quanh gốc toạ độ, bán kính ~BOSS_R (mini = ô ở thanh món / nút Boss level: không tim, không chữ)
-    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && (B.phase === 'warn' || B.phase === 'lift' || B.phase === 'windup');
+    const asleep = B.state === 'sleep', happy = B.state === 'happy', warn = B.state === 'fight' && (B.phase === 'warn' || B.phase === 'lift' || B.phase === 'windup' || B.phase === 'puff' || B.phase === 'charge' || B.phase === 'buzz' || B.phase === 'hoot' || B.phase === 'wand' || B.phase === 'glow' || B.phase === 'bubble');
     ctx.save(); ctx.translate(warn ? Math.sin(t * 60) * 4 : 0, happy ? -Math.abs(Math.sin(t * 6)) * 16 : asleep ? Math.sin(t * 1.6) * 3 : 0);
     if (B.kind === 'rock') { // Người Đá: tảng đá tròn có rêu trên đầu, 2 tay 2 chân cục đá (ngồi nghỉ thì thấp xuống)
       const sit = B.state === 'fight' && B.phase === 'rest' ? 14 : 0; ctx.translate(0, sit);
@@ -1059,6 +1277,65 @@
       ctx.beginPath(); ctx.arc(0, 2, 54, 0, TAU); ctx.fill();
       ctx.fillStyle = '#fef9c3'; ctx.beginPath(); ctx.ellipse(0, 42, 26, 11, 0, 0, TAU); ctx.fill();
       if (spin) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 4; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(0, -30 + i * 30, 72 - i * 8, 9, 0, t * 20 + i, t * 20 + i + 4); ctx.stroke(); } }
+    } else if (B.kind === 'whale') { // Cá Voi Gió: thân tròn xanh dương, bụng trắng, đuôi 2 thuỳ, vòi nước trên đầu (phồng má thì to ra; nghỉ thì xẹp xuống)
+      const fight = B.state === 'fight', k = fight && (B.phase === 'puff' || B.phase === 'blow') ? 1.14 : 1, flat = fight && B.phase === 'rest';
+      ctx.scale(k * (flat ? 1.08 : 1), k * (flat ? 0.84 : 1));
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#7dd3fc' : '#38bdf8';
+      ctx.beginPath(); ctx.moveTo(-46, 8); ctx.quadraticCurveTo(-76, 2, -92, -22); ctx.quadraticCurveTo(-84, 0, -100, 14); ctx.quadraticCurveTo(-78, 16, -46, 24); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 4, 58, 50, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f0f9ff'; ctx.beginPath(); ctx.ellipse(0, 34, 40, 17, 0, 0, TAU); ctx.fill();
+      if (!flat && !mini) { ctx.strokeStyle = '#bae6fd'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, -46); ctx.lineTo(0, -64); ctx.moveTo(0, -64); ctx.quadraticCurveTo(-12, -74, -16, -62); ctx.moveTo(0, -64); ctx.quadraticCurveTo(12, -74, 16, -62); ctx.stroke(); }
+    } else if (B.kind === 'robot') { // Robot Nam Châm: thân hộp bạc, đầu hộp, nam châm chữ U đỏ trên đầu, nắp bụng (mở ra lúc nghỉ → lõi vàng)
+      const fight = B.state === 'fight', open = fight && B.phase === 'rest', mag = fight && (B.phase === 'charge' || B.phase === 'pull');
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#cbd5e1' : '#94a3b8';
+      rr(-40, 50, 26, 12, 5); ctx.fill(); rr(14, 50, 26, 12, 5); ctx.fill();          // chân
+      rr(-56, 26, 112, 30, 12); ctx.fill();                                            // thân
+      rr(-44, -46, 88, 74, 18); ctx.fill();                                            // đầu (mặt vẽ đè lên)
+      ctx.strokeStyle = mag ? (Math.sin(t * 30) > 0 ? '#ff6b6b' : '#ef4444') : '#ef4444'; ctx.lineWidth = 11; ctx.lineCap = 'butt';
+      ctx.beginPath(); ctx.arc(0, -62, 15, Math.PI, 0); ctx.moveTo(-15, -62); ctx.lineTo(-15, -50); ctx.moveTo(15, -62); ctx.lineTo(15, -50); ctx.stroke(); // nam châm chữ U
+      if (open) { ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(0, 41, 10, 0, TAU); ctx.fill(); ctx.fillStyle = '#475569'; rr(-17, 54, 34, 8, 3); ctx.fill(); } // nắp mở rủ xuống, lõi vàng lộ ra
+      else { ctx.fillStyle = '#475569'; rr(-17, 32, 34, 20, 5); ctx.fill(); }          // nắp đóng
+    } else if (B.kind === 'octo') { // Bạch Tuộc: đầu tròn tím ngồi trong bồn gỗ có nước xanh; cúi đầu khi bị đánh trúng lúc nghỉ
+      const bow = B.state === 'fight' && B.phase === 'rest' && B.bowed;
+      ctx.save(); ctx.translate(0, bow ? 16 : 0); ctx.rotate(bow ? 0.18 : 0);
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#d8b4fe' : '#a855f7'; ctx.beginPath(); ctx.ellipse(0, -6, 54, 50, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (const q of [[-26, -30, 7], [20, -36, 5], [30, -14, 6]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); } // đốm
+      ctx.restore();
+      ctx.fillStyle = '#92400e'; ctx.beginPath(); ctx.moveTo(-62, 24); ctx.lineTo(62, 24); ctx.lineTo(52, 60); ctx.lineTo(-52, 60); ctx.closePath(); ctx.fill(); // bồn gỗ
+      ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-58, 38); ctx.lineTo(58, 38); ctx.moveTo(-55, 50); ctx.lineTo(55, 50); ctx.stroke();
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.ellipse(0, 24, 62, 8, 0, 0, TAU); ctx.fill(); // mặt nước trong bồn
+    } else if (B.kind === 'dragon') { // Rồng Dung Nham: thân tròn đỏ cam, bụng vàng (sáng rực lúc báo), 2 sừng, 2 cánh nhỏ, đuôi; nghỉ thì cúi thấp
+      const fight = B.state === 'fight', glow = fight && (B.phase === 'glow' || B.phase === 'flame'), low = fight && B.phase === 'rest';
+      ctx.translate(0, low ? 12 : 0); ctx.rotate(low ? 0.12 : 0);
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#fca5a5' : '#dc2626';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * 30, -30); ctx.quadraticCurveTo(s * 86, -70, s * 74, -6); ctx.closePath(); ctx.fill(); } // cánh
+      ctx.beginPath(); ctx.moveTo(-40, 30); ctx.quadraticCurveTo(-90, 44, -98, 14); ctx.quadraticCurveTo(-72, 26, -46, 8); ctx.closePath(); ctx.fill(); // đuôi
+      ctx.beginPath(); ctx.arc(0, 2, 54, 0, TAU); ctx.fill();
+      ctx.fillStyle = glow ? (Math.sin(t * 24) > 0 ? '#fde047' : '#fb923c') : '#fbbf24'; ctx.beginPath(); ctx.ellipse(0, 34, 30, 18, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fef3c7'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * 18, -46); ctx.lineTo(s * 30, -74); ctx.lineTo(s * 34, -42); ctx.closePath(); ctx.fill(); } // sừng
+      if (low && !mini) { ctx.fillStyle = 'rgba(148,163,184,0.6)'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(40 + i * 12, 20 - i * 16 - (t * 30 % 16), 8 + i * 3, 0, TAU); ctx.fill(); } } // ho khói
+    } else if (B.kind === 'ice') { // Nữ Hoàng Băng: váy tròn xanh băng viền lông trắng, vương miện pha lê, cầm đũa sao; khiên băng tròn trong suốt bao quanh (vỡ khi cô hắt xì)
+      const open = B.state === 'fight' && (B.phase === 'rest' || B.phase === 'sneeze');
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#e0f2fe' : '#7dd3fc'; ctx.beginPath(); ctx.arc(0, 4, 52, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f8fafc'; ctx.beginPath(); ctx.ellipse(0, 46, 50, 12, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#bae6fd'; ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-24, -44); ctx.lineTo(-18, -70); ctx.lineTo(-8, -50); ctx.lineTo(0, -78); ctx.lineTo(8, -50); ctx.lineTo(18, -70); ctx.lineTo(24, -44); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(52, 10); ctx.lineTo(70, (B.phase === 'wand' ? -50 : -20)); ctx.stroke(); ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(70, B.phase === 'wand' ? -54 : -24, 8, 0, TAU); ctx.fill();
+      if (!open && !mini) { ctx.strokeStyle = 'rgba(186,230,253,0.85)'; ctx.fillStyle = 'rgba(224,242,254,0.22)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 80, 0, TAU); ctx.fill(); ctx.stroke(); }
+    } else if (B.kind === 'owl') { // Cú Bóng Đêm: thân tròn nâu, 2 chỏm tai nhọn, bụng kem có vảy lông, 2 cánh (đáp xuống nghỉ thì xù lông to ra)
+      const fluff = B.state === 'fight' && B.phase === 'rest'; ctx.scale(fluff ? 1.1 : 1, fluff ? 1.06 : 1);
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#c4a27a' : '#8b6a4a';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * 20, -44); ctx.lineTo(s * 40, -74); ctx.lineTo(s * 46, -36); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.ellipse(s * 52, 12, 18, 36, s * 0.25, 0, TAU); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(0, 2, 52, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f5e6c8'; ctx.beginPath(); ctx.ellipse(0, 28, 30, 24, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#c9b18a'; ctx.lineWidth = 2; for (const q of [[-12, 22], [12, 22], [0, 34], [-16, 38], [16, 38]]) { ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+      ctx.fillStyle = '#f59e0b'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * 14, 56, 9, 5, 0, 0, TAU); ctx.fill(); }
+    } else if (B.kind === 'bee') { // Ong Chúa: thân tròn vàng sọc đen, 2 cánh trong, vương miện nhỏ, ôm tổ ong nâu ở dưới bụng
+      const flap = Math.sin(t * 40) * 0.25;
+      ctx.fillStyle = 'rgba(224,242,254,0.85)'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * 42, -42, 26, 15, s * (0.5 + flap), 0, TAU); ctx.fill(); }
+      ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#fde68a' : '#facc15'; ctx.beginPath(); ctx.arc(0, 2, 54, 0, TAU); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(0, 2, 54, 0, TAU); ctx.clip(); ctx.fillStyle = '#1f2937'; ctx.fillRect(-60, -40, 120, 9); ctx.fillRect(-60, 40, 120, 9); ctx.restore();
+      ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#ca8a04'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-16, -48); ctx.lineTo(-16, -64); ctx.lineTo(-8, -55); ctx.lineTo(0, -68); ctx.lineTo(8, -55); ctx.lineTo(16, -64); ctx.lineTo(16, -48); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#b45309'; ctx.beginPath(); ctx.ellipse(0, 56, 26, 20, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-24, 50); ctx.lineTo(24, 50); ctx.moveTo(-22, 62); ctx.lineTo(22, 62); ctx.stroke(); // tổ ong
     } else {
     ctx.fillStyle = B.hurtT > 0 ? '#fecaca' : happy ? '#ffffff' : asleep ? '#e2e8f0' : '#a8b3c4';
     for (const q of [[-40, 11, 33], [40, 11, 33], [-16, -16, 38], [20, -13, 36], [0, 18, 40]]) { ctx.beginPath(); ctx.arc(q[0], q[1], q[2], 0, TAU); ctx.fill(); }
@@ -1106,6 +1383,43 @@
     if (boss && boss.kind === 'dino' && boss.state === 'fight' && (boss.phase === 'windup' || boss.phase === 'spin')) { // Khủng Long: vòng xoáy trên đất báo chỗ nó sẽ lao tới
       ctx.strokeStyle = 'rgba(22,163,74,' + (0.5 + 0.3 * Math.sin(t * 20)) + ')'; ctx.lineWidth = 5; ctx.lineCap = 'round';
       for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(boss.spinX, boss.y + BOSS_R - 3, 46 - i * 13, 11 - i * 3, 0, t * 9 + i * 2, t * 9 + i * 2 + 4.4); ctx.stroke(); }
+    }
+    if (boss && boss.kind === 'octo' && boss.state === 'fight') { // Bạch Tuộc: bọt + vòng báo (lúc báo) · xúc tu giơ lên / nằm dài trên đất (lúc đập / nghỉ)
+      const B = boss, ph = B.phase;
+      if (ph === 'bubble') { ctx.strokeStyle = 'rgba(56,189,248,' + (0.5 + 0.35 * Math.sin(t * 16)) + ')'; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(B.tx, B.ty - 3, OCTO_R, 10, 0, 0, TAU); ctx.stroke();
+        ctx.fillStyle = 'rgba(186,230,253,0.8)'; for (let i = 0; i < 4; i++) { const k = (t * 1.3 + i / 4) % 1; ctx.beginPath(); ctx.arc(B.tx + (i - 1.5) * 18, B.ty - 6 - k * 40, 4 + i, 0, TAU); ctx.fill(); } }
+      if (ph === 'slam' || ph === 'rest') { const up = ph === 'slam' ? Math.max(0, B.pt) / OCTO_SLAM : 0, d = B.tx >= B.x ? 1 : -1, x0 = B.x + d * 40, y0 = B.y + 20;
+        ctx.strokeStyle = B.hurtT > 0 ? '#fecaca' : '#9333ea'; ctx.lineWidth = 22; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + B.tx) / 2, B.ty - 20 - up * 160, B.tx, B.ty - 12 - up * 120); ctx.stroke();
+        ctx.fillStyle = '#e9d5ff'; for (let i = 1; i < 6; i++) { const k = i / 6; ctx.beginPath(); ctx.arc(x0 + (B.tx - x0) * k, (y0 + (B.ty - 12 - up * 120 - y0) * k) + 8, 4, 0, TAU); ctx.fill(); } } // giác hút
+    }
+    if (boss && boss.kind === 'dragon' && boss.state === 'fight' && (boss.phase === 'glow' || boss.phase === 'flame')) { // Rồng: dải đất tô cam (báo) → lửa bùng đúng dải đó
+      if (boss.phase === 'glow') { ctx.fillStyle = 'rgba(249,115,22,' + (0.35 + 0.3 * Math.sin(t * 18)) + ')'; ctx.fillRect(boss.flX - DRG_HALF, boss.flY - 8, DRG_HALF * 2, 8); }
+      else for (let i = 0; i < 6; i++) { const x = boss.flX - DRG_HALF + (i + 0.5) * DRG_HALF / 3, h = DRG_H * (0.7 + 0.3 * Math.sin(t * 30 + i * 2)); ctx.fillStyle = i % 2 ? '#fb923c' : '#facc15'; ctx.beginPath(); ctx.moveTo(x - 12, boss.flY); ctx.quadraticCurveTo(x - 10, boss.flY - h * 0.6, x, boss.flY - h); ctx.quadraticCurveTo(x + 10, boss.flY - h * 0.6, x + 12, boss.flY); ctx.closePath(); ctx.fill(); }
+    }
+    if (boss && boss.kind === 'ice' && boss.state === 'fight') { // Nữ Hoàng Băng: hàng bông tuyết báo đường lăn (lúc giơ đũa) + quả cầu tuyết đang lăn
+      if (boss.phase === 'wand') { ctx.fillStyle = 'rgba(56,189,248,' + (0.45 + 0.4 * Math.sin(t * 16)) + ')'; for (let x = boss.x; (x - boss.sbEnd) * boss.sbDir <= 0; x += boss.sbDir * 26) { ctx.beginPath(); ctx.arc(x, boss.sbY + ICE_BALL_R - 4, 5, 0, TAU); ctx.fill(); } }
+      if (boss.sbOn) { ctx.save(); ctx.translate(boss.sbX, boss.sbY); ctx.rotate(boss.sbX / ICE_BALL_R); ctx.fillStyle = '#f8fafc'; ctx.strokeStyle = '#bae6fd'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, ICE_BALL_R, 0, TAU); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-14, -6); ctx.lineTo(10, 12); ctx.moveTo(4, -16); ctx.lineTo(-8, 14); ctx.stroke(); ctx.restore(); }
+    }
+    if (dusk > 0.01) { ctx.fillStyle = 'rgba(91,33,182,' + (0.14 * dusk) + ')'; ctx.fillRect(camX, BAR + camY, WW, LVB - BAR); } // Cú: chạng vạng tím nhạt (không tối đen)
+    if (boss && boss.kind === 'owl' && boss.state === 'fight' && (boss.phase === 'hoot' || boss.phase === 'swoop')) { // Cú: vệt chấm báo đường lao + vòng tròn dưới chân chỗ nó sẽ đáp
+      const a = 0.45 + 0.4 * Math.sin(t * 16), gy = boss.tgY + BOSS_R + 1; ctx.fillStyle = 'rgba(167,139,250,' + a + ')';
+      if (boss.phase === 'hoot') for (let i = 1; i < 10; i++) { const k = i / 10; ctx.beginPath(); ctx.arc(boss.x + (boss.tgX - boss.x) * k, boss.y + (boss.tgY - boss.y) * k, 5, 0, TAU); ctx.fill(); }
+      ctx.strokeStyle = 'rgba(139,92,246,' + a + ')'; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(boss.tgX, gy, 44, 10, 0, 0, TAU); ctx.stroke();
+    }
+    for (const H of honey) { ctx.fillStyle = 'rgba(245,158,11,' + Math.min(0.85, H.life) + ')'; ctx.beginPath(); ctx.ellipse(H.x, H.y - 3, 40, 8, 0, 0, TAU); ctx.fill(); } // vũng mật
+    if (boss && boss.kind === 'bee' && boss.state === 'fight') {
+      if (boss.phase === 'buzz') { ctx.fillStyle = 'rgba(234,179,8,' + (0.5 + 0.4 * Math.sin(t * 16)) + ')'; for (let x = boss.x; (x - boss.pathX) * boss.pathDir <= 0; x += boss.pathDir * 24) { ctx.beginPath(); ctx.arc(x, boss.pathY, 5, 0, TAU); ctx.fill(); } } // chấm vàng báo đường bay
+      if (boss.swarm) for (let i = 0; i < 3; i++) { const a = t * 9 + i * TAU / 3, x = boss.swX + Math.cos(a) * 16, y = boss.swY + Math.sin(a) * 10; ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(x, y, 9, 0, TAU); ctx.fill(); ctx.fillStyle = '#1f2937'; ctx.fillRect(x - 2, y - 9, 4, 18); } // 3 chú ong
+    }
+    if (boss && boss.kind === 'robot' && boss.state === 'fight' && (boss.phase === 'charge' || boss.phase === 'pull')) { // Robot: vòng vùng hút trên đất + vòng sóng từ co dần về phía nó
+      const pull = boss.phase === 'pull', gy = boss.y + BOSS_R - 3;
+      ctx.strokeStyle = 'rgba(239,68,68,' + (pull ? 0.75 : 0.35 + 0.25 * Math.sin(t * 18)) + ')'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(boss.x, gy, ROBOT_RANGE, 14, 0, 0, TAU); ctx.stroke();
+      if (pull) { ctx.strokeStyle = 'rgba(248,113,113,0.6)'; for (let i = 0; i < 3; i++) { const r = ROBOT_RANGE * (1 - ((t * 1.6 + i / 3) % 1)); ctx.beginPath(); ctx.ellipse(boss.x, boss.y, r, r * 0.45, 0, 0, TAU); ctx.stroke(); } }
+    }
+    if (boss && boss.kind === 'whale' && boss.state === 'fight' && (boss.phase === 'puff' || boss.phase === 'blow')) { // Cá Voi: hàng mũi tên báo hướng gió, trải hết chiều dài luồng
+      const d = boss.gustDir, blow = boss.phase === 'blow';
+      ctx.strokeStyle = 'rgba(14,165,233,' + (blow ? 0.9 : 0.45 + 0.3 * Math.sin(t * 16)) + ')'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 0; i < 5; i++) { const x = boss.x + d * (BOSS_R + 20 + ((i * 52 + (blow ? t * 420 : t * 90)) % (WHALE_LEN - BOSS_R - 30))), y = boss.y + 30; ctx.beginPath(); ctx.moveTo(x - d * 12, y - 14); ctx.lineTo(x, y); ctx.lineTo(x - d * 12, y + 14); ctx.stroke(); }
     }
     if (boss) { ctx.save(); ctx.translate(boss.x, boss.y); drawBoss2D(boss, t, false); ctx.restore(); }
     for (const s of shots) {
@@ -2048,7 +2362,7 @@
   function drop3D(why) { W3 = null; w3Pending = null; w3Why = why; glc.style.display = 'none'; }
   function boot3D() {
     const list = ['lib/three.min.js', 'lib/pp/CopyShader.js', 'lib/pp/LuminosityHighPassShader.js', 'lib/pp/EffectComposer.js', 'lib/pp/RenderPass.js', 'lib/pp/ShaderPass.js',
-      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'boss_rock.js', 'boss_dino.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
+      'lib/pp/UnrealBloomPass.js', 'lib/pp/BufferGeometryUtils.js', 'lib/GLTFLoader.js', 'trees/pines_tex.js', 'gfx.js', 'boss.js', 'boss_rock.js', 'boss_dino.js', 'boss_whale.js', 'boss_robot.js', 'boss_bee.js', 'boss_owl.js', 'boss_ice.js', 'boss_dragon.js', 'boss_octo.js', 'world.js'].concat(CHARS.map(ch => 'glb/' + ch.id + '_glb.js'));
     let left = list.length, bad = false;
     for (const f of list) {
       const el = document.createElement('script'); el.src = 'starfinder3d/' + f; el.async = false; // async = false: tải song song nhưng chạy đúng thứ tự
@@ -2069,7 +2383,7 @@
     if (!W3) return;
     if (w3Dirty) { W3.syncLevel(level, stroke); w3Dirty = false; }
     W3.frame({ dt: dt, raw: rawDt, clock: clock, mode: mode, camX: camX, camY: camY, rows: level.rows || ROWS, cols: level.cols, hero: hero, enemies: enemies, got: got, gotWing: gotWing, anim: anim, groundBelow: groundBelow,
-      fight: { weapon: weapon, shots: shots, slashT: slashT, slashDir: slashDir, boss: boss, bolts: bolts, storm: storm, wind: wind, locked: starLocked(), autoRock: autoRock, rage: rage, drops: drops, loot: loot } });
+      fight: { weapon: weapon, shots: shots, slashT: slashT, slashDir: slashDir, boss: boss, bolts: bolts, storm: storm, wind: wind, locked: starLocked(), autoRock: autoRock, rage: rage, drops: drops, loot: loot, honey: honey, dusk: dusk } });
   }
   function drawStrokeNow() { // nét ĐANG vẽ dở: vẫn vẽ 2D (rẻ, khớp từng điểm ảnh); buông tay thì thành dải 3D
     if (!stroke || stroke.length < 4) return;
@@ -2220,13 +2534,14 @@
       w3boxes: function(t) { return W3 ? W3.boxes(t) : null; },
       rotate: function() { if (sel) rotateObj(sel); },
       // Đợt 3: trạng thái đánh nhau (bản chép để đọc) · bấm Attack · giữ Attack · đổi luật của màn · trang thanh món
-      fight: function() { return { weapon: weapon, shots: shots.length, boss: boss ? clone(boss) : null, bolts: bolts.map(L => ({ x: L.x, y: L.y, phase: L.phase })), storm: storm, rage: rage, locked: starLocked(),
+      fight: function() { return { weapon: weapon, shots: shots.length, boss: boss ? clone(boss) : null, bolts: bolts.map(L => ({ x: L.x, y: L.y, phase: L.phase })), storm: storm, dusk: dusk, rage: rage, locked: starLocked(),
         wind: clone(wind), n: clone(fightN), autoRock: autoRock ? clone(autoRock) : null, items: weaponList.map(o => ({ t: o.t, x: o.x, y: o.y })), palPage: palPage, slots: NSLOT, bossSlot: BOSS_SLOT, ctrl: clone(CTRL), slashT: slashT }; },
       attack: attack, holdAttack: function(on) { atkKey = !!on; },
       rules: function(bossOn, hitMode) { if (bossOn) level.bossStar = true; else delete level.bossStar; if (hitMode === 'bounce') level.hitMode = 'bounce'; else delete level.hitMode; afterEdit(); },
       setBoss: function(o) { Object.assign(boss, o); }, // test: đưa boss vào đúng tình huống cần kiểm (vd. còn 1 tim)
+      shotsXY: function() { return shots.map(s => ({ x: s.x, y: s.y, k: s.k })); }, // test: vị trí từng viên đá / cục lửa đang bay
       // Đợt 4: loại boss · con đang chọn trong bảng · đá rơi / đá nhặt
-      boss4: function() { return { kinds: BOSS_KINDS.slice(), names: clone(BOSS_NAME), pick: bossPick, tool: tool, overlay: overlay, cards: BOSS_KINDS.map((id, i) => Object.assign({ id: id }, bossCardRect(i))), drops: clone(drops), loot: clone(loot), open: boss ? bossOpen(boss) : null }; },
+      boss4: function() { return { kinds: BOSS_KINDS.slice(), names: clone(BOSS_NAME), pick: bossPick, tool: tool, overlay: overlay, cards: BOSS_KINDS.map((id, i) => Object.assign({ id: id }, bossCardRect(i))), drops: clone(drops), loot: clone(loot), honey: clone(honey), honeyK: honeyK, open: boss ? bossOpen(boss) : null }; },
     };
   }
 
