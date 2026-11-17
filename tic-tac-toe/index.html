@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<title>Bon's Tic-Tac-Toe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== màu theo kiểu bàn (body class) ===== */
+  body.t-neon { --bg: radial-gradient(ellipse at 20% 15%, #2a0b4d 0%, transparent 55%), radial-gradient(ellipse at 85% 90%, #062a4a 0%, transparent 55%), #060611;
+    --ink:#e9f7ff; --sub:#8fa3c7; --p1:#22e6ff; --p2:#ff3df2; --panel:rgba(14,16,44,.78); --edge:rgba(125,249,255,.35);
+    --btn:rgba(255,255,255,.08); --btnOn:#22e6ff; --btnOnInk:#05121a; --card:rgba(12,14,38,.86); }
+  body.t-sky { --bg: radial-gradient(ellipse at 15% 10%, #ffffff 0%, transparent 35%), radial-gradient(ellipse at 90% 20%, #ffffffcc 0%, transparent 30%), linear-gradient(180deg,#5cbfcc 0%,#9fdfe6 60%,#d8f4ef 100%);
+    --ink:#0f3a4a; --sub:#3f6f7d; --p1:#1f6fff; --p2:#ff7a1a; --panel:rgba(255,255,255,.72); --edge:rgba(255,255,255,.95);
+    --btn:rgba(255,255,255,.65); --btnOn:#1f6fff; --btnOnInk:#fff; --card:rgba(255,255,255,.82); }
+  body.t-wood { --bg: radial-gradient(ellipse at 50% 40%, #6b4a2f 0%, #3b2716 70%, #24170c 100%);
+    --ink:#fff4e0; --sub:#d9bf98; --p1:#ff5a4e; --p2:#5fe08a; --panel:rgba(40,24,10,.82); --edge:rgba(255,214,150,.35);
+    --btn:rgba(255,240,215,.1); --btnOn:#ffcf6b; --btnOnInk:#3b2210; --card:rgba(46,28,12,.9); }
+
+  html, body { margin:0; height:100%; overflow:hidden; background:#060611; }
+  body { background: var(--bg); color: var(--ink); font-family: Fredoka, "Trebuchet MS", system-ui, sans-serif;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+  #stage { position:fixed; inset:0; }
+  canvas#board { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:20; }
+
+  /* ===== màn bắt đầu ===== */
+  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; overflow:auto; padding:16px; box-sizing:border-box; z-index:5; }
+  #start.hide, #game.hide { display:none; }
+  .card { background: var(--card); border:2px solid var(--edge); border-radius:28px; padding:22px 26px; width:min(620px,100%);
+    box-shadow: 0 20px 60px rgba(0,0,0,.35); box-sizing:border-box; margin:auto; }
+  h1 { margin:0 0 14px; text-align:center; font-size: clamp(30px,5vw,44px); letter-spacing:.5px; }
+  h1 .x { color: var(--p1); text-shadow: 0 0 14px var(--p1); } h1 .o { color: var(--p2); text-shadow: 0 0 14px var(--p2); }
+  .q { margin:16px 0 8px; font-size:20px; color: var(--sub); font-weight:600; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .pill { flex:1 1 0; min-height:60px; border-radius:18px; background: var(--btn); border:2px solid var(--edge); font-size:22px; font-weight:600; padding:6px 10px; }
+  .pill.on { background: var(--btnOn); color: var(--btnOnInk); border-color: var(--btnOn); box-shadow: 0 0 18px var(--btnOn); }
+  .babyrow { display:flex; gap:8px; align-items:center; }
+  .babyrow .who { width:86px; font-size:18px; font-weight:700; }
+  .bb { flex:1 1 0; height:78px; border-radius:16px; background: var(--btn); border:2px solid var(--edge); padding:2px; }
+  .bb canvas { width:100%; height:100%; display:block; }
+  .bb.on1 { border-color: var(--p1); box-shadow: 0 0 14px var(--p1); background: color-mix(in srgb, var(--p1) 22%, transparent); }
+  .bb.on2 { border-color: var(--p2); box-shadow: 0 0 14px var(--p2); background: color-mix(in srgb, var(--p2) 22%, transparent); }
+  .bb.taken { opacity:.25; }
+  .stepper { display:flex; align-items:center; gap:12px; }
+  .stepper button { width:66px; height:66px; border-radius:50%; background: var(--btn); border:2px solid var(--edge); font-size:38px; font-weight:700; line-height:1; }
+  .stepper .val { flex:1; text-align:center; font-size:34px; font-weight:700; }
+  .stepper canvas { width:76px; height:76px; }
+  #play { width:100%; margin-top:20px; min-height:76px; border-radius:24px; font-size:34px; font-weight:700;
+    background: linear-gradient(90deg, var(--p1), var(--p2)); color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.35); box-shadow: 0 0 26px color-mix(in srgb, var(--p1) 60%, transparent); }
+
+  /* ===== bảng người chơi ở cạnh ===== */
+  .panel { position:absolute; left:50%; top:50%; display:flex; align-items:center; gap:14px; padding:0 18px; box-sizing:border-box;
+    background: var(--panel); border:2px solid var(--edge); border-radius:26px 26px 0 0; z-index:4; }
+  .panel .pc { width:62px; height:62px; flex:none; }
+  .panel .info { flex:1; min-width:0; }
+  .panel .name { font-size:20px; color: var(--sub); font-weight:600; white-space:nowrap; }
+  .panel .status { font-size:28px; font-weight:700; white-space:nowrap; }
+  .panel.turn .status { color: var(--pc); text-shadow: 0 0 12px var(--pc); animation: bob 1s ease-in-out infinite; }
+  .panel.turn { border-color: var(--pc); box-shadow: 0 0 22px color-mix(in srgb, var(--pc) 55%, transparent) inset; }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+  .panel .score { font-size:30px; font-weight:700; min-width:40px; text-align:center; }
+  .panel .score small { display:block; font-size:13px; color: var(--sub); font-weight:600; }
+  .ib { width:60px; height:60px; border-radius:18px; background: var(--btn); border:2px solid var(--edge); font-size:28px; flex:none; }
+  .again { display:none; min-height:62px; padding:0 22px; border-radius:20px; font-size:24px; font-weight:700; background: var(--pc); color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.4); box-shadow: 0 0 20px var(--pc); flex:none; }
+  .panel.over .again { display:block; }
+  .panel.over .ib.re { display:none; }
+  .panel.won .status { font-size:36px; color:#fff; text-shadow: 0 0 10px var(--pc), 0 0 26px var(--pc); animation: pulse .6s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+
+  /* ===== nút mẫu (chỉ có trong mẫu) ===== */
+  #mk { position:fixed; left:8px; top:50%; transform:translateY(-50%); z-index:30; display:flex; align-items:flex-start; gap:8px; }
+  .card { position:relative; }
+  #siteHome { position:absolute; left:14px; top:14px; }
+  .card h1 { padding: 0 58px; }
+  #siteHome[hidden] { display:none; }
+  #mkBtn { width:52px; height:52px; border-radius:50%; background:#ffd23f; color:#3a2a00; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,.35); }
+  #mkBox { display:none; background:#fffdf5; color:#2b2b2b; border-radius:18px; padding:12px 14px; width:280px; box-shadow:0 10px 40px rgba(0,0,0,.4); font-family: system-ui, sans-serif; }
+  #mk.open #mkBox { display:block; }
+  #mkBox b { display:block; font-size:13px; margin:8px 0 4px; color:#6b5b2b; }
+  #mkBox .r { display:flex; gap:6px; flex-wrap:wrap; }
+  #mkBox button { background:#f1ead2; color:#2b2b2b; border-radius:10px; padding:8px 10px; font-size:14px; }
+  #mkBox button.on { background:#2b2b2b; color:#fff; }
+  #mkBox .zap { width:100%; margin-top:10px; background:#ffd23f; font-size:17px; font-weight:700; padding:12px; }
+  #note { position:fixed; left:50%; top:12px; transform:translateX(-50%); z-index:40; background:#fffdf5; color:#2b2b2b; border-radius:14px; padding:10px 16px; font: 15px/1.4 system-ui, sans-serif; box-shadow:0 8px 30px rgba(0,0,0,.35); max-width:min(560px, calc(100% - 32px)); box-sizing:border-box; }
+  #note.hide { display:none; }
+</style>
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
+<meta name="theme-color" content="#70c5ce">
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body class="t-neon">
+<div id="stage">
+  <div id="game" class="hide">
+    <canvas id="board"></canvas>
+    <div class="panel" id="pan1"><canvas class="pc"></canvas><div class="info"><div class="name"></div><div class="status"></div></div>
+      <div class="score"><span>0</span><small>wins</small></div><button class="again">Play again ▶</button><button class="ib re" title="Restart">↺</button><button class="ib home" title="Menu">🏠</button></div>
+    <div class="panel" id="pan2"><canvas class="pc"></canvas><div class="info"><div class="name"></div><div class="status"></div></div>
+      <div class="score"><span>0</span><small>wins</small></div><button class="again">Play again ▶</button><button class="ib re" title="Restart">↺</button><button class="ib home" title="Menu">🏠</button></div>
+  </div>
+  <div id="start">
+    <div class="card">
+      <button id="siteHome" class="ib" aria-label="Bon's Games">🏠</button>
+      <h1><span class="x">✕</span> Bon's Tic-Tac-Toe <span class="o">◯</span></h1>
+      <div class="q">Who plays?</div>
+      <div class="row"><button class="pill" data-k="mode" data-v="2p">👫 2 Players</button><button class="pill" data-k="mode" data-v="cpu">🤖 Computer</button></div>
+      <div class="row" id="diffRow" style="margin-top:10px"><button class="pill" data-k="diff" data-v="easy">😊 Easy</button><button class="pill" data-k="diff" data-v="hard">😎 Hard</button></div>
+      <div class="q">Pieces</div>
+      <div class="row"><button class="pill" data-k="pieces" data-v="xo">✕ ◯ Glow</button><button class="pill" data-k="pieces" data-v="baby">🐸 Babies</button></div>
+      <div id="babyPick" style="margin-top:10px; display:grid; gap:8px">
+        <div class="babyrow" data-p="0"><div class="who" style="color:var(--p1)">Player 1</div></div>
+        <div class="babyrow" data-p="1"><div class="who" style="color:var(--p2)" id="who2">Player 2</div></div>
+      </div>
+      <div class="q">How big is the board?</div>
+      <div class="stepper"><button id="nMinus">−</button><canvas id="nPrev"></canvas><div class="val" id="nVal"></div><button id="nPlus">+</button></div>
+      <div class="q">How many in a row to win?</div>
+      <div class="stepper"><button id="kMinus">−</button><canvas id="kPrev"></canvas><div class="val" id="kVal"></div><button id="kPlus">+</button></div>
+      <button id="play">PLAY ▶</button>
+    </div>
+  </div>
+</div>
+<div id="flash"></div>
+
+<script src="froggy3d/sprites.js"></script>
+<script src="friends3d/sprites.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const TAU = Math.PI * 2;
+  // Kiểu bàn Nam chốt 2026-11-16 (ảnh chụp mẫu): ② gỗ tối khắc sáng · gỗ sẫm · ngồi trên–dưới · nổ mạnh · thú bông quay mặt về chủ
+  const S = { theme: 'nw2', wood: 'mun', seat: 'tb', boom: 'strong', face: '1', mode: '2p', diff: 'easy', pieces: 'xo', baby: ['froggy', 'chicken'], n: 3, k: 3 };
+  const SAVE_KEY = 'bon_ttt_setup_v1'; // nhớ lựa chọn màn đầu cho lần mở sau (chỉ trên máy này)
+  try { const sv = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (sv) for (const k of ['mode', 'diff', 'pieces', 'n', 'k']) if (sv[k] !== undefined) S[k] = sv[k];
+    if (sv && Array.isArray(sv.baby) && sv.baby.length === 2) S.baby = sv.baby; } catch (e) {}
+  function saveSetup() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ mode: S.mode, diff: S.diff, pieces: S.pieces, n: S.n, k: S.k, baby: S.baby })); } catch (e) {} }
+  const N_MIN = 3, N_MAX = 15, K_MIN = 3, K_MAX = 7;
+  const BABIES = ['froggy', 'chicken', 'babyfrog', 'pillow'];
+  const BABY_NAME = { froggy: 'Froggy', chicken: 'Chicken Banana', babyfrog: 'Baby Froggy', pillow: 'Gối chút chút' };
+
+  // ================= hình 4 bạn thú bông (chép cách vẽ của game Number Memory) =================
+  const FROG_IMG = {}; let frogReady = false;
+  (function () { const src = window.FROG_SPRITES || {}, keys = Object.keys(src); let left = keys.length;
+    for (const k of keys) { const im = new Image(); im.onload = () => { if (--left === 0) frogReady = true; }; im.src = src[k]; FROG_IMG[k] = im; } })();
+  const FRIEND_IMG = {}, FRIEND_META = {}, friendReady = {};
+  (function () { const src = window.FRIEND_SPRITES || {};
+    for (const id of Object.keys(src)) { FRIEND_IMG[id] = {}; FRIEND_META[id] = src[id].meta; friendReady[id] = false;
+      const keys = Object.keys(src[id].img); let left = keys.length;
+      for (const k of keys) { const im = new Image(); im.onload = () => { if (--left === 0) friendReady[id] = true; }; im.src = src[id].img[k]; FRIEND_IMG[id][k] = im; } } })();
+  const is3D = id => id === 'froggy' ? frogReady : !!friendReady[id];
+  function part(c, b, name, x, z, ang) {
+    const im = FRIEND_IMG[b.id][name], m = FRIEND_META[b.id][name]; if (!im || !m) return;
+    const r = b.r, sz = m[0] * r;
+    c.save(); c.translate(x * r, -z * r); if (ang) c.rotate(ang); c.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz); c.restore();
+  }
+  const faceOf = b => FRIEND_IMG[b.id][b.face] ? b.face : 'idle';
+  const PILLOW_POSE = { wink: ['sag', 1.16, 0.8], phew: ['sag', 1.16, 0.8] };
+  function drawActor(c, b) {
+    const r = b.r;
+    if (b.id === 'froggy') { const im = FROG_IMG[b.face] || FROG_IMG.idle, sz = 3.4 * r; c.drawImage(im, -sz / 2, -sz / 2 - 0.15 * r, sz, sz); return; }
+    if (b.id === 'chicken') {
+      for (let s = -1; s <= 1; s += 2) part(c, b, 'leg', s * 0.3, -0.9, 0);
+      part(c, b, faceOf(b), 0, 0, 0);
+      const petals = [Math.PI / 2 - 0.95, Math.PI / 2 - 0.32, Math.PI / 2 + 0.32, Math.PI / 2 + 0.95];
+      c.save(); c.translate(0, 0.55 * r); for (let i = 0; i < 4; i++) part(c, b, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, petals[i] - Math.PI / 2); c.restore();
+      part(c, b, 'hat', 0, 1.02, 0); return;
+    }
+    if (b.id === 'babyfrog') { part(c, b, faceOf(b), 0, 0, 0); part(c, b, 'cup', 0.02, -0.32, 0); part(c, b, 'crown', 0, 0.84, 0); return; }
+    const P = PILLOW_POSE[b.face] || ['idle', 1, 1];
+    for (const [name, sx, sz] of [['cornerTL', -1, 1], ['cornerTR', 1, 1], ['cornerBL', -1, -1], ['cornerBR', 1, -1]]) part(c, b, name, sx * 0.98 * P[1], sz * 0.56 * P[2], 0);
+    part(c, b, P[0], 0, 0, 0);
+  }
+  const FIT_K = { froggy: 3.3, chicken: 4.4, babyfrog: 3.0, pillow: 3.4 };
+  const BC = {};
+  function babyImg(id, face, px) { // vẽ 1 lần vào canvas nhỏ rồi dùng lại
+    px = Math.max(8, Math.round(px)); const key = id + '|' + face + '|' + px;
+    if (BC[key]) return BC[key]; if (!is3D(id)) return null;
+    const cv = document.createElement('canvas'); cv.width = cv.height = px; const c = cv.getContext('2d');
+    c.translate(px / 2, px * 0.58); drawActor(c, { id, face, r: px / FIT_K[id] }); BC[key] = cv; return cv;
+  }
+
+  // ================= kiểu bàn =================
+  const TH = {
+    neon: { plate: 'rgba(12,12,44,.55)', plateEdge: 'rgba(125,249,255,.55)', line: '#3df2ff', lineGlow: 16, p1: '#22e6ff', p2: '#ff3df2',
+            core: '#ffffff', glow: '#7df9ff', glow2: '#c77dff', sparks: ['#ffffff', '#7df9ff', '#ff8cf7', '#c77dff'], flash: '#bff8ff' },
+    sky:  { plate: 'rgba(255,255,255,.38)', plateEdge: 'rgba(255,255,255,.95)', line: '#ffffff', lineGlow: 0, p1: '#1f6fff', p2: '#ff7a1a',
+            core: '#fffef0', glow: '#ffd23f', glow2: '#ff9f1c', sparks: ['#ffffff', '#ffe066', '#ffb347', '#ff7a1a'], flash: '#fff6c8' },
+    wood: { plate: null, plateEdge: '#2a170a', line: '#4a2a12', lineGlow: 0, p1: '#ff5a4e', p2: '#5fe08a', board: 'wood',
+            core: '#ffffff', glow: '#4fc3ff', glow2: '#b388ff', sparks: ['#ffffff', '#8fdcff', '#4fc3ff', '#d0b3ff'], flash: '#d6f1ff' },
+  };
+  // 3 kiểu KẾT HỢP neon + gỗ (Nam thích cả 2): nền tối + quân phát sáng của neon, mặt/khung gỗ của bàn gỗ
+  const NEON_BITS = { line: '#3df2ff', lineGlow: 16, p1: '#22e6ff', p2: '#ff3df2', neonPieces: true, css: 'neon',
+    core: '#ffffff', glow: '#7df9ff', glow2: '#c77dff', sparks: ['#ffffff', '#7df9ff', '#ff8cf7', '#c77dff'], flash: '#bff8ff' };
+  TH.neon.neonPieces = true; TH.wood.wood = 'soi';
+  TH.nw1 = Object.assign({}, NEON_BITS, { board: 'wood', inlay: true, neonEdge: '#3df2ff', plateEdge: '#3df2ff', wood: 'gu' });   // gỗ sáng, đèn neon cẩn trong gỗ
+  TH.nw2 = Object.assign({}, NEON_BITS, { board: 'walnut', inlay: true, neonEdge: '#ff3df2', plateEdge: '#ff3df2', wood: 'mun' }); // gỗ óc chó tối, rãnh khắc phát sáng
+  TH.nw3 = Object.assign({}, NEON_BITS, { board: 'frame', plate: 'rgba(8,8,30,.92)', plateEdge: 'rgba(125,249,255,.7)', wood: 'soi' }); // khung gỗ dày, mặt kính neon
+  const T = () => TH[S.theme];
+
+  // ================= âm thanh (tự tạo bằng code, không file) =================
+  let AC = null;
+  function audio() { if (!AC) { const A = window.AudioContext || window.webkitAudioContext; if (A) AC = new A(); } if (AC && AC.state === 'suspended') AC.resume(); return AC; }
+  function pop(p) { const a = audio(); if (!a) return; const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(p === 1 ? 720 : 520, t); o.frequency.exponentialRampToValueAtTime(p === 1 ? 360 : 260, t + 0.09);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12); o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.13); }
+  function zap(strong) { const a = audio(); if (!a) return; const t = a.currentTime, dur = strong ? 1.1 : 0.5;
+    const buf = a.createBuffer(1, Math.floor(a.sampleRate * dur), a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.12 ? 1 : 0.35);
+    const n = a.createBufferSource(); n.buffer = buf; const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(3200, t); bp.frequency.exponentialRampToValueAtTime(500, t + dur);
+    const g = a.createGain(); g.gain.setValueAtTime(strong ? 0.55 : 0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    n.connect(bp).connect(g).connect(a.destination); n.start(t);
+    const o = a.createOscillator(), og = a.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(strong ? 1400 : 900, t); o.frequency.exponentialRampToValueAtTime(70, t + dur * 0.7);
+    og.gain.setValueAtTime(strong ? 0.22 : 0.1, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.7); o.connect(og).connect(a.destination); o.start(t); o.stop(t + dur);
+    if (strong) { const b = a.createOscillator(), bg = a.createGain(); b.type = 'sine'; b.frequency.setValueAtTime(110, t); b.frequency.exponentialRampToValueAtTime(35, t + 0.6);
+      bg.gain.setValueAtTime(0.6, t); bg.gain.exponentialRampToValueAtTime(0.001, t + 0.7); b.connect(bg).connect(a.destination); b.start(t); b.stop(t + 0.7); } }
+  function chime() { const a = audio(); if (!a) return; const t = a.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => { const o = a.createOscillator(), g = a.createGain(); o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + 0.35 + i * 0.09); g.gain.exponentialRampToValueAtTime(0.18, t + 0.37 + i * 0.09); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9 + i * 0.09);
+      o.connect(g).connect(a.destination); o.start(t + 0.35 + i * 0.09); o.stop(t + 1 + i * 0.09); }); }
+
+  // ================= trạng thái ván =================
+  let G = null; const score = [0, 0]; let firstNext = 1;
+  function newGame() {
+    G = { n: S.n, k: S.k, cells: new Int8Array(S.n * S.n), turn: firstNext, born: new Float32Array(S.n * S.n).fill(-1), over: false, win: null, winner: 0, winT: 0, cpuBusy: false };
+    firstNext = firstNext === 1 ? 2 : 1; // ván sau người kia đi trước (bàn to người đi trước có lợi)
+    FX.reset(); updatePanels(); maybeCpu();
+  }
+  const DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  function runAt(cells, n, idx, p, dr, dc) { // các ô liền nhau cùng quân qua idx theo 1 hướng
+    const r0 = Math.floor(idx / n), c0 = idx % n, run = [idx];
+    for (let s = 1; ; s++) { const r = r0 + dr * s, c = c0 + dc * s; if (r < 0 || r >= n || c < 0 || c >= n || cells[r * n + c] !== p) break; run.push(r * n + c); }
+    for (let s = 1; ; s++) { const r = r0 - dr * s, c = c0 - dc * s; if (r < 0 || r >= n || c < 0 || c >= n || cells[r * n + c] !== p) break; run.unshift(r * n + c); }
+    return run;
+  }
+  function winLine(cells, n, k, idx, p) { for (const [dr, dc] of DIRS) { const run = runAt(cells, n, idx, p, dr, dc); if (run.length >= k) return run; } return null; }
+  function place(idx) {
+    if (!G || G.over || !(idx >= 0 && idx < G.cells.length) || G.cells[idx]) return;
+    const p = G.turn; G.cells[idx] = p; G.born[idx] = now(); pop(p);
+    const line = winLine(G.cells, G.n, G.k, idx, p);
+    if (line) return finish(p, line);
+    if (G.cells.every(v => v)) return finish(0, null);
+    G.turn = p === 1 ? 2 : 1; updatePanels(); maybeCpu();
+  }
+  function finish(p, line) {
+    G.over = true; G.winner = p; G.win = line; G.winT = now();
+    if (p) { score[p - 1]++; FX.start(line); } else chime();
+    updatePanels();
+  }
+
+  // ================= máy đánh =================
+  function cpuPick() {
+    const { n, k, cells } = G, me = 2, you = 1, empty = [];
+    for (let i = 0; i < cells.length; i++) if (!cells[i]) empty.push(i);
+    for (const who of [me, you]) for (const i of empty) { cells[i] = who; const w = winLine(cells, n, k, i, who); cells[i] = 0; if (w) return i; } // thắng ngay / chặn ngay
+    if (S.diff === 'easy' && Math.random() < 0.55) return empty[Math.floor(Math.random() * empty.length)];
+    let best = -1, bestS = -Infinity; const mid = (n - 1) / 2;
+    for (const i of empty) {
+      let s = 0;
+      for (const who of [me, you]) for (const [dr, dc] of DIRS) {
+        cells[i] = who; const run = runAt(cells, n, i, who, dr, dc); cells[i] = 0;
+        const a = run[0], b = run[run.length - 1], ar = Math.floor(a / n) - dr, ac = a % n - dc, br = Math.floor(b / n) + dr, bc = b % n + dc;
+        let open = 0; if (ar >= 0 && ar < n && ac >= 0 && ac < n && !cells[ar * n + ac]) open++; if (br >= 0 && br < n && bc >= 0 && bc < n && !cells[br * n + bc]) open++;
+        if (open) s += Math.pow(9, run.length) * open * (who === me ? 1.15 : 1);
+      }
+      s -= (Math.abs(Math.floor(i / n) - mid) + Math.abs(i % n - mid)) * 0.5 + Math.random() * 0.4;
+      if (s > bestS) { bestS = s; best = i; }
+    }
+    return best;
+  }
+  function maybeCpu() {
+    if (!G || G.over || S.mode !== 'cpu' || G.turn !== 2 || G.cpuBusy) return;
+    G.cpuBusy = true; const g = G;
+    setTimeout(() => { if (G !== g || G.over) return; G.cpuBusy = false; place(cpuPick()); }, 600);
+  }
+
+  // ================= bố cục: bàn ở giữa, 2 bảng ở 2 cạnh =================
+  const cv = $('board'), ctx = cv.getContext('2d'); let W = 0, H = 0, DPR = 1, PH = 100, BX = 0, BY = 0, BS = 0;
+  const seatOf = p => { // góc quay của bảng người p
+    if (S.mode === 'cpu') return p === 1 ? 0 : 0;
+    if (S.seat === 'tb') return p === 1 ? 0 : 180;
+    return p === 1 ? -90 : 90; // trái–phải: người 1 bên phải, người 2 bên trái
+  };
+  function layout() {
+    DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    PH = Math.max(92, Math.min(124, Math.min(W, H) * 0.13));
+    const side = S.mode !== 'cpu' && S.seat === 'lr';
+    for (const p of [1, 2]) {
+      const el = $('pan' + p), a = seatOf(p); let len, dx = 0, dy = 0;
+      if (S.mode === 'cpu') { len = W; dy = p === 1 ? H / 2 - PH / 2 : -(H / 2 - PH / 2); }
+      else if (!side) { len = W; dy = p === 1 ? H / 2 - PH / 2 : -(H / 2 - PH / 2); }
+      else { len = H; dx = p === 1 ? W / 2 - PH / 2 : -(W / 2 - PH / 2); }
+      el.style.width = len + 'px'; el.style.height = PH + 'px';
+      el.style.borderRadius = (S.mode === 'cpu' && p === 2) ? '0 0 26px 26px' : '26px 26px 0 0';
+      el.style.transform = `translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${a}deg)`;
+    }
+    // nút ⚙ của mẫu: cạnh trái khi ngồi trên–dưới, giữa cạnh trên khi ngồi trái–phải (khỏi đè bảng người chơi)
+    const pad = T().board === 'frame' ? 42 : 14; let ax, ay, aw, ah; // kiểu khung gỗ cần chừa chỗ cho khung dày
+    if (side) { ax = PH; ay = 0; aw = W - 2 * PH; ah = H; } else { ax = 0; ay = PH; aw = W; ah = H - 2 * PH; }
+    BS = Math.max(60, Math.min(aw, ah) - pad * 2); BX = ax + (aw - BS) / 2; BY = ay + (ah - BS) / 2;
+  }
+
+  // ================= bảng người chơi =================
+  function pColor(p) { return p === 1 ? T().p1 : T().p2; }
+  function pName(p) {
+    if (S.mode === 'cpu' && p === 2) return '🤖 Computer';
+    return (S.pieces === 'baby' ? BABY_NAME[S.baby[p - 1]] : (p === 1 ? 'Player ✕' : 'Player ◯'));
+  }
+  function updatePanels() {
+    for (const p of [1, 2]) {
+      const el = $('pan' + p); el.style.setProperty('--pc', pColor(p));
+      el.querySelector('.name').textContent = pName(p);
+      el.querySelector('.score span').textContent = score[p - 1];
+      el.classList.toggle('turn', !!G && !G.over && G.turn === p);
+      el.classList.toggle('over', !!G && G.over); el.classList.toggle('won', !!G && G.over && G.winner === p);
+      const cpu = S.mode === 'cpu' && p === 2;
+      let st = '';
+      if (G && G.over) st = G.winner === 0 ? 'Draw! 🤝' : (G.winner === p ? (cpu ? 'Computer wins!' : 'YOU WIN! 🎉') : (cpu ? 'Oh no! 😮' : 'Good try! 💪'));
+      else if (G) st = G.turn === p ? (cpu ? 'Thinking…' : 'Your turn!') : 'Wait…';
+      el.querySelector('.status').textContent = st;
+      el.querySelector('.again').style.display = cpu ? 'none' : '';
+      el.querySelector('.re').style.display = cpu ? 'none' : '';
+      el.querySelector('.home').style.display = cpu ? 'none' : '';
+      drawIcon(el.querySelector('.pc'), p);
+    }
+  }
+  function drawIcon(c, p) {
+    const s = 62 * DPR; c.width = c.height = s; const g = c.getContext('2d');
+    g.clearRect(0, 0, s, s); drawPiece(g, p, s / 2, s / 2, s, 1, false, 0);
+  }
+
+  // ================= vẽ quân =================
+  function ease(t) { t = Math.min(1, Math.max(0, t)); return 1 - Math.pow(1 - t, 3); }
+  function drawPiece(g, p, x, y, cell, prog, winning, rot) {
+    const col = pColor(p), th = T();
+    if (S.pieces === 'baby') {
+      const id = S.baby[p - 1], sc = 0.35 + 0.65 * ease(prog * 1.6) + (prog < 1 ? Math.sin(prog * Math.PI) * 0.15 : 0);
+      g.save(); g.translate(x, y); const a0 = g.globalAlpha; // giữ độ mờ bên ngoài (quân thua mờ đi)
+      g.globalAlpha = a0 * 0.85; g.strokeStyle = col; g.lineWidth = Math.max(2, cell * 0.06); g.beginPath(); g.arc(0, 0, cell * 0.43, 0, TAU); g.stroke(); g.globalAlpha = a0;
+      if (rot) g.rotate(rot * Math.PI / 180);
+      const im = babyImg(id, winning ? 'wink' : 'idle', cell * 0.86 * sc);
+      if (im) g.drawImage(im, -im.width / 2, -im.height / 2, im.width, im.height);
+      else { g.fillStyle = col; g.beginPath(); g.arc(0, 0, cell * 0.3 * sc, 0, TAU); g.fill(); }
+      g.restore(); return;
+    }
+    g.save(); g.translate(x, y); g.lineCap = 'round'; g.strokeStyle = col; g.lineWidth = Math.max(3, cell * 0.13);
+    const neonP = !!th.neonPieces;
+    if (neonP || winning) { g.shadowColor = col; g.shadowBlur = cell * (winning ? 0.5 : 0.28); }
+    if (S.theme === 'sky') { g.shadowColor = 'rgba(0,40,80,.25)'; g.shadowBlur = cell * 0.08; g.shadowOffsetY = cell * 0.03; }
+    const r = cell * 0.27;
+    if (p === 1) {
+      const a = ease(prog * 2), b = ease(prog * 2 - 1);
+      g.beginPath(); g.moveTo(-r, -r); g.lineTo(-r + 2 * r * a, -r + 2 * r * a); g.stroke();
+      if (b > 0) { g.beginPath(); g.moveTo(r, -r); g.lineTo(r - 2 * r * b, -r + 2 * r * b); g.stroke(); }
+      if (neonP) { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3;
+        g.beginPath(); g.moveTo(-r, -r); g.lineTo(-r + 2 * r * a, -r + 2 * r * a); g.stroke(); if (b > 0) { g.beginPath(); g.moveTo(r, -r); g.lineTo(r - 2 * r * b, -r + 2 * r * b); g.stroke(); } }
+    } else {
+      const e = ease(prog) * TAU; g.beginPath(); g.arc(0, 0, r * 1.08, -Math.PI / 2, -Math.PI / 2 + e); g.stroke();
+      if (neonP) { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3; g.beginPath(); g.arc(0, 0, r * 1.08, -Math.PI / 2, -Math.PI / 2 + e); g.stroke(); }
+    }
+    g.restore();
+  }
+
+  // ================= vẽ bàn =================
+  let woodTex = null, woodKey = '';
+  // ẢNH GỖ THẬT (Poly Haven, CC0 — dùng tự do): sồi sáng / gụ đỏ / mun đen. Ảnh chưa tải xong thì vẽ vân bằng code.
+  const WOOD_SRC = { mun: 'tictactoe/wood/ebony.jpg' }, WOOD_IMG = {}; // Nam chốt gỗ sẫm (gốc: Poly Haven wood_table_001, CC0)
+  for (const k in WOOD_SRC) { const im = new Image(); im.onload = () => { woodTex = null; }; im.src = WOOD_SRC[k]; WOOD_IMG[k] = im; }
+  const woodReady = k => { const im = WOOD_IMG[k]; return !!(im && im.complete && im.naturalWidth); };
+  const WOOD_PAL = { wood: ['#d39a5c', '#b8773d', '#9a5d2b', '90,45,15', '240,190,130'], walnut: ['#4b2e1a', '#35200f', '#22140a', '10,5,2', '150,100,60'] };
+  function woodPlate(size, kind) { // mặt gỗ vẽ 1 lần rồi dùng lại
+    const photo = S.wood, ready = woodReady(photo);
+    const key = Math.round(size * DPR) + kind + photo + ready; if (woodTex && woodKey === key) return woodTex;
+    const px = Math.round(size * DPR), c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+    if (ready) {
+      g.drawImage(WOOD_IMG[photo], 0, 0, px, px);
+      // lớp véc-ni: vệt bóng chéo + tối dần ra mép (như mặt bàn được đánh bóng, có đèn chiếu)
+      const sh = g.createLinearGradient(0, 0, px, px);
+      sh.addColorStop(0, 'rgba(255,255,255,.16)'); sh.addColorStop(0.35, 'rgba(255,255,255,.02)'); sh.addColorStop(0.5, 'rgba(255,255,255,.09)');
+      sh.addColorStop(0.62, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.22)');
+      g.fillStyle = sh; g.fillRect(0, 0, px, px);
+      const vg = g.createRadialGradient(px / 2, px / 2, px * 0.3, px / 2, px / 2, px * 0.75);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.38)'); g.fillStyle = vg; g.fillRect(0, 0, px, px);
+      woodTex = c; woodKey = key; return c;
+    }
+    const pal = WOOD_PAL[photo === 'mun' ? 'walnut' : 'wood'];
+    const gr = g.createLinearGradient(0, 0, px, px); gr.addColorStop(0, pal[0]); gr.addColorStop(0.5, pal[1]); gr.addColorStop(1, pal[2]);
+    g.fillStyle = gr; g.fillRect(0, 0, px, px);
+    for (let i = 0; i < 70; i++) { const y = Math.random() * px; g.strokeStyle = `rgba(${Math.random() < 0.5 ? pal[3] : pal[4]},${0.06 + Math.random() * 0.12})`;
+      g.lineWidth = 1 + Math.random() * 3 * DPR; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= px; x += px / 12) g.lineTo(x, y + Math.sin(x / px * 6 + i) * px * 0.012 + (Math.random() - 0.5) * 3); g.stroke(); }
+    woodTex = c; woodKey = key; return c;
+  }
+  function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function bevel(g, x, y, s, r) { // cạnh vát của tấm gỗ dày: mép trên sáng, mép dưới tối
+    const gr = g.createLinearGradient(0, y, 0, y + s);
+    gr.addColorStop(0, 'rgba(255,236,210,.55)'); gr.addColorStop(0.5, 'rgba(255,236,210,.05)'); gr.addColorStop(1, 'rgba(0,0,0,.55)');
+    g.save(); g.strokeStyle = gr; g.lineWidth = 5; rr(g, x + 2.5, y + 2.5, s - 5, s - 5, Math.max(0, r - 2.5)); g.stroke(); g.restore();
+  }
+  const cellC = i => { const n = G.n, c = BS / n; return [BX + (i % n + 0.5) * c, BY + (Math.floor(i / n) + 0.5) * c]; };
+  function drawBoard(t) {
+    const th = T(), n = G.n, c = BS / n, g = ctx, rad = Math.min(28, BS * 0.05);
+    g.save();
+    const B = th.board, glowE = th.neonEdge ? th.neonEdge : null, pulse = 0.8 + 0.2 * Math.sin(t * 2);
+    if (B === 'wood' || B === 'walnut') {
+      // mặt gỗ; kiểu kết hợp thì viền gỗ phát sáng neon thay cho bóng đổ
+      if (glowE) { g.shadowColor = glowE; g.shadowBlur = 34 * pulse; } else { g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 14; }
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.fillStyle = B === 'walnut' ? '#2a170b' : '#7a4a22'; g.fill(); g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
+      g.save(); rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.clip(); g.drawImage(woodPlate(BS + 20, B), BX - 10, BY - 10, BS + 20, BS + 20); g.restore();
+      bevel(g, BX - 10, BY - 10, BS + 20, rad);
+      if (glowE) { g.strokeStyle = glowE; g.lineWidth = 3; g.shadowColor = glowE; g.shadowBlur = 14; }
+      else { g.strokeStyle = '#5a3415'; g.lineWidth = 3; }
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.stroke(); g.shadowColor = 'transparent';
+    } else if (B === 'frame') {
+      // khung gỗ dày bao quanh mặt kính neon
+      const f = Math.max(16, BS * 0.04), fx = BX - 10 - f, fs = BS + 20 + 2 * f;
+      g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 40; g.shadowOffsetY = 12; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.fillStyle = '#7a4a22'; g.fill();
+      g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
+      g.save(); rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.clip(); g.drawImage(woodPlate(fs, 'wood'), fx, fx - BX + BY, fs, fs); g.restore();
+      bevel(g, fx, fx - BX + BY, fs, rad + f * 0.6);
+      g.strokeStyle = '#4a2a12'; g.lineWidth = 2; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.stroke();
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad * 0.6); g.fillStyle = th.plate; g.fill();
+      g.strokeStyle = th.plateEdge; g.lineWidth = 2.5; g.shadowColor = th.plateEdge; g.shadowBlur = 16 * pulse; g.stroke(); g.shadowColor = 'transparent';
+    } else {
+      if (S.theme === 'sky') { g.shadowColor = 'rgba(0,60,90,.25)'; g.shadowBlur = 30; g.shadowOffsetY = 10; }
+      else { g.shadowColor = th.plateEdge; g.shadowBlur = 30; }
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.fillStyle = th.plate; g.fill(); g.shadowColor = 'transparent';
+      g.lineWidth = 2; g.strokeStyle = th.plateEdge; g.stroke();
+    }
+    // đường kẻ ô
+    const lw = Math.max(2, Math.min(7, c * 0.07)), inset = c * 0.12;
+    g.lineCap = 'round';
+    // mỗi lớp = 1 lần kẻ: màu, bề dày, phát sáng, độ đậm, lệch
+    const passes = th.inlay
+      ? [{ s: 'rgba(255,228,195,.28)', w: lw * 1.9, glow: 0, a: 1, off: lw * 0.55 }, // mép dưới rãnh bắt sáng (như gỗ bị khắc thật)
+         { s: 'rgba(0,0,0,.6)', w: lw * 1.9, glow: 0, a: 1, off: 0 },                // rãnh khắc tối trong gỗ
+         { s: th.line, w: lw * 0.85, glow: th.lineGlow * pulse, a: 1, off: 0 },        // ống đèn neon nằm trong rãnh
+         { s: 'rgba(255,255,255,.75)', w: lw * 0.25, glow: 0, a: 1, off: 0 }]          // lõi trắng của ống đèn
+      : S.theme === 'wood'
+        ? [{ s: th.line, w: lw, glow: 0, a: 1, off: 0 }, { s: 'rgba(255,220,170,.35)', w: lw * 0.35, glow: 0, a: 1, off: lw * 0.5 }]
+        : [{ s: th.line, w: lw, glow: th.lineGlow * pulse, a: S.theme === 'sky' ? 0.95 : 0.75, off: 0 }];
+    for (const P of passes) {
+      g.strokeStyle = P.s; g.lineWidth = P.w; g.globalAlpha = P.a;
+      if (P.glow) { g.shadowColor = P.s; g.shadowBlur = P.glow; } else g.shadowColor = 'transparent';
+      const off = P.off;
+      for (let i = 1; i < n; i++) {
+        g.beginPath(); g.moveTo(BX + i * c + off, BY + inset); g.lineTo(BX + i * c + off, BY + BS - inset); g.stroke();
+        g.beginPath(); g.moveTo(BX + inset, BY + i * c + off); g.lineTo(BX + BS - inset, BY + i * c + off); g.stroke();
+      }
+    }
+    g.restore();
+    // quân
+    const winSet = G.win ? new Set(G.win) : null;
+    for (let i = 0; i < G.cells.length; i++) {
+      const p = G.cells[i]; if (!p) continue;
+      const [x, y] = cellC(i), prog = Math.min(1, (t - G.born[i]) / 0.28), win = !!(winSet && winSet.has(i));
+      let rot = 0; if (S.pieces === 'baby' && S.face === '1') rot = seatOf(p);
+      ctx.save();
+      if (win) { const k = 1 + 0.08 * Math.sin((t - G.winT) * 10); ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-x, -y); }
+      else if (G.over && G.winner) ctx.globalAlpha = 0.45;
+      drawPiece(ctx, p, x, y, c, prog, win, rot);
+      ctx.restore();
+    }
+  }
+
+  // ================= HIỆU ỨNG ĐIỆN =================
+  function bolt(x1, y1, x2, y2, disp, detail) { // chia đôi đoạn, lệch điểm giữa, lặp → đường sét gấp khúc
+    let pts = [[x1, y1], [x2, y2]], d = disp;
+    while (d > detail) {
+      const np = [pts[0]];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, off = (Math.random() - 0.5) * d;
+        np.push([(a[0] + b[0]) / 2 - dy / L * off, (a[1] + b[1]) / 2 + dx / L * off], b);
+      }
+      pts = np; d /= 2;
+    }
+    return pts;
+  }
+  function strokePts(g, pts, upto) { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); const m = Math.max(1, Math.floor((pts.length - 1) * upto)); for (let i = 1; i <= m; i++) g.lineTo(pts[i][0], pts[i][1]); g.stroke(); }
+  const FX = {
+    on: false, t0: 0, line: null, pts: null, branches: [], arcs: [], parts: [], rings: [], lastGen: 0, shake: 0, flash: 0,
+    reset() { this.on = false; this.parts = []; this.rings = []; $('flash').style.opacity = 0; $('stage').style.transform = ''; },
+    start(line) {
+      const strong = S.boom === 'strong', th = T(), c = BS / G.n;
+      const [ax, ay] = cellC(line[0]), [bx, by] = cellC(line[line.length - 1]), dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, ext = c * 0.42;
+      this.a = [ax - dx / L * ext, ay - dy / L * ext]; this.b = [bx + dx / L * ext, by + dy / L * ext]; this.len = L + 2 * ext;
+      this.on = true; this.t0 = now(); this.lastGen = -1; this.line = line; this.cell = c;
+      this.shake = strong ? Math.min(18, c * 0.25 + 6) : 0; this.flash = strong ? 0.85 : 0.35;
+      $('flash').style.background = th.flash;
+      zap(strong);
+      // tia lửa bắn từ mỗi ô thắng + vòng sóng
+      const per = strong ? 26 : 7;
+      for (const i of line) { const [x, y] = cellC(i); for (let j = 0; j < per; j++) this.spark(x, y, strong); }
+      for (const [x, y] of [this.a, this.b]) for (let j = 0; j < per; j++) this.spark(x, y, strong);
+      if (strong) { const [mx, my] = [(ax + bx) / 2, (ay + by) / 2]; this.rings.push({ x: mx, y: my, t: 0, max: Math.max(W, H) * 0.7 }, { x: mx, y: my, t: -0.12, max: Math.max(W, H) * 0.5 }); }
+      setTimeout(chime, strong ? 250 : 120);
+    },
+    spark(x, y, strong) {
+      const a = Math.random() * TAU, v = (strong ? 260 : 150) + Math.random() * (strong ? 620 : 260), cols = T().sparks;
+      this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * (strong ? 0.8 : 0.4), age: 0, col: cols[Math.floor(Math.random() * cols.length)], w: 1.5 + Math.random() * 2.5 });
+    },
+    regen(strong, calm) {
+      const disp = this.len * (strong ? (calm ? 0.07 : 0.13) : 0.06);
+      this.pts = bolt(this.a[0], this.a[1], this.b[0], this.b[1], disp, 2.5);
+      this.branches = [];
+      if (strong) {
+        const nb = calm ? 1 : 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < nb; i++) {
+          const p = this.pts[Math.floor(Math.random() * this.pts.length)], ang = Math.atan2(this.b[1] - this.a[1], this.b[0] - this.a[0]) + (Math.random() < 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.9);
+          const bl = this.cell * (0.6 + Math.random() * 1.4);
+          this.branches.push(bolt(p[0], p[1], p[0] + Math.cos(ang) * bl, p[1] + Math.sin(ang) * bl, bl * 0.35, 2));
+        }
+        this.arcs = [];
+        if (!calm) for (let i = 0; i < this.line.length - 1; i++) if (Math.random() < 0.6) {
+          const [x1, y1] = cellC(this.line[i]), [x2, y2] = cellC(this.line[i + 1]);
+          this.arcs.push(bolt(x1, y1, x2, y2, this.cell * 0.5, 2));
+        }
+      }
+    },
+    draw(g, t, dt) {
+      if (!this.on) return;
+      const strong = S.boom === 'strong', th = T(), e = t - this.t0, calm = e > (strong ? 1.6 : 0.9);
+      if (e - this.lastGen > (calm ? 0.13 : 0.05) || !this.pts) { this.regen(strong, calm); this.lastGen = e; }
+      const grow = Math.min(1, e / 0.2), c = this.cell;
+      const pulse = calm ? 0.65 + 0.2 * Math.sin(e * 9) + (Math.random() < 0.05 ? 0.3 : 0) : 1;
+      g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round'; g.lineJoin = 'round';
+      const layer = (pts, w, upto) => {
+        g.globalAlpha = 0.18 * pulse; g.strokeStyle = th.glow2; g.lineWidth = w * 3.2; g.shadowColor = th.glow2; g.shadowBlur = w * 3; strokePts(g, pts, upto);
+        g.globalAlpha = 0.6 * pulse; g.strokeStyle = th.glow; g.lineWidth = w * 1.3; g.shadowColor = th.glow; g.shadowBlur = w * 2; strokePts(g, pts, upto);
+        g.globalAlpha = 1 * pulse; g.strokeStyle = th.core; g.lineWidth = Math.max(1.5, w * 0.38); g.shadowBlur = 0; strokePts(g, pts, upto);
+      };
+      const W0 = Math.max(4, Math.min(16, c * (strong ? 0.16 : 0.1)));
+      layer(this.pts, W0, grow);
+      if (grow >= 1) { for (const b of this.branches) layer(b, W0 * 0.45, 1); for (const a of this.arcs) layer(a, W0 * 0.35, 1); }
+      // vòng sóng
+      for (const r of this.rings) { r.t += dt; if (r.t <= 0) continue; const k = r.t / 0.7; if (k > 1) continue;
+        g.globalAlpha = (1 - k) * 0.7; g.strokeStyle = th.glow; g.lineWidth = 10 * (1 - k) + 2; g.shadowColor = th.glow; g.shadowBlur = 20;
+        g.beginPath(); g.arc(r.x, r.y, r.max * ease(k), 0, TAU); g.stroke(); }
+      // tia lửa
+      g.shadowBlur = 0;
+      for (const p of this.parts) {
+        p.age += dt; if (p.age > p.life) continue;
+        p.vx *= Math.pow(0.12, dt); p.vy *= Math.pow(0.12, dt); p.vy += 240 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+        const k = 1 - p.age / p.life; g.globalAlpha = k; g.strokeStyle = p.col; g.lineWidth = p.w * (0.5 + k);
+        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx * 0.035, p.y - p.vy * 0.035); g.stroke();
+      }
+      this.parts = this.parts.filter(p => p.age <= p.life);
+      // khi đang "giận dữ": thỉnh thoảng phóng thêm tia lửa
+      if (!calm && strong && Math.random() < 0.5) { const i = this.line[Math.floor(Math.random() * this.line.length)], [x, y] = cellC(i); this.spark(x, y, strong); }
+      g.restore();
+      // chớp sáng + rung màn
+      const fl = Math.max(0, this.flash * (1 - e / 0.35)) + (strong && !calm && Math.random() < 0.06 ? 0.25 : 0);
+      $('flash').style.opacity = fl.toFixed(3);
+      const sh = this.shake * Math.max(0, 1 - e / 0.55);
+      $('stage').style.transform = sh > 0.3 ? `translate(${(Math.random() - 0.5) * 2 * sh}px,${(Math.random() - 0.5) * 2 * sh}px)` : '';
+    }
+  };
+
+  // ================= vòng vẽ =================
+  const now = () => performance.now() / 1000;
+  let last = now();
+  function frame() {
+    const t = now(), dt = Math.min(0.05, t - last); last = t;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
+    if (G && !$('game').classList.contains('hide')) { drawBoard(t); FX.draw(ctx, t, dt); }
+    drawStartThumbs(t);
+    requestAnimationFrame(frame);
+  }
+
+  // ================= chạm vào bàn =================
+  cv.addEventListener('pointerdown', ev => {
+    audio(); if (!G || G.over) return;
+    if (S.mode === 'cpu' && G.turn === 2) return;
+    const x = ev.clientX - BX, y = ev.clientY - BY; if (x < 0 || y < 0 || x >= BS || y >= BS) return;
+    const c = BS / G.n; place(Math.floor(y / c) * G.n + Math.floor(x / c));
+  });
+  for (const p of [1, 2]) {
+    const el = $('pan' + p);
+    el.querySelector('.again').onclick = () => { audio(); newGame(); };
+    el.querySelector('.re').onclick = () => { audio(); newGame(); };
+    el.querySelector('.home').onclick = () => { audio(); FX.reset(); showStart(); };
+  }
+
+  // ================= màn bắt đầu =================
+  function syncStart() {
+    document.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', S[b.dataset.k] === b.dataset.v));
+    $('diffRow').style.display = S.mode === 'cpu' ? '' : 'none';
+    $('babyPick').style.display = S.pieces === 'baby' ? 'grid' : 'none';
+    $('who2').textContent = S.mode === 'cpu' ? 'Computer' : 'Player 2';
+    document.querySelectorAll('.bb').forEach(b => { const p = +b.dataset.p, id = b.dataset.id;
+      b.classList.toggle('on1', p === 0 && S.baby[0] === id); b.classList.toggle('on2', p === 1 && S.baby[1] === id);
+      b.classList.toggle('taken', S.baby[1 - p] === id); });
+    $('nVal').textContent = S.n + ' × ' + S.n; $('kVal').textContent = S.k + ' in a row';
+    $('nMinus').disabled = S.n <= N_MIN; $('nPlus').disabled = S.n >= N_MAX; $('kMinus').disabled = S.k <= K_MIN; $('kPlus').disabled = S.k >= Math.min(K_MAX, S.n);
+    for (const id of ['nMinus', 'nPlus', 'kMinus', 'kPlus']) $(id).style.opacity = $(id).disabled ? 0.3 : 1;
+    drawPreviews();
+  }
+  document.querySelectorAll('.pill').forEach(b => b.onclick = () => { audio(); S[b.dataset.k] = b.dataset.v; pop(1); syncStart(); });
+  const thumbs = [];
+  document.querySelectorAll('.babyrow').forEach(row => { const p = +row.dataset.p;
+    BABIES.forEach(id => { const b = document.createElement('button'); b.className = 'bb'; b.dataset.p = p; b.dataset.id = id; const c = document.createElement('canvas'); b.appendChild(c); row.appendChild(b);
+      thumbs.push({ c, id, drawn: false }); b.onclick = () => { if (S.baby[1 - p] === id) return; audio(); S.baby[p] = id; pop(p + 1); syncStart(); }; }); });
+  function drawStartThumbs() {
+    if ($('start').classList.contains('hide')) return;
+    for (const th of thumbs) { if (th.drawn) continue; const w = th.c.clientWidth, h = th.c.clientHeight; if (!w || !h) continue;
+      const im = babyImg(th.id, 'idle', Math.min(w, h) * DPR); if (!im) continue;
+      th.c.width = Math.round(w * DPR); th.c.height = Math.round(h * DPR); const g = th.c.getContext('2d'); g.drawImage(im, (th.c.width - im.width) / 2, (th.c.height - im.height) / 2); th.drawn = true; }
+  }
+  function drawPreviews() {
+    const sz = 76 * DPR;
+    for (const [id, kind] of [['nPrev', 'n'], ['kPrev', 'k']]) {
+      const c = $(id); c.width = c.height = sz; const g = c.getContext('2d'), n = S.n, cs = sz / n; g.clearRect(0, 0, sz, sz);
+      g.strokeStyle = getComputedStyle(document.body).getPropertyValue('--sub'); g.lineWidth = Math.max(1, DPR * (n > 9 ? 1 : 1.5));
+      for (let i = 1; i < n; i++) { g.beginPath(); g.moveTo(i * cs, 0); g.lineTo(i * cs, sz); g.stroke(); g.beginPath(); g.moveTo(0, i * cs); g.lineTo(sz, i * cs); g.stroke(); }
+      if (kind === 'k') { g.fillStyle = T().p1; const r = Math.floor((n - 1) / 2), s0 = Math.floor((n - S.k) / 2);
+        for (let j = 0; j < S.k; j++) { g.beginPath(); g.arc((s0 + j + 0.5) * cs, (r + 0.5) * cs, cs * 0.34, 0, TAU); g.fill(); } }
+    }
+  }
+  $('nMinus').onclick = () => { if (S.n > N_MIN) { S.n--; S.k = Math.min(S.k, S.n); pop(1); syncStart(); } };
+  $('nPlus').onclick = () => { if (S.n < N_MAX) { S.n++; pop(1); syncStart(); } };
+  $('kMinus').onclick = () => { if (S.k > K_MIN) { S.k--; pop(2); syncStart(); } };
+  $('kPlus').onclick = () => { if (S.k < Math.min(K_MAX, S.n)) { S.k++; pop(2); syncStart(); } };
+  $('play').onclick = () => { audio(); saveSetup(); score[0] = score[1] = 0; firstNext = 1; showGame(); };
+  function showStart() { $('game').classList.add('hide'); $('start').classList.remove('hide'); syncStart(); }
+  function showGame() { $('start').classList.add('hide'); $('game').classList.remove('hide'); layout(); newGame(); }
+  // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu (giống các game khác)
+  const HOME_OK = location.protocol !== 'file:';
+  $('siteHome').hidden = !HOME_OK; $('siteHome').onclick = () => { location.href = '../'; };
+
+  function demoWin() { // chỉ dùng cho chụp hình ô trang chủ + phép thử: xếp 1 hàng thắng cho người đang tới lượt rồi nổ
+    if ($('game').classList.contains('hide')) showGame(); if (G.over) newGame();
+    const n = G.n, k = G.k, d = DIRS[Math.floor(Math.random() * 4)];
+    let r0, c0; for (let tries = 0; tries < 200; tries++) { r0 = Math.floor(Math.random() * n); c0 = Math.floor(Math.random() * n);
+      const r1 = r0 + d[0] * (k - 1), c1 = c0 + d[1] * (k - 1); if (r1 >= 0 && r1 < n && c1 >= 0 && c1 < n) break; }
+    const p = G.turn, line = []; for (let j = 0; j < k; j++) { const i = (r0 + d[0] * j) * n + (c0 + d[1] * j); G.cells[i] = p; G.born[i] = now() - 1; line.push(i); }
+    finish(p, line);
+  }
+  window.__ttt = { S, get G() { return G; }, place, showGame, showStart, newGame, layout, FX, demoWin, cpuPick: () => cpuPick(), score, sprites: () => ({ frog: frogReady, ...friendReady, ...Object.fromEntries(Object.keys(WOOD_SRC).map(k => ['wood_' + k, woodReady(k)])) }) };
+
+  addEventListener('resize', () => { layout(); if (G) updatePanels(); drawPreviews(); thumbs.forEach(t => t.drawn = false); });
+  layout(); syncStart(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
