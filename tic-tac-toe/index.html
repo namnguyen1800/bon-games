@@ -636,6 +636,8 @@
   // nút 🏠 về trang chủ bon-games/ — mở file trên máy thì không có trang chủ → giấu (giống các game khác)
   const HOME_OK = location.protocol !== 'file:';
   $('siteHome').hidden = !HOME_OK; $('siteHome').onclick = () => { location.href = '../'; };
+  // hàm chung các game Bon đều có — home/check_site.py dùng để bấm 🏠 bằng chuột thật
+  window.__g = { homeBtnRect: () => { const b = $('siteHome'); if (b.hidden) return null; const r = b.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; } };
 
   function demoWin() { // chỉ dùng cho chụp hình ô trang chủ + phép thử: xếp 1 hàng thắng cho người đang tới lượt rồi nổ
     if ($('game').classList.contains('hide')) showGame(); if (G.over) newGame();
