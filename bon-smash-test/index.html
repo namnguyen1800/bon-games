@@ -152,9 +152,11 @@
   // Tiếng cười THẬT thu sẵn (mixkit.co, giấy phép Mixkit Free) — giọng máy đọc "ha ha" bị Nam chê 11-16.
   // Mỗi em phát cùng tiếng nhưng kéo cao/thấp khác nhau cho ra "giọng riêng": Froggy trầm, Baby Froggy cao.
   const PITCH = { froggy: 0.85, chicken: 1.05, babyfrog: 1.3, pillow: 1.15 };
-  const LS_KEY = 'bonsmash_mau_laughpick2';         // khoá lưu RIÊNG của mẫu (file:// dùng chung chỗ lưu); 2 = bộ tiếng thật
-  let pick = { froggy: 'm107', chicken: 'm2882', babyfrog: 'm743', pillow: 'm2885', shift: true,
-               scream: { froggy: 'm101', chicken: 'm1010', babyfrog: 'm2208', pillow: 'm2204' } };  // 11-16b: tiếng hét thật
+  // 3 = bộ Nam đã chọn 11-16 20:01 trên Edge (đọc từ chỗ lưu của trình duyệt) → làm MẶC ĐỊNH cho mọi máy;
+  // đổi tên khoá để lựa chọn cũ còn lưu trên iPad không đè lên bộ này.
+  const LS_KEY = 'bonsmash_mau_laughpick3';
+  let pick = { froggy: 'm409', chicken: 'm421', babyfrog: 'm739', pillow: 'm2873', shift: true,           // cười
+               scream: { froggy: 'm392', chicken: 'm2', babyfrog: 'm2208', pillow: 'm1010' } };            // hét
   try { Object.assign(pick, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); } catch (e) {}
   function savePick() { try { localStorage.setItem(LS_KEY, JSON.stringify(pick)); } catch (e) {} }
   const sayLaugh = (id, k) => { k = k || pick[id]; play(id + ':' + k, (window.REAL_LAUGHS || {})[k], pick.shift ? PITCH[id] : 1); };
