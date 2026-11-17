@@ -101,6 +101,7 @@
   const GROUND_BOSS = { rock: 1, dino: 1, robot: 1, dragon: 1, octo: 1 }; // boss đứng trên đất (đặt lơ lửng thì rơi xuống)
   const REST_BOSS = { rock: 1, dino: 1, whale: 1, robot: 1, bee: 1, owl: 1, ice: 1, dragon: 1, octo: 1 }; // boss chỉ đánh trúng được lúc nó nghỉ (Vua Sấm thì lúc nào tới được là đánh được)
   const FLY_BOSS = { whale: 1, bee: 1, owl: 1, ice: 1 }; // boss bay lơ lửng ở độ cao Bon đặt (pha 'hover'), lúc nghỉ thì hạ xuống ngang tầm baby
+  const FLY_UP = 5 * 32; // boss bay (cả Vua Sấm) vào Play thì bay cao hơn mặt đất dưới nó TỐI ĐA chừng này (Nam chọn 11-16 qua 2 vòng xem ảnh: đặt cao quá thì khuất khỏi khung camera → "thấp hơn nữa" → 5 ô cho CẢ 5 con, biết rằng baby nhảy ngay dưới bụng sẽ đụng thân bị hất và chém tới được Vua Sấm)
   const WAIT_HINT = { rock: 'Wait till it sits down!', dino: 'Wait till it gets dizzy!', whale: 'Wait till it gets tired!', robot: 'Wait till its tummy opens!', bee: 'Wait till she hugs her hive!', owl: 'Wait till it lands!', ice: 'Wait till she sneezes!', dragon: 'Wait till it coughs!', octo: 'Wait till the arm lies down!' };
   const INTRO_HINT = { rock: 'Hit it when it sits down!', dino: 'Hit it when it gets dizzy!', whale: 'Hit it when it gets tired!', robot: 'Hit it when its tummy opens!', bee: 'Hit her when she hugs her hive!', owl: 'Hit it when it lands!', ice: 'Hit her after she sneezes!', dragon: 'Hit it when it coughs!', octo: 'Hit it when its arm lies down!' };
   // Người Đá (ý ChatGPT, mình chọn bản sửa 11-14): đi chậm tới gần → nhấc chân (bóng báo chỗ đá rơi) → dậm → đá rơi đúng chỗ đã báo → ngồi xoa chân = LÚC ĐÁNH ĐƯỢC
@@ -905,6 +906,10 @@
     if (!B) return;
     B.t += dt; if (B.hurtT > 0) B.hurtT -= dt; if (B.gloatT > 0) B.gloatT -= dt;
     if (GROUND_BOSS[B.kind]) { const g0 = groundBelow(B.x, B.y - BOSS_R); B.y = approach(B.y, (g0 < 1e8 ? g0 : LVB) - BOSS_R, 600 * dt); } // Người Đá / Khủng Long đứng trên đất: đặt lơ lửng thì rơi xuống đất ngay dưới chỗ đặt
+    else { // boss bay: Build hiện đúng chỗ Bon đặt; vào Play thì độ cao bay bị hạ xuống tối đa FLY_UP trên mặt đất (để không bay khuất khỏi khung hình), đang ngủ / đang thức dậy thì lướt xuống chỗ đó
+      if (!B.flyCap) { B.flyCap = true; const gh = groundBelow(B.hx, B.hy - BOSS_R); if (gh < 1e8 && B.hy < gh - FLY_UP) B.hy = gh - FLY_UP; }
+      if (B.state === 'sleep' || B.state === 'intro') B.y = approach(B.y, B.hy, 260 * dt);
+    }
     if (B.state === 'sleep') { // ngủ tới khi baby lại gần
       if (Math.abs(b.x - B.tx) < BOSS_TRIG && Math.abs(b.y - B.ty) < 14 * CELL) { B.state = 'intro'; B.t = 0; showHint('The ' + BOSS_NAME[B.kind] + ' woke up!'); tone(140, 0.5, 'sawtooth', 0.12, 70); shakeT = 0.3; fx('boss_intro', B.x, B.y); }
       return;
