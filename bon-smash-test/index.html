@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bon's Smash — mẫu</title>
+<style>
+  :root { --sky1:#bfe3ff; --sky2:#eaf6ff; --ink:#1d2b3a; --btn:#ffffff; --accent:#ff7a1a; }
+  html, body { margin:0; height:100%; background:#bfe3ff; overflow:hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  canvas { display:block; width:100vw; height:100vh; touch-action:none; -webkit-user-select:none; user-select:none; }
+  .hud { position:fixed; top:max(10px, env(safe-area-inset-top)); right:12px; display:flex; gap:10px; z-index:5; }
+  .hud button { width:64px; height:64px; border-radius:18px; border:3px solid #1d2b3a22; background:var(--btn); font-size:30px; box-shadow:0 3px 0 #0002; cursor:pointer; }
+  .hud button:active { transform:translateY(2px); box-shadow:none; }
+  .sheet { position:fixed; inset:0; background:#0006; display:none; align-items:center; justify-content:center; z-index:10; }
+  .sheet.open { display:flex; }
+  .card { background:#fff; border-radius:22px; width:min(760px, 94vw); max-height:88vh; overflow:auto; padding:18px 18px 10px; box-shadow:0 10px 30px #0004; }
+  .card h2 { margin:0 0 4px; font-size:24px; }
+  .card p.sub { margin:0 0 14px; color:#556; font-size:15px; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid #eef; }
+  .row canvas { width:70px; height:70px; flex:none; }
+  .row .name { width:110px; flex:none; font-weight:700; font-size:16px; }
+  .opts { display:flex; flex-wrap:wrap; gap:8px; }
+  .opts button { border:2px solid #cfd8e3; background:#f6f9fc; border-radius:14px; padding:9px 12px; font-size:15px; cursor:pointer; }
+  .opts button.on { border-color:var(--accent); background:#fff1e6; font-weight:700; }
+  .opts button.scream { border-style:dashed; color:#b3261e; }
+  .close { display:block; margin:14px auto 6px; font-size:18px; padding:12px 34px; border-radius:16px; border:none; background:var(--accent); color:#fff; font-weight:700; cursor:pointer; }
+  .tip { position:fixed; left:50%; bottom:max(12px, env(safe-area-inset-bottom)); transform:translateX(-50%); background:#ffffffdd; padding:8px 16px; border-radius:14px; font-size:16px; z-index:4; pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <button id="btnLaugh" title="Laughs">🔊</button>
+  <button id="btnReset" title="Restart">↺</button>
+</div>
+<div class="tip" id="tip">Draw in the dotted box — let go to drop it!</div>
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h2>Pick a laugh 🔊</h2>
+    <p class="sub">Bấm từng nút để nghe. Nút đang tô cam = tiếng em đó dùng trong game khi anh vẽ trượt. Nút gạch đỏ = tiếng hét khi bị trúng (giọng có sẵn).</p>
+    <div id="rows"></div>
+    <button class="close" id="btnClose">Play!</button>
+  </div>
+</div>
+
+<script src="lib/matter.min.js"></script>
+<script src="lib/froggy_sprites.js"></script>
+<script src="lib/friend_sprites.js"></script>
+<script src="lib/friend_sounds.js"></script>
+<script src="lib/laugh_sounds.js"></script>
+<script>
+(function () {
+  'use strict';
+  const { Engine, Bodies, Body, Composite, Events } = Matter;
+  const TAU = Math.PI * 2;
+
+  // ================= Màn chơi: toạ độ "thế giới" cố định 1000 x 700, co giãn theo màn hình =================
+  const WW = 1000, WH = 700, GROUND = 640;
+  const BOX = { x: 180, y: 28, w: 640, h: 230 };     // ô vẽ viền nét đứt
+  const INK_MAX = 900;                               // độ dài nét tối đa mỗi lần vẽ (mốc thử)
+  const BEAD = 9;                                    // bán kính "hạt" tạo nên vật vẽ
+  const HIT_SPEED = 2.2;                             // vật vẽ phải chạm em với tốc độ > mức này mới tính trúng (mốc thử)
+  const R = 32;                                      // cỡ bạn (ảnh chụp lần 1: 26 nhìn nhỏ quá)
+
+  const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  let scale = 1, offX = 0, offY = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+    scale = Math.min(innerWidth / WW, innerHeight / WH);
+    offX = (innerWidth - WW * scale) / 2; offY = (innerHeight - WH * scale) / 2;
+  }
+  addEventListener('resize', resize); resize();
+  function toWorld(cx, cy) { return { x: (cx - offX) / scale, y: (cy - offY) / scale }; }
+
+  // ================= Hình 4 bạn — tấm chụp từ Blender của game bay (dùng lại, không vẽ mới) =================
+  const FROG_IMG = {}, FRIEND_IMG = {}, FRIEND_META = {};
+  for (const k of Object.keys(window.FROG_SPRITES || {})) { const im = new Image(); im.src = FROG_SPRITES[k]; FROG_IMG[k] = im; }
+  for (const id of Object.keys(window.FRIEND_SPRITES || {})) {
+    FRIEND_IMG[id] = {}; FRIEND_META[id] = FRIEND_SPRITES[id].meta;
+    for (const k of Object.keys(FRIEND_SPRITES[id].img)) { const im = new Image(); im.src = FRIEND_SPRITES[id].img[k]; FRIEND_IMG[id][k] = im; }
+  }
+  const CHAR = { froggy: { bottom: 1.02, top: 1.22, name: 'Froggy' }, chicken: { bottom: 1.35, top: 1.3, name: 'Chicken Banana' },
+                 babyfrog: { bottom: 1.1, top: 1.15, name: 'Baby Froggy' }, pillow: { bottom: 0.8, top: 0.8, name: 'Gối chút chút' } };
+  const ok = im => im && im.complete && im.naturalWidth > 0;
+
+  function part(c, id, name, x, z, ang, r) {
+    const im = FRIEND_IMG[id][name], m = FRIEND_META[id][name];
+    if (!ok(im) || !m) return;
+    const sz = m[0] * r;
+    c.save(); c.translate(x * r, -z * r); if (ang) c.rotate(ang);
+    c.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz);
+    c.restore();
+  }
+  const PILLOW_POSE = { ouch: ['tense', 0.78, 1.2], laugh: ['sag', 1.16, 0.8], blink: ['idle', 1, 1], idle: ['idle', 1, 1], dizzy: ['idle', 1, 1] };
+  // vẽ 1 bạn, tâm tại (0,0) của c. face: idle | blink | laugh | ouch | dizzy
+  function drawFriendAt(c, id, face, r, wob) {
+    const f = face === 'laugh' ? 'wink' : face;
+    if (id === 'froggy') {
+      const im = FROG_IMG[f] || FROG_IMG.idle; if (!ok(im)) return;
+      const sz = 3.4 * r; c.drawImage(im, -sz / 2, -sz / 2 - 0.15 * r, sz, sz);
+    } else if (id === 'chicken') {
+      for (let s = -1; s <= 1; s += 2) part(c, id, 'leg', s * 0.3, -0.9, (wob || 0) * s * 0.4, r);
+      part(c, id, FRIEND_IMG.chicken[f] ? f : 'idle', 0, 0, 0, r);
+      const petals = [Math.PI / 2 - 0.95, Math.PI / 2 - 0.32, Math.PI / 2 + 0.32, Math.PI / 2 + 0.95];
+      c.save(); c.translate(0, 0.55 * r);
+      petals.forEach((b, i) => part(c, id, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, b - Math.PI / 2 + (wob || 0) * (i < 2 ? -0.3 : 0.3), r));
+      c.restore();
+      part(c, id, 'hat', 0, 1.02 + Math.max(0, wob || 0) * 0.3, 0, r);
+    } else if (id === 'babyfrog') {
+      part(c, id, FRIEND_IMG.babyfrog[f] ? f : 'idle', 0, 0, 0, r);
+      part(c, id, 'cup', 0.02, -0.32, (wob || 0) * 0.3, r);
+      part(c, id, 'crown', 0, 0.84 + Math.max(0, wob || 0) * 0.3, 0, r);
+    } else {
+      const [pose, kx, kz] = PILLOW_POSE[face] || PILLOW_POSE.idle;
+      const C = [['cornerTL', -1, 1], ['cornerTR', 1, 1], ['cornerBL', -1, -1], ['cornerBR', 1, -1]];
+      for (const [n, sx, sz] of C) part(c, id, n, sx * 0.98 * kx, sz * 0.56 * kz, -sx * (wob || 0) * 0.5, r);
+      part(c, id, pose, 0, 0, 0, r);
+    }
+  }
+
+  // ================= Tiếng: hét = giọng có sẵn của game bay · cười = 5 kiểu mới, anh chọn trong bảng 🔊 =================
+  const SFX = { ctx: null, buf: {}, mouth: null, log: [] };
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) { try { SFX.ctx = new AC(); } catch (e) {} }
+  function decode(key, dataUrl, cb) {
+    if (SFX.buf[key]) { cb(SFX.buf[key]); return; }
+    if (!SFX.ctx || !dataUrl) return;
+    const bin = atob(dataUrl.split(',')[1]), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    SFX.ctx.decodeAudioData(arr.buffer, b => { SFX.buf[key] = b; cb(b); }, () => SFX.log.push('decodeErr:' + key));
+  }
+  function play(key, dataUrl) {
+    SFX.log.push(key);
+    if (!SFX.ctx) return;
+    if (SFX.ctx.state === 'suspended') SFX.ctx.resume();
+    decode(key, dataUrl, b => {
+      if (SFX.mouth) { try { SFX.mouth.stop(); } catch (e) {} }
+      const s = SFX.ctx.createBufferSource(); s.buffer = b; s.connect(SFX.ctx.destination); s.start(); SFX.mouth = s;
+    });
+  }
+  const LS_KEY = 'bonsmash_mau_laughpick';          // khoá lưu RIÊNG của mẫu (file:// dùng chung chỗ lưu)
+  let pick = { froggy: 'laugh1', chicken: 'laugh1', babyfrog: 'laugh1', pillow: 'laugh1' };
+  try { Object.assign(pick, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); } catch (e) {}
+  function savePick() { try { localStorage.setItem(LS_KEY, JSON.stringify(pick)); } catch (e) {} }
+  const sayLaugh = (id, k) => play(id + ':' + (k || pick[id]), (window.LAUGH_SOUNDS[id] || {})[k || pick[id]]);
+  const sayScream = id => play(id + ':scream', (window.FRIEND_SOUNDS[id] || {}).scream);
+
+  // ================= Vật lý =================
+  let engine, friends, inks, shot, stroke, shots, won, events, bricks;
+  const BRICKS = [            // [x, y, w, h, góc] — tường gạch
+    [90, 530, 200, 110],                       // bục trái — Froggy đứng trên
+    [395, 440, 70, 200], [545, 440, 70, 200],  // 2 cột — Chicken trốn ở khe giữa
+    [700, 470, 230, 34],                       // mái hiên phải — Gối ngồi trên, Baby Froggy núp dưới
+    [900, 504, 30, 136],                       // chân mái
+  ];
+  const RAMP = { x: 590, y: 600, w: 120, h: 16, a: 0.38 };  // dốc nhỏ: thả vật tròn lên → lăn vào gầm mái
+  const SPOTS = [
+    { id: 'froggy',   x: 190, base: 530 },
+    { id: 'chicken',  x: 505, base: GROUND },
+    { id: 'babyfrog', x: 800, base: GROUND },
+    { id: 'pillow',   x: 815, base: 470 },
+  ];
+
+  function build() {
+    engine = Engine.create(); engine.gravity.y = 1;
+    const st = { isStatic: true, friction: 0.8, label: 'wall' };
+    bricks = BRICKS.map(([x, y, w, h]) => Bodies.rectangle(x + w / 2, y + h / 2, w, h, st));
+    const ground = Bodies.rectangle(WW / 2, GROUND + 40, WW * 3, 80, st);
+    const ramp = Bodies.rectangle(RAMP.x + RAMP.w / 2, RAMP.y, RAMP.w, RAMP.h, Object.assign({ angle: RAMP.a }, st));
+    Composite.add(engine.world, bricks.concat([ground, ramp]));
+    friends = SPOTS.map(s => {
+      const C = CHAR[s.id], cy = s.base - C.bottom * R;
+      const body = Bodies.circle(s.x, cy + 0.1 * R, R * 1.05, { isStatic: true, label: 'friend', friction: 0.6 });
+      Composite.add(engine.world, body);
+      const f = { id: s.id, x: s.x, y: cy, base: s.base, body, state: 'idle', t: 0, blinkT: 2 + Math.random() * 3, side: s.x < 500 ? -1 : 1 };
+      body.plugin.friend = f; return f;
+    });
+    inks = []; shot = null; stroke = null; shots = 0; won = false; events = [];
+    Events.on(engine, 'collisionStart', onHit);
+  }
+
+  function onHit(e) {
+    for (const p of e.pairs) {
+      const a = p.bodyA, b = p.bodyB;
+      const fr = (a.plugin && a.plugin.friend) || (b.plugin && b.plugin.friend);
+      const other = fr === (a.plugin && a.plugin.friend) ? b : a;
+      if (!fr || !other.parent || other.parent.label !== 'ink') continue;
+      const sp = other.parent.speed;
+      if (fr.state === 'idle' || fr.state === 'laugh') {
+        if (sp > HIT_SPEED) hitFriend(fr, other.parent);
+      }
+    }
+  }
+  function hitFriend(f, ink) {
+    f.state = 'ouch'; f.t = 0; sayScream(f.id);
+    if (shot && shot.body === ink) shot.hits++;
+    events.push({ t: performance.now(), type: 'hit', id: f.id, speed: +ink.speed.toFixed(2) });
+    bubble(f, 'OUCH!', '#d62828');
+  }
+
+  // ---- chữ nổi trên đầu ----
+  let bubbles = [];
+  function bubble(f, text, color) { bubbles.push({ x: f.x, y: f.y - CHAR[f.id].top * R - 26, text, color, t: 0 }); }
+
+  // ================= Vẽ bằng tay =================
+  function inBox(p) { return p.x >= BOX.x && p.x <= BOX.x + BOX.w && p.y >= BOX.y && p.y <= BOX.y + BOX.h; }
+  function clampBox(p) { return { x: Math.max(BOX.x + BEAD, Math.min(BOX.x + BOX.w - BEAD, p.x)), y: Math.max(BOX.y + BEAD, Math.min(BOX.y + BOX.h - BEAD, p.y)) }; }
+  function strokeLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); return L; }
+
+  canvas.addEventListener('pointerdown', ev => {
+    if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
+    if (won) return;
+    const p = toWorld(ev.clientX, ev.clientY);
+    if (!inBox(p)) return;
+    canvas.setPointerCapture(ev.pointerId);
+    stroke = { pts: [clampBox(p)], len: 0, id: ev.pointerId };
+    document.getElementById('tip').style.display = 'none';
+  });
+  canvas.addEventListener('pointermove', ev => {
+    if (!stroke || ev.pointerId !== stroke.id) return;
+    const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+    for (const e2 of (evs.length ? evs : [ev])) {
+      const p = clampBox(toWorld(e2.clientX, e2.clientY)), last = stroke.pts[stroke.pts.length - 1];
+      const d = Math.hypot(p.x - last.x, p.y - last.y);
+      if (d < 4) continue;
+      if (stroke.len + d > INK_MAX) { const k = (INK_MAX - stroke.len) / d; if (k > 0.05) { stroke.pts.push({ x: last.x + (p.x - last.x) * k, y: last.y + (p.y - last.y) * k }); stroke.len = INK_MAX; } break; }
+      stroke.pts.push(p); stroke.len += d;
+    }
+  });
+  function endStroke(ev) {
+    if (!stroke || (ev && ev.pointerId !== stroke.id)) return;
+    const s = stroke; stroke = null;
+    dropInk(s.pts);
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+
+  // nét → chuỗi hạt tròn cách đều → 1 vật cứng có sức nặng
+  function dropInk(pts) {
+    const beads = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const last = beads[beads.length - 1], d = Math.hypot(pts[i].x - last.x, pts[i].y - last.y);
+      if (d >= BEAD * 0.9) beads.push(pts[i]);
+    }
+    const parts = beads.map(p => Bodies.circle(p.x, p.y, BEAD, { friction: 0.6, restitution: 0.15, density: 0.002 }));
+    const body = parts.length === 1 ? parts[0] : Body.create({ parts, friction: 0.6, restitution: 0.15 });
+    body.label = 'ink'; if (parts.length === 1) body.parent = body;
+    body.plugin.beads = beads.map(p => ({ x: p.x - body.position.x, y: p.y - body.position.y }));
+    Composite.add(engine.world, body);
+    inks.push(body); shots++;
+    shot = { body, hits: 0, still: 0, age: 0 };
+    events.push({ t: performance.now(), type: 'drop', beads: beads.length });
+  }
+
+  // vật vẽ đã đứng yên (hoặc rơi khỏi màn) → nếu cú này không trúng ai thì mấy em chưa bị trúng cười chọc quê
+  function checkShot(dt) {
+    if (!shot) return;
+    const b = shot.body; shot.age += dt;
+    shot.still = (b.speed < 0.15 && Math.abs(b.angularSpeed) < 0.01) ? shot.still + 1 : 0;
+    const gone = b.position.y > WH + 200;
+    if (shot.still > 40 || gone || shot.age > 8) {
+      const s = shot; shot = null;
+      events.push({ t: performance.now(), type: 'settled', hits: s.hits, gone });
+      if (gone) { Composite.remove(engine.world, b); inks = inks.filter(x => x !== b); }
+      const left = friends.filter(f => f.state === 'idle' || f.state === 'laugh');
+      if (s.hits === 0 && left.length) {
+        // em gần vật nhất cười thành tiếng, mấy em còn lại cười theo (không tiếng) cho vui
+        left.sort((p, q) => Math.hypot(p.x - b.position.x, p.y - b.position.y) - Math.hypot(q.x - b.position.x, q.y - b.position.y));
+        left.forEach((f, i) => { f.state = 'laugh'; f.t = -i * 0.15; });
+        sayLaugh(left[0].id);
+        bubble(left[0], 'HA HA!', '#1d6fd6');
+        events.push({ t: performance.now(), type: 'laugh', id: left[0].id, clip: pick[left[0].id] });
+      }
+    }
+  }
+
+  // ================= Vòng lặp =================
+  let last = performance.now(), acc = 0;
+  const STEP = 1000 / 60;
+  function tick(now) {
+    acc += Math.min(100, now - last); last = now;
+    while (acc >= STEP) { update(STEP / 1000); Engine.update(engine, STEP); acc -= STEP; }
+    draw(now / 1000);
+    requestAnimationFrame(tick);
+  }
+  function update(dt) {
+    for (const f of friends) {
+      f.t += dt;
+      if (f.state === 'idle') { f.blinkT -= dt; if (f.blinkT < -0.15) f.blinkT = 2 + Math.random() * 3; }
+      if (f.state === 'laugh' && f.t > 1.6) { f.state = 'idle'; f.t = 0; }
+      if (f.state === 'ouch' && f.t > 0.55) { f.state = 'dizzy'; f.t = 0; }
+    }
+    for (const b of bubbles) b.t += dt;
+    bubbles = bubbles.filter(b => b.t < 1.2);
+    checkShot(dt);
+    if (!won && friends.every(f => f.state === 'dizzy' || f.state === 'ouch') && friends.some(f => f.state === 'dizzy') && friends.every(f => f.state === 'dizzy')) {
+      won = true; events.push({ t: performance.now(), type: 'win', shots });
+    }
+  }
+
+  // ================= Vẽ màn hình =================
+  let brickPat = null;
+  function makeBrick() {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 32; const g = c.getContext('2d');
+    g.fillStyle = '#c9603f'; g.fillRect(0, 0, 64, 32);
+    g.strokeStyle = '#efe3d6'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0, 1); g.lineTo(64, 1); g.moveTo(0, 17); g.lineTo(64, 17);
+    g.moveTo(1, 0); g.lineTo(1, 16); g.moveTo(33, 0); g.lineTo(33, 16); g.moveTo(17, 16); g.lineTo(17, 32); g.moveTo(49, 16); g.lineTo(49, 32); g.stroke();
+    g.fillStyle = '#ffffff18'; g.fillRect(3, 3, 28, 4); g.fillRect(35, 3, 27, 4); g.fillRect(19, 19, 28, 4);
+    brickPat = ctx.createPattern(c, 'repeat');
+  }
+  function draw(time) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const sky = ctx.createLinearGradient(0, 0, 0, innerHeight);
+    sky.addColorStop(0, '#9fd3ff'); sky.addColorStop(1, '#eaf7ff');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, innerWidth, innerHeight);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+    if (!brickPat) makeBrick();
+
+    // mây + đồi xa
+    ctx.fillStyle = '#ffffffcc';
+    [[120, 330, 1], [880, 300, 1.3], [520, 360, 0.8]].forEach(([x, y, k]) => { ctx.beginPath(); ctx.arc(x, y, 26 * k, 0, TAU); ctx.arc(x + 30 * k, y - 12 * k, 30 * k, 0, TAU); ctx.arc(x + 62 * k, y, 24 * k, 0, TAU); ctx.fill(); });
+    ctx.fillStyle = '#b8e0a8'; ctx.beginPath(); ctx.moveTo(-200, GROUND); ctx.quadraticCurveTo(250, 520, 600, GROUND); ctx.quadraticCurveTo(900, 540, 1200, GROUND); ctx.fill();
+    // đất
+    ctx.fillStyle = '#7cc46a'; ctx.fillRect(-1000, GROUND, 3000, 14);
+    ctx.fillStyle = '#a9773f'; ctx.fillRect(-1000, GROUND + 14, 3000, 400);
+
+    // ô vẽ: giấy kẻ ô + viền nét đứt
+    ctx.fillStyle = '#ffffffb8'; ctx.fillRect(BOX.x, BOX.y, BOX.w, BOX.h);
+    ctx.strokeStyle = '#b9cde3'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = BOX.x; x <= BOX.x + BOX.w; x += 20) { ctx.moveTo(x, BOX.y); ctx.lineTo(x, BOX.y + BOX.h); }
+    for (let y = BOX.y; y <= BOX.y + BOX.h; y += 20) { ctx.moveTo(BOX.x, y); ctx.lineTo(BOX.x + BOX.w, y); }
+    ctx.stroke();
+    ctx.setLineDash([12, 8]); ctx.strokeStyle = '#3d5a80'; ctx.lineWidth = 3; ctx.strokeRect(BOX.x, BOX.y, BOX.w, BOX.h); ctx.setLineDash([]);
+
+    // gạch + dốc
+    ctx.fillStyle = brickPat;
+    for (const b of bricks) { const v = b.vertices; ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#7a3420'; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.save(); ctx.translate(RAMP.x + RAMP.w / 2, RAMP.y); ctx.rotate(RAMP.a); ctx.fillStyle = '#8a6a4a'; ctx.fillRect(-RAMP.w / 2, -RAMP.h / 2, RAMP.w, RAMP.h); ctx.strokeStyle = '#5a4030'; ctx.strokeRect(-RAMP.w / 2, -RAMP.h / 2, RAMP.w, RAMP.h); ctx.restore();
+
+    // mấy em
+    for (const f of friends) drawFriend(f, time);
+
+    // vật đã vẽ
+    for (const b of inks) drawInk(b.plugin.beads, b.position, b.angle);
+    if (stroke) drawInk(stroke.pts.map(p => ({ x: p.x, y: p.y })), { x: 0, y: 0 }, 0, true);
+
+    // thanh mực
+    const used = stroke ? stroke.len : 0;
+    ctx.fillStyle = '#ffffffdd'; ctx.fillRect(BOX.x, BOX.y + BOX.h + 8, BOX.w, 14);
+    ctx.fillStyle = used > INK_MAX * 0.85 ? '#e63946' : '#ff9f1c'; ctx.fillRect(BOX.x, BOX.y + BOX.h + 8, BOX.w * (1 - used / INK_MAX), 14);
+    ctx.strokeStyle = '#3d5a80'; ctx.lineWidth = 2; ctx.strokeRect(BOX.x, BOX.y + BOX.h + 8, BOX.w, 14);
+
+    // chữ nổi
+    for (const b of bubbles) {
+      const k = Math.min(1, b.t * 6), y = b.y - b.t * 30;
+      ctx.save(); ctx.globalAlpha = Math.min(1, (1.2 - b.t) * 3); ctx.translate(b.x, y); ctx.scale(k, k);
+      ctx.font = '900 30px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 6; ctx.strokeStyle = '#fff';
+      ctx.strokeText(b.text, 0, 0); ctx.fillStyle = b.color; ctx.fillText(b.text, 0, 0); ctx.restore();
+    }
+    // góc trái: số lần vẽ
+    ctx.font = '800 26px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#1d2b3a';
+    ctx.fillText('✏️ ' + shots, 16, 40);
+    if (won) {
+      ctx.fillStyle = '#0005'; ctx.fillRect(-offX / scale, -offY / scale, innerWidth / scale, innerHeight / scale); // phủ kín cả màn, kể cả dải thừa
+      ctx.font = '900 64px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 10; ctx.strokeStyle = '#fff';
+      ctx.strokeText('You got them all!', WW / 2, 330); ctx.fillStyle = '#ff7a1a'; ctx.fillText('You got them all!', WW / 2, 330);
+      ctx.font = '700 28px system-ui, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Drawings: ' + shots + '   —   tap ↺ to play again', WW / 2, 385);
+    }
+  }
+
+  function drawInk(beads, pos, ang, live) {
+    if (!beads.length) return;
+    ctx.save(); ctx.translate(pos.x, pos.y); ctx.rotate(ang);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const path = () => { ctx.beginPath(); ctx.moveTo(beads[0].x, beads[0].y); for (let i = 1; i < beads.length; i++) ctx.lineTo(beads[i].x, beads[i].y); if (beads.length === 1) ctx.lineTo(beads[0].x + 0.1, beads[0].y); };
+    path(); ctx.strokeStyle = '#123a73'; ctx.lineWidth = BEAD * 2 + 4; ctx.stroke();
+    path(); ctx.strokeStyle = live ? '#4ea8ff' : '#2f80ed'; ctx.lineWidth = BEAD * 2; ctx.stroke();
+    path(); ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 4; ctx.save(); ctx.translate(-2, -3); ctx.stroke(); ctx.restore();
+    ctx.restore();
+  }
+
+  function drawFriend(f, time) {
+    const C = CHAR[f.id];
+    let face = 'idle', y = f.y, ang = 0, wob = 0, sx = 1, sy = 1;
+    if (f.state === 'idle') { face = f.blinkT < 0 ? 'blink' : 'idle'; sy = 1 + Math.sin(time * 2.2 + f.x) * 0.02; }
+    if (f.state === 'laugh') {
+      const t = Math.max(0, f.t); face = f.t >= 0 ? 'laugh' : 'idle';
+      y -= Math.abs(Math.sin(t * 14)) * 9 * Math.max(0, 1 - t / 1.6); wob = Math.sin(t * 14) * 0.6; ang = Math.sin(t * 9) * 0.12;
+    }
+    if (f.state === 'ouch') { face = 'ouch'; const k = 1 - f.t / 0.55; sx = 1 + 0.35 * k; sy = 1 - 0.3 * k; ang = Math.sin(f.t * 60) * 0.15 * k; }
+    if (f.state === 'dizzy') {
+      face = 'dizzy';
+      const k = Math.min(1, f.t / 0.35);                         // ngã dần ra nằm
+      if (f.id === 'pillow') { sx = 1 + 0.18 * k; sy = 1 - 0.3 * k; ang = f.side * 0.15 * k; y = f.y + 0.2 * R * k; } // gối vốn nằm sẵn → bẹp xuống, nghiêng nhẹ
+      else { ang = f.side * Math.PI / 2 * k; y = f.y + (C.bottom * R - 0.95 * R) * k; } // nằm ngửa, lưng chạm nền
+    }
+    ctx.save(); ctx.translate(f.x, y); ctx.rotate(ang); ctx.scale(sx, sy);
+    drawFriendAt(ctx, f.id, face, R, wob);
+    ctx.restore();
+    if (f.state === 'dizzy') {                                   // sao quay trên đầu
+      const im = FROG_IMG.star; if (ok(im)) {
+        const hy = y - 1.25 * R;
+        for (let i = 0; i < 3; i++) {
+          const an = time * 5 + i * TAU / 3, s = R * (1.0 + 0.3 * Math.sin(an));
+          ctx.globalAlpha = 0.75 + 0.25 * Math.sin(an);
+          ctx.drawImage(im, f.x + Math.cos(an) * R * 0.9 - s / 2, hy + Math.sin(an) * R * 0.3 - s / 2, s, s);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // ================= Bảng nghe thử tiếng cười =================
+  const ORDER = ['froggy', 'chicken', 'babyfrog', 'pillow'];
+  function buildSheet() {
+    const rows = document.getElementById('rows'); rows.innerHTML = '';
+    for (const id of ORDER) {
+      const row = document.createElement('div'); row.className = 'row';
+      const cv = document.createElement('canvas'); cv.width = 140; cv.height = 140; row.appendChild(cv);
+      const g = cv.getContext('2d'); g.translate(70, 76); setTimeout(() => drawFriendAt(g, id, 'laugh', 28, 0), 150);
+      const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = CHAR[id].name; row.appendChild(nm);
+      const opts = document.createElement('div'); opts.className = 'opts';
+      for (const k of Object.keys(window.LAUGH_TEXT)) {
+        const b = document.createElement('button'); b.textContent = window.LAUGH_TEXT[k];
+        if (pick[id] === k) b.classList.add('on');
+        b.onclick = () => { pick[id] = k; savePick(); sayLaugh(id, k); opts.querySelectorAll('button:not(.scream)').forEach(x => x.classList.toggle('on', x === b)); };
+        opts.appendChild(b);
+      }
+      const sc = document.createElement('button'); sc.className = 'scream'; sc.textContent = 'Ouch! (hét)'; sc.onclick = () => sayScream(id);
+      opts.appendChild(sc);
+      row.appendChild(opts); rows.appendChild(row);
+    }
+  }
+  const sheet = document.getElementById('sheet');
+  document.getElementById('btnLaugh').onclick = () => { buildSheet(); sheet.classList.add('open'); };
+  document.getElementById('btnClose').onclick = () => sheet.classList.remove('open');
+  document.getElementById('btnReset').onclick = () => { Composite.clear(engine.world, false); Engine.clear(engine); build(); bubbles = []; };
+
+  build();
+  requestAnimationFrame(tick);
+  // để máy tự chơi thử đọc được trạng thái (không ảnh hưởng người chơi)
+  window.__smash = {
+    get friends() { return friends.map(f => ({ id: f.id, state: f.state })); },
+    get events() { return events; }, get shotActive() { return !!shot; }, get won() { return won; },
+    get sfx() { return SFX.log; }, box: BOX, world: { w: WW, h: WH }, toScreen: (x, y) => ({ x: offX + x * scale, y: offY + y * scale }),
+  };
+})();
+</script>
+</body>
+</html>
