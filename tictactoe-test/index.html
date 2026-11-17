@@ -118,10 +118,11 @@
 <div id="flash"></div>
 
 <!-- phần dưới chỉ có trong MẪU: đổi kiểu để anh so -->
-<div id="note">Mẫu tic-tac-toe — bấm nút <b>⚙</b> vàng bên trái để đổi <b>kiểu bàn / cách ngồi / mức nổ</b>, hoặc bấm <b>⚡ Thử nổ</b> xem đường thắng có điện. Chạm vào đây để đóng.</div>
+<div id="note">Mẫu bản 2 — <b>3 kiểu kết hợp Neon + Gỗ</b> nằm đầu menu nút <b>⚙</b> vàng (đang mở kiểu ①). Bấm <b>⚡ Thử nổ</b> xem đường thắng có điện. Chạm vào đây để đóng.</div>
 <div id="mk"><button id="mkBtn">⚙</button>
   <div id="mkBox">
-    <b>Kiểu bàn</b><div class="r"><button data-m="theme" data-v="neon">Neon tối</button><button data-m="theme" data-v="sky">Trời xanh</button><button data-m="theme" data-v="wood">Bàn gỗ</button></div>
+    <b>🆕 Kết hợp Neon + Gỗ</b><div class="r"><button data-m="theme" data-v="nw1">① Gỗ + đèn neon</button><button data-m="theme" data-v="nw2">② Gỗ tối khắc sáng</button><button data-m="theme" data-v="nw3">③ Khung gỗ, mặt neon</button></div>
+    <b>Kiểu bàn cũ</b><div class="r"><button data-m="theme" data-v="neon">Neon tối</button><button data-m="theme" data-v="sky">Trời xanh</button><button data-m="theme" data-v="wood">Bàn gỗ</button></div>
     <b>Cách ngồi (2 người)</b><div class="r"><button data-m="seat" data-v="tb">Trên – dưới</button><button data-m="seat" data-v="lr">Trái – phải</button></div>
     <b>Mức nổ khi thắng</b><div class="r"><button data-m="boom" data-v="strong">Mạnh</button><button data-m="boom" data-v="light">Nhẹ</button></div>
     <b>Thú bông quay mặt về chủ</b><div class="r"><button data-m="face" data-v="1">Có</button><button data-m="face" data-v="0">Không (đứng thẳng hết)</button></div>
@@ -136,7 +137,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const TAU = Math.PI * 2;
-  const S = { theme: 'neon', seat: 'tb', boom: 'strong', face: '1', mode: '2p', diff: 'easy', pieces: 'xo', baby: ['froggy', 'chicken'], n: 3, k: 3 };
+  const S = { theme: 'nw1', seat: 'tb', boom: 'strong', face: '1', mode: '2p', diff: 'easy', pieces: 'xo', baby: ['froggy', 'chicken'], n: 3, k: 3 };
   const N_MIN = 3, N_MAX = 15, K_MIN = 3, K_MAX = 7;
   const BABIES = ['froggy', 'chicken', 'babyfrog', 'pillow'];
   const BABY_NAME = { froggy: 'Froggy', chicken: 'Chicken Banana', babyfrog: 'Baby Froggy', pillow: 'Gối chút chút' };
@@ -188,9 +189,16 @@
             core: '#ffffff', glow: '#7df9ff', glow2: '#c77dff', sparks: ['#ffffff', '#7df9ff', '#ff8cf7', '#c77dff'], flash: '#bff8ff' },
     sky:  { plate: 'rgba(255,255,255,.38)', plateEdge: 'rgba(255,255,255,.95)', line: '#ffffff', lineGlow: 0, p1: '#1f6fff', p2: '#ff7a1a',
             core: '#fffef0', glow: '#ffd23f', glow2: '#ff9f1c', sparks: ['#ffffff', '#ffe066', '#ffb347', '#ff7a1a'], flash: '#fff6c8' },
-    wood: { plate: null, plateEdge: '#2a170a', line: '#4a2a12', lineGlow: 0, p1: '#ff5a4e', p2: '#5fe08a',
+    wood: { plate: null, plateEdge: '#2a170a', line: '#4a2a12', lineGlow: 0, p1: '#ff5a4e', p2: '#5fe08a', board: 'wood',
             core: '#ffffff', glow: '#4fc3ff', glow2: '#b388ff', sparks: ['#ffffff', '#8fdcff', '#4fc3ff', '#d0b3ff'], flash: '#d6f1ff' },
   };
+  // 3 kiểu KẾT HỢP neon + gỗ (Nam thích cả 2): nền tối + quân phát sáng của neon, mặt/khung gỗ của bàn gỗ
+  const NEON_BITS = { line: '#3df2ff', lineGlow: 16, p1: '#22e6ff', p2: '#ff3df2', neonPieces: true, css: 'neon',
+    core: '#ffffff', glow: '#7df9ff', glow2: '#c77dff', sparks: ['#ffffff', '#7df9ff', '#ff8cf7', '#c77dff'], flash: '#bff8ff' };
+  TH.neon.neonPieces = true;
+  TH.nw1 = Object.assign({}, NEON_BITS, { board: 'wood', inlay: true, neonEdge: '#3df2ff', plateEdge: '#3df2ff' });   // gỗ sáng, đèn neon cẩn trong gỗ
+  TH.nw2 = Object.assign({}, NEON_BITS, { board: 'walnut', inlay: true, neonEdge: '#ff3df2', plateEdge: '#ff3df2' }); // gỗ óc chó tối, rãnh khắc phát sáng
+  TH.nw3 = Object.assign({}, NEON_BITS, { board: 'frame', plate: 'rgba(8,8,30,.92)', plateEdge: 'rgba(125,249,255,.7)' }); // khung gỗ dày, mặt kính neon
   const T = () => TH[S.theme];
 
   // ================= âm thanh (tự tạo bằng code, không file) =================
@@ -293,7 +301,7 @@
     }
     // nút ⚙ của mẫu: cạnh trái khi ngồi trên–dưới, giữa cạnh trên khi ngồi trái–phải (khỏi đè bảng người chơi)
     const mk = $('mk'); if (side) { mk.style.left = '50%'; mk.style.top = '8px'; mk.style.transform = 'translateX(-50%)'; } else { mk.style.left = '8px'; mk.style.top = '50%'; mk.style.transform = 'translateY(-50%)'; }
-    const pad = 14; let ax, ay, aw, ah;
+    const pad = T().board === 'frame' ? 42 : 14; let ax, ay, aw, ah; // kiểu khung gỗ cần chừa chỗ cho khung dày
     if (side) { ax = PH; ay = 0; aw = W - 2 * PH; ah = H; } else { ax = 0; ay = PH; aw = W; ah = H - 2 * PH; }
     BS = Math.max(60, Math.min(aw, ah) - pad * 2); BX = ax + (aw - BS) / 2; BY = ay + (ah - BS) / 2;
   }
@@ -342,31 +350,34 @@
       g.restore(); return;
     }
     g.save(); g.translate(x, y); g.lineCap = 'round'; g.strokeStyle = col; g.lineWidth = Math.max(3, cell * 0.13);
-    if (S.theme === 'neon' || winning) { g.shadowColor = col; g.shadowBlur = cell * (winning ? 0.5 : 0.28); }
+    const neonP = !!th.neonPieces;
+    if (neonP || winning) { g.shadowColor = col; g.shadowBlur = cell * (winning ? 0.5 : 0.28); }
     if (S.theme === 'sky') { g.shadowColor = 'rgba(0,40,80,.25)'; g.shadowBlur = cell * 0.08; g.shadowOffsetY = cell * 0.03; }
     const r = cell * 0.27;
     if (p === 1) {
       const a = ease(prog * 2), b = ease(prog * 2 - 1);
       g.beginPath(); g.moveTo(-r, -r); g.lineTo(-r + 2 * r * a, -r + 2 * r * a); g.stroke();
       if (b > 0) { g.beginPath(); g.moveTo(r, -r); g.lineTo(r - 2 * r * b, -r + 2 * r * b); g.stroke(); }
-      if (S.theme === 'neon') { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3;
+      if (neonP) { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3;
         g.beginPath(); g.moveTo(-r, -r); g.lineTo(-r + 2 * r * a, -r + 2 * r * a); g.stroke(); if (b > 0) { g.beginPath(); g.moveTo(r, -r); g.lineTo(r - 2 * r * b, -r + 2 * r * b); g.stroke(); } }
     } else {
       const e = ease(prog) * TAU; g.beginPath(); g.arc(0, 0, r * 1.08, -Math.PI / 2, -Math.PI / 2 + e); g.stroke();
-      if (S.theme === 'neon') { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3; g.beginPath(); g.arc(0, 0, r * 1.08, -Math.PI / 2, -Math.PI / 2 + e); g.stroke(); }
+      if (neonP) { g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth *= 0.3; g.beginPath(); g.arc(0, 0, r * 1.08, -Math.PI / 2, -Math.PI / 2 + e); g.stroke(); }
     }
     g.restore();
   }
 
   // ================= vẽ bàn =================
   let woodTex = null, woodKey = '';
-  function woodPlate(size) { // vân gỗ vẽ 1 lần
-    const key = Math.round(size * DPR); if (woodTex && woodKey === key) return woodTex;
-    const c = document.createElement('canvas'); c.width = c.height = key; const g = c.getContext('2d');
-    const gr = g.createLinearGradient(0, 0, key, key); gr.addColorStop(0, '#d39a5c'); gr.addColorStop(0.5, '#b8773d'); gr.addColorStop(1, '#9a5d2b');
-    g.fillStyle = gr; g.fillRect(0, 0, key, key);
-    for (let i = 0; i < 70; i++) { const y = Math.random() * key; g.strokeStyle = `rgba(${Math.random() < 0.5 ? '90,45,15' : '240,190,130'},${0.06 + Math.random() * 0.12})`;
-      g.lineWidth = 1 + Math.random() * 3 * DPR; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= key; x += key / 12) g.lineTo(x, y + Math.sin(x / key * 6 + i) * key * 0.012 + (Math.random() - 0.5) * 3); g.stroke(); }
+  const WOOD_PAL = { wood: ['#d39a5c', '#b8773d', '#9a5d2b', '90,45,15', '240,190,130'], walnut: ['#4b2e1a', '#35200f', '#22140a', '10,5,2', '150,100,60'] };
+  function woodPlate(size, kind) { // vân gỗ vẽ 1 lần
+    const pal = WOOD_PAL[kind] || WOOD_PAL.wood;
+    const key = Math.round(size * DPR) + kind; if (woodTex && woodKey === key) return woodTex;
+    const px = Math.round(size * DPR), c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, px, px); gr.addColorStop(0, pal[0]); gr.addColorStop(0.5, pal[1]); gr.addColorStop(1, pal[2]);
+    g.fillStyle = gr; g.fillRect(0, 0, px, px);
+    for (let i = 0; i < 70; i++) { const y = Math.random() * px; g.strokeStyle = `rgba(${Math.random() < 0.5 ? pal[3] : pal[4]},${0.06 + Math.random() * 0.12})`;
+      g.lineWidth = 1 + Math.random() * 3 * DPR; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= px; x += px / 12) g.lineTo(x, y + Math.sin(x / px * 6 + i) * px * 0.012 + (Math.random() - 0.5) * 3); g.stroke(); }
     woodTex = c; woodKey = key; return c;
   }
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
@@ -374,10 +385,24 @@
   function drawBoard(t) {
     const th = T(), n = G.n, c = BS / n, g = ctx, rad = Math.min(28, BS * 0.05);
     g.save();
-    if (S.theme === 'wood') {
-      g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 14; rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.fillStyle = '#7a4a22'; g.fill(); g.shadowColor = 'transparent';
-      g.save(); rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.clip(); g.drawImage(woodPlate(BS + 20), BX - 10, BY - 10, BS + 20, BS + 20); g.restore();
-      g.strokeStyle = '#5a3415'; g.lineWidth = 3; rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.stroke();
+    const B = th.board, glowE = th.neonEdge ? th.neonEdge : null, pulse = 0.8 + 0.2 * Math.sin(t * 2);
+    if (B === 'wood' || B === 'walnut') {
+      // mặt gỗ; kiểu kết hợp thì viền gỗ phát sáng neon thay cho bóng đổ
+      if (glowE) { g.shadowColor = glowE; g.shadowBlur = 34 * pulse; } else { g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 14; }
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.fillStyle = B === 'walnut' ? '#2a170b' : '#7a4a22'; g.fill(); g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
+      g.save(); rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.clip(); g.drawImage(woodPlate(BS + 20, B), BX - 10, BY - 10, BS + 20, BS + 20); g.restore();
+      if (glowE) { g.strokeStyle = glowE; g.lineWidth = 3; g.shadowColor = glowE; g.shadowBlur = 14; }
+      else { g.strokeStyle = '#5a3415'; g.lineWidth = 3; }
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad); g.stroke(); g.shadowColor = 'transparent';
+    } else if (B === 'frame') {
+      // khung gỗ dày bao quanh mặt kính neon
+      const f = Math.max(16, BS * 0.04), fx = BX - 10 - f, fs = BS + 20 + 2 * f;
+      g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 40; g.shadowOffsetY = 12; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.fillStyle = '#7a4a22'; g.fill();
+      g.shadowColor = 'transparent'; g.shadowOffsetY = 0;
+      g.save(); rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.clip(); g.drawImage(woodPlate(fs, 'wood'), fx, fx - BX + BY, fs, fs); g.restore();
+      g.strokeStyle = '#4a2a12'; g.lineWidth = 2; rr(g, fx, fx - BX + BY, fs, fs, rad + f * 0.6); g.stroke();
+      rr(g, BX - 10, BY - 10, BS + 20, BS + 20, rad * 0.6); g.fillStyle = th.plate; g.fill();
+      g.strokeStyle = th.plateEdge; g.lineWidth = 2.5; g.shadowColor = th.plateEdge; g.shadowBlur = 16 * pulse; g.stroke(); g.shadowColor = 'transparent';
     } else {
       if (S.theme === 'sky') { g.shadowColor = 'rgba(0,60,90,.25)'; g.shadowBlur = 30; g.shadowOffsetY = 10; }
       else { g.shadowColor = th.plateEdge; g.shadowBlur = 30; }
@@ -387,12 +412,18 @@
     // đường kẻ ô
     const lw = Math.max(2, Math.min(7, c * 0.07)), inset = c * 0.12;
     g.lineCap = 'round';
-    for (let pass = 0; pass < (S.theme === 'wood' ? 2 : 1); pass++) {
-      g.strokeStyle = S.theme === 'wood' ? (pass ? 'rgba(255,220,170,.35)' : th.line) : th.line;
-      g.lineWidth = S.theme === 'wood' ? (pass ? lw * 0.35 : lw) : lw;
-      g.globalAlpha = S.theme === 'sky' ? 0.95 : (S.theme === 'neon' ? 0.75 : 1);
-      if (th.lineGlow) { g.shadowColor = th.line; g.shadowBlur = th.lineGlow * (0.8 + 0.2 * Math.sin(t * 2)); }
-      const off = pass ? lw * 0.5 : 0;
+    // mỗi lớp = 1 lần kẻ: màu, bề dày, phát sáng, độ đậm, lệch
+    const passes = th.inlay
+      ? [{ s: 'rgba(0,0,0,.55)', w: lw * 1.9, glow: 0, a: 1, off: 0 },              // rãnh khắc tối trong gỗ
+         { s: th.line, w: lw * 0.85, glow: th.lineGlow * pulse, a: 1, off: 0 },        // ống đèn neon nằm trong rãnh
+         { s: 'rgba(255,255,255,.75)', w: lw * 0.25, glow: 0, a: 1, off: 0 }]          // lõi trắng của ống đèn
+      : S.theme === 'wood'
+        ? [{ s: th.line, w: lw, glow: 0, a: 1, off: 0 }, { s: 'rgba(255,220,170,.35)', w: lw * 0.35, glow: 0, a: 1, off: lw * 0.5 }]
+        : [{ s: th.line, w: lw, glow: th.lineGlow * pulse, a: S.theme === 'sky' ? 0.95 : 0.75, off: 0 }];
+    for (const P of passes) {
+      g.strokeStyle = P.s; g.lineWidth = P.w; g.globalAlpha = P.a;
+      if (P.glow) { g.shadowColor = P.s; g.shadowBlur = P.glow; } else g.shadowColor = 'transparent';
+      const off = P.off;
       for (let i = 1; i < n; i++) {
         g.beginPath(); g.moveTo(BX + i * c + off, BY + inset); g.lineTo(BX + i * c + off, BY + BS - inset); g.stroke();
         g.beginPath(); g.moveTo(BX + inset, BY + i * c + off); g.lineTo(BX + BS - inset, BY + i * c + off); g.stroke();
@@ -577,7 +608,7 @@
   // ================= nút của MẪU =================
   function syncMk() { document.querySelectorAll('#mkBox [data-m]').forEach(b => b.classList.toggle('on', S[b.dataset.m] === b.dataset.v)); }
   document.querySelectorAll('#mkBox [data-m]').forEach(b => b.onclick = () => {
-    S[b.dataset.m] = b.dataset.v; document.body.className = 't-' + S.theme; woodTex = null;
+    S[b.dataset.m] = b.dataset.v; document.body.className = 't-' + (T().css || S.theme); woodTex = null;
     for (const k in BC) delete BC[k]; syncMk(); layout(); if (G) updatePanels(); syncStart();
   });
   $('mkBtn').onclick = () => $('mk').classList.toggle('open');
