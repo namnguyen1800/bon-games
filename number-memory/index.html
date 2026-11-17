@@ -56,8 +56,10 @@
                     background: #fde68a; border-color: #b45309; box-shadow: 0 3px 0 rgba(46,107,115,0.5); }
   #bonTabs button.on { background: var(--go); color: #fff; box-shadow: 0 0 0 4px #fff; }
   #bonTabs .add { min-width: 54px; background: #fff; font-size: 30px; }
-  #setup .label.withBtn { display: flex; align-items: center; gap: 12px; }
-  #resetBtn { width: 52px; height: 52px; padding: 0; font-size: 26px; border-width: 3px; border-radius: 14px; background: #fee2e2; border-color: var(--wrong);
+  #setup .label.withBtn { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  /* 11-16 (Nam): 2 nút xoá cùng kiểu — 🗑️ # = xoá hết số · 🗑️ ⭐N = xoá cả Bon level đang mở */
+  #resetBtn, #delLevelBtn { height: 52px; padding: 0 14px; display: flex; align-items: center; gap: 6px; font-size: 22px; font-weight: 900;
+              border-width: 3px; border-radius: 14px; background: #fee2e2; border-color: var(--wrong);
               color: var(--ink); text-shadow: none; box-shadow: 0 3px 0 rgba(220,38,38,0.4); }
   #confirm { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,0.5); }
   #confirm .panel { background: #fffdf7; border: 5px solid var(--wrong); border-radius: 26px; padding: 20px 26px; text-align: center; }
@@ -169,7 +171,7 @@
     #asked .mark { font-size: 28px; }
     #asked .chip { font-size: 13px; padding: 2px 6px; }
     #bonTabs button { min-width: 52px; height: 50px; font-size: 20px; padding: 0 8px; }
-    #resetBtn { width: 48px; height: 48px; font-size: 24px; }
+    #resetBtn, #delLevelBtn { height: 48px; padding: 0 10px; font-size: 20px; }
     #pick .pickTile { width: 140px; }
   }
 </style>
@@ -198,7 +200,7 @@
       <div id="setup" hidden>
         <div id="bonTabs"></div>
         <div class="group">
-          <div class="label withBtn">Numbers <button id="resetBtn" aria-label="Erase all numbers">🗑️</button></div>
+          <div class="label withBtn">Numbers <button id="resetBtn" aria-label="Erase all numbers">🗑️ <span>#</span></button><button id="delLevelBtn" aria-label="Delete this Bon level">🗑️ <span id="delStar">⭐1</span></button></div>
           <div class="slots" id="numSlots"></div>
         </div>
         <div class="group">
@@ -236,7 +238,7 @@
   </main>
 </div>
 <div id="pick" hidden><div class="panel"><h2>Who asks?</h2><div id="pickTiles"></div></div></div>
-<div id="confirm" hidden><div class="panel"><h2>🗑️ Erase all numbers?</h2><div class="btns"><button id="confirmYes" aria-label="Yes, erase">✓</button><button id="confirmNo" aria-label="No, keep">✗</button></div></div></div>
+<div id="confirm" hidden><div class="panel"><h2 id="confirmTitle">🗑️ Erase all numbers?</h2><div class="btns"><button id="confirmYes" aria-label="Yes, erase">✓</button><button id="confirmNo" aria-label="No, keep">✗</button></div></div></div>
 <!-- hình 4 baby dùng chung với game Flappy (Blender nặn → embed_sprites.py) -->
 <script src="froggy3d/sprites.js"></script>
 <script src="friends3d/sprites.js"></script>
@@ -682,6 +684,7 @@
   function pickBonLevel(i) { save.cur = i; sel = selStart(); persist(); render(); } // render đổi luôn tiêu đề "Bon level N"
   function drawTabs() { // hàng ⭐1 ⭐2 … + (không giới hạn số Bon level; nhiều thì xuống dòng)
     const t = $('bonTabs'); t.textContent = '';
+    $('delStar').textContent = '⭐' + (save.cur + 1); // nút xoá level ghi đúng số ⭐ đang mở
     save.customs.forEach(function(_, i) {
       const b = document.createElement('button'); b.className = 'tab' + (i === save.cur ? ' on' : ''); b.textContent = '⭐' + (i + 1); b.dataset.i = i;
       b.addEventListener('click', function() { noise('click'); pickBonLevel(i); });
@@ -760,13 +763,26 @@
   $('modePick').addEventListener('click', function() { noise('click'); C().mode = 'pick'; sel = { list: 'picks', i: C().picks.length - 1 }; persist(); drawSetup(); });
   $('qMinus').addEventListener('click', function() { noise('click'); C().q = Math.max(1, C().q - 1); persist(); drawSetup(); });
   $('qPlus').addEventListener('click', function() { noise('click'); C().q = Math.min(C_MAXQ, C().q + 1); persist(); drawSetup(); });
-  // 🗑 xoá hết số (bảng + câu tự chọn) của Bon level đang mở — hỏi lại trước (Nam 11-11), kiểu hỏi + số câu giữ nguyên
-  $('resetBtn').addEventListener('click', function() { if (state !== 'setup') return; noise('click'); $('confirm').hidden = false; });
-  $('confirmYes').addEventListener('click', function() {
-    noise('click'); const c = C(); c.board = ['']; c.picks = ['']; sel = selStart(); persist();
-    $('confirm').hidden = true; drawSetup();
+  // 1 khung hỏi lại ✓/✗ dùng chung cho 2 nút xoá; ✓ chạy việc đã gửi vào
+  let confirmAct = null;
+  function askConfirm(title, act) { if (state !== 'setup') return; noise('click'); $('confirmTitle').textContent = title; confirmAct = act; $('confirm').hidden = false; }
+  // 🗑️ # xoá hết số (bảng + câu tự chọn) của Bon level đang mở — hỏi lại trước (Nam 11-11), kiểu hỏi + số câu giữ nguyên
+  $('resetBtn').addEventListener('click', function() {
+    askConfirm('🗑️ Erase all numbers?', function() { const c = C(); c.board = ['']; c.picks = ['']; });
   });
-  $('confirmNo').addEventListener('click', function() { noise('click'); $('confirm').hidden = true; });
+  // 🗑️ ⭐N xoá cả Bon level đang mở (Nam 11-16) — ⭐ phía sau lùi lên 1 số; xoá cái cuối cùng → ra ⭐1 trống
+  $('delLevelBtn').addEventListener('click', function() {
+    askConfirm('🗑️ Delete Bon level ' + (save.cur + 1) + '?', function() {
+      save.customs.splice(save.cur, 1);
+      if (!save.customs.length) save.customs.push(newBonLevel());
+      save.cur = Math.min(save.cur, save.customs.length - 1);
+    });
+  });
+  $('confirmYes').addEventListener('click', function() {
+    noise('click'); const act = confirmAct; confirmAct = null; $('confirm').hidden = true;
+    if (act) { act(); sel = selStart(); persist(); render(); } // render đổi luôn tiêu đề "Bon level N"
+  });
+  $('confirmNo').addEventListener('click', function() { noise('click'); confirmAct = null; $('confirm').hidden = true; });
   $('playBtn').addEventListener('click', function() { if (state !== 'setup' || !customReady()) return; noise('ding'); askPersist(); newRound(); });
   $('editBtn').addEventListener('click', function() { noise('click'); openSetup(); });
 
