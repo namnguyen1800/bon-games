@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<title>Bon's Maze — mẫu thử</title>
+<style>
+@font-face{font-family:Fredoka;src:url(fonts/fredoka-600.ttf);font-weight:600}
+@font-face{font-family:Fredoka;src:url(fonts/fredoka-700.ttf);font-weight:700}
+html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:Fredoka,system-ui,sans-serif;color:#e8e6f0}
+#wrap{position:fixed;inset:0;display:flex}
+#stage{flex:1;position:relative;min-width:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+#panel{width:158px;flex:none;background:linear-gradient(#12141c,#0a0b10);border-left:1px solid #23263a;padding:8px 8px calc(8px + env(safe-area-inset-bottom));box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.sec{display:flex;flex-direction:column;gap:6px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+:where(button){font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tb{height:58px;border-radius:14px;border:2px solid #2a2e43;background:#161926;color:#cfd2e3;font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0}
+.tb .ic{font-size:23px;line-height:1.05}
+.tb.on{border-color:#ffd24d;background:#2b2511;color:#fff;box-shadow:0 0 12px #ffd24d55}
+.num{height:36px;border-radius:50%;border:3px solid transparent;color:#111;font-size:17px;font-weight:700;padding:0}
+.num.on{border-color:#fff;box-shadow:0 0 10px #fff9}
+.sp{height:36px;border-radius:10px;border:2px solid #2a2e43;background:#161926;color:#cfd2e3;font-size:12px;font-weight:600;padding:0}
+.sp.on{border-color:#7ee0a0;background:#13281b;color:#fff}
+.lbl{font-size:11px;color:#8b8fa8;margin:2px 2px -2px;font-weight:600;letter-spacing:.5px}
+.big{height:66px;border-radius:16px;border:none;font-size:22px;font-weight:700;color:#08130c;background:linear-gradient(#7dffa8,#33c46a);box-shadow:0 0 18px #33c46a66}
+.big.edit{background:linear-gradient(#ffe08a,#e0a92e);color:#2a1d00;box-shadow:0 0 18px #e0a92e55}
+.inv{min-height:40px;border-radius:12px;background:#0d0f16;border:1px dashed #2a2e43;display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:center;padding:4px;font-size:12px;color:#8b8fa8}
+.hide{display:none!important}
+#gearBtn{position:absolute;left:10px;top:10px;width:46px;height:46px;border-radius:50%;border:2px solid #b8941f;background:#3a2f0c;color:#ffd24d;font-size:24px;z-index:5;padding:0}
+#hint{position:absolute;left:64px;right:10px;top:14px;text-align:center;pointer-events:none;font-size:15px;color:#cfd2e3;text-shadow:0 2px 6px #000;opacity:.9}
+.ov{position:absolute;inset:0;background:rgba(3,4,8,.78);display:flex;align-items:center;justify-content:center;z-index:8}
+.card{background:linear-gradient(#171a27,#0e1018);border:2px solid #2d3150;border-radius:22px;padding:18px 20px;text-align:center;box-shadow:0 10px 40px #000;max-width:92%}
+.card h2{margin:4px 0 12px;font-size:28px;letter-spacing:.5px}
+.picks{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.pk{width:112px;height:132px;border-radius:18px;border:2px solid #2d3150;background:#10131d;color:#e8e6f0;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0}
+.pk canvas{width:84px;height:84px}
+.row{display:flex;gap:12px;justify-content:center;margin-top:14px}
+.btn{min-width:150px;height:60px;border-radius:16px;border:none;font-size:20px;font-weight:700;padding:0 18px}
+.b1{background:linear-gradient(#7dffa8,#33c46a);color:#08130c}
+.b2{background:#232741;color:#e8e6f0}
+#gear{position:absolute;left:10px;top:64px;width:min(330px,calc(100% - 20px));max-height:calc(100% - 80px);overflow:auto;background:#fffbe9;color:#2a2410;border-radius:16px;padding:12px 14px;z-index:9;box-shadow:0 8px 30px #000a;font-family:system-ui,sans-serif;font-size:14px}
+#gear h3{margin:2px 0 6px;font-size:15px}
+#gear .opt{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+#gear .opt button{border:2px solid #c9b46a;background:#fff;border-radius:10px;padding:8px 10px;font-size:13px;color:#2a2410}
+#gear .opt button.on{background:#ffd24d;border-color:#a8861a;font-weight:700}
+#gear label{display:flex;align-items:center;gap:6px;margin:3px 0}
+#gear .note{font-size:12.5px;color:#5b5030;line-height:1.45;border-top:1px solid #e5d9a8;padding-top:8px;margin-top:6px}
+#gear .snd{display:grid;grid-template-columns:1fr auto auto;gap:4px 6px;align-items:center;margin-bottom:8px}
+#gear .snd button{border:1px solid #c9b46a;background:#fff;border-radius:8px;padding:3px 8px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <button id="gearBtn" title="Mẫu: đổi kiểu">⚙</button>
+    <div id="hint"></div>
+    <div id="gear" class="hide"></div>
+    <div id="pick" class="ov hide"><div class="card"><h2>Pick your baby!</h2><div class="picks" id="picks"></div></div></div>
+    <div id="end" class="ov hide"><div class="card"><h2 id="endMsg"></h2><div class="row"><button class="btn b1" id="again">Try again</button><button class="btn b2" id="toEdit">Edit maze</button></div></div></div>
+  </div>
+  <div id="panel">
+    <div class="sec" id="pDraw">
+      <div class="g2">
+        <button class="tb on" data-tool="wall"><span class="ic">✏️</span>Wall</button>
+        <button class="tb" data-tool="erase"><span class="ic">🧽</span>Erase</button>
+        <button class="tb" data-tool="start"><span class="ic">🚪</span>Start</button>
+        <button class="tb" data-tool="exit"><span class="ic">🏁</span>Exit</button>
+        <button class="tb" data-tool="key"><span class="ic">🔑</span>Key</button>
+        <button class="tb" data-tool="door"><span class="ic">🔒</span>Door</button>
+        <button class="tb" data-tool="portal"><span class="ic">🌀</span>Portal</button>
+        <button class="tb" data-tool="snake"><span class="ic">🐍</span>Snake</button>
+        <button class="tb" data-tool="baby"><span class="ic">🧸</span>Baby</button>
+        <button class="tb" id="undo"><span class="ic">↶</span>Undo</button>
+      </div>
+      <div class="lbl">NUMBER</div>
+      <div class="g4" id="nums"></div>
+      <div class="lbl">CHASER SPEED</div>
+      <div class="g3" id="speeds">
+        <button class="sp" data-sp="slow">Slow</button><button class="sp" data-sp="normal">Normal</button><button class="sp" data-sp="fast">Fast</button>
+      </div>
+      <button class="big" id="playBtn">▶ Play</button>
+      <button class="tb" id="clearBtn" style="height:44px;flex-direction:row;gap:6px"><span class="ic" style="font-size:18px">🗑</span>Clear all</button>
+    </div>
+    <div class="sec hide" id="pPlay">
+      <button class="big edit" id="editBtn">✏️ Edit</button>
+      <div class="lbl">KEYS</div>
+      <div class="inv" id="inv">none yet</div>
+      <button class="tb" id="restartBtn" style="height:50px;flex-direction:row;gap:6px"><span class="ic" style="font-size:20px">↺</span>Restart</button>
+    </div>
+  </div>
+</div>
+<script src="lib/froggy_sprites.js"></script>
+<script src="lib/friend_sprites.js"></script>
+<script src="lib/sounds.js"></script>
+<script>
+(() => {
+'use strict';
+// ====================== hằng số thế giới ======================
+const W = 1000, H = 700;             // thế giới cố định, co giãn theo màn
+const HT = 6;                        // nửa bề dày tường
+const PR = 18;                       // bán kính em bé (ảnh chụp: 15 nhìn quá bé)
+const SR = 14;                       // bán kính đầu rắn
+const G = 10, GW = W / G, GH = H / G;// lưới dò đường
+const CLR = HT + PR - 3;             // ô lưới "đi được" khi cách tường >= CLR
+const SNAP = 46;                    // đầu nét cách tường < SNAP → khe hẹp hơn em bé → hít vào
+const COLORS = { 1: '#ff4d5e', 2: '#4da3ff', 3: '#5dff8f', 4: '#ffd24d' };
+const SPEEDS = { slow: 70, normal: 105, fast: 145 };
+const PLAYER_SPEED = 150;
+const FRIENDS = ['froggy', 'babyfrog', 'chicken', 'pillow'];
+const FNAME = { froggy: 'Froggy', babyfrog: 'Baby Froggy', chicken: 'Chicken Banana', pillow: 'Gối chút chút' };
+const STORE = 'bon_maze_mau_v1';
+const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+let dpr = 1, scale = 1, offX = 0, offY = 0, cssW = 0, cssH = 0;
+
+// ====================== dữ liệu mê cung + cài đặt ======================
+let maze = { walls: [], items: [], speed: 'normal' };
+let set = { dark: 'A', mute: {}, portalSnd: 'portal', snakePortal: true, nextFriend: 0 };
+let tool = 'wall', num = 1, mode = 'draw';
+const undoStack = [];
+
+function save() { try { localStorage.setItem(STORE, JSON.stringify({ maze, set })); } catch (e) {} }
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s && s.maze) { maze = s.maze; Object.assign(set, s.set || {}); return true; } } catch (e) {}
+  return false;
+}
+function pushUndo() { undoStack.push(JSON.stringify(maze)); if (undoStack.length > 60) undoStack.shift(); }
+
+function sampleMaze() {
+  const w = (x1, y1, x2, y2) => ({ ax: x1, ay: y1, bx: x2, by: y2 });
+  return {
+    speed: 'normal',
+    walls: [
+      w(250, 0, 250, 520), w(500, 180, 500, 700), w(500, 180, 1000, 180), w(750, 180, 750, 560),
+      w(0, 300, 170, 300), w(250, 350, 420, 350), w(560, 470, 750, 470), w(330, 470, 330, 590),
+      w(820, 90, 1000, 90), w(600, 90, 700, 90),
+    ],
+    items: [
+      { t: 'start', x: 100, y: 620 }, { t: 'exit', x: 900, y: 620 },
+      { t: 'portal', x: 420, y: 630, n: 2 }, { t: 'portal', x: 625, y: 630, n: 2 },
+      { t: 'key', x: 625, y: 300, n: 1 },
+      { t: 'door', x: 750, y: 560, x2: 750, y2: 700, n: 1 },
+      { t: 'snake', x: 900, y: 135 }, { t: 'baby', x: 110, y: 90 },
+    ],
+  };
+}
+
+// ====================== hình học ======================
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  let t = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = ax + t * dx, qy = ay + t * dy;
+  return { d: Math.hypot(px - qx, py - qy), x: qx, y: qy };
+}
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length - 1]; let md = 0, mi = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = segDist(pts[i].x, pts[i].y, a.x, a.y, b.x, b.y).d; if (d > md) { md = d; mi = i; } }
+  if (md > eps) { const l = rdp(pts.slice(0, mi + 1), eps), r = rdp(pts.slice(mi), eps); return l.slice(0, -1).concat(r); }
+  return [a, b];
+}
+const clampW = p => { p.x = Math.max(0, Math.min(W, p.x)); p.y = Math.max(0, Math.min(H, p.y)); return p; };
+function barsOf(m, openDoors) {
+  const out = m.walls.map(s => ({ ax: s.ax, ay: s.ay, bx: s.bx, by: s.by, hw: HT }));
+  m.items.forEach((it, i) => { if (it.t === 'door' && !(openDoors && openDoors.has(i))) out.push({ ax: it.x, ay: it.y, bx: it.x2, by: it.y2, hw: HT + 1, door: i, n: it.n }); });
+  return out;
+}
+// đầu nét cách tường/biên < SNAP → hít vào (khe đó em bé vốn không lọt)
+function snapEnd(p) {
+  let best = null, bd = SNAP;
+  for (const b of barsOf(maze)) { const r = segDist(p.x, p.y, b.ax, b.ay, b.bx, b.by); if (r.d < bd) { bd = r.d; best = r; } }
+  const edges = [[p.x, 0, p.y], [p.x, H, H - p.y], [0, p.y, p.x], [W, p.y, W - p.x]];
+  for (const [x, y, d] of edges) if (d < bd) { bd = d; best = { x, y }; }
+  if (best) { p.x = best.x; p.y = best.y; return true; }
+  return false;
+}
+// nét tay → các đoạn thẳng: giản lược, bắt góc 0/45/90°, hít đầu mút
+function straighten(raw, single) {
+  if (raw.length < 2) return null;
+  let len = 0; for (let i = 1; i < raw.length; i++) len += Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y);
+  if (len < 18) return null;
+  let pts = single ? [raw[0], raw[raw.length - 1]] : rdp(raw, 16);
+  const kept = [pts[0]];
+  for (let i = 1; i < pts.length; i++) { const p = pts[i], q = kept[kept.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) < 16 && i < pts.length - 1) continue; kept.push(p); }
+  const res = [{ x: kept[0].x, y: kept[0].y }];
+  for (let i = 1; i < kept.length; i++) {
+    const p = kept[i - 1], q = kept[i];
+    let ang = Math.atan2(q.y - p.y, q.x - p.x); const l = Math.hypot(q.x - p.x, q.y - p.y);
+    const s = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4); if (Math.abs(ang - s) < 0.21) ang = s;
+    const pr = res[res.length - 1]; res.push({ x: pr.x + Math.cos(ang) * l, y: pr.y + Math.sin(ang) * l });
+  }
+  res.forEach(clampW);
+  snapEnd(res[0]); snapEnd(res[res.length - 1]);
+  return res;
+}
+
+// ====================== lưới + dò đường ======================
+function buildGrid(bars) {
+  const g = new Uint8Array(GW * GH);
+  for (let cy = 0; cy < GH; cy++) for (let cx = 0; cx < GW; cx++) {
+    const x = cx * G + G / 2, y = cy * G + G / 2;
+    g[cy * GW + cx] = (x < CLR || y < CLR || x > W - CLR || y > H - CLR) ? 0 : 1;
+  }
+  for (const b of bars) {
+    const r = CLR + (b.hw - HT);
+    const x0 = Math.max(0, Math.floor((Math.min(b.ax, b.bx) - r) / G)), x1 = Math.min(GW - 1, Math.floor((Math.max(b.ax, b.bx) + r) / G));
+    const y0 = Math.max(0, Math.floor((Math.min(b.ay, b.by) - r) / G)), y1 = Math.min(GH - 1, Math.floor((Math.max(b.ay, b.by) + r) / G));
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++)
+      if (segDist(cx * G + G / 2, cy * G + G / 2, b.ax, b.ay, b.bx, b.by).d < r) g[cy * GW + cx] = 0;
+  }
+  return g;
+}
+const cellOf = (x, y) => Math.max(0, Math.min(GH - 1, Math.floor(y / G))) * GW + Math.max(0, Math.min(GW - 1, Math.floor(x / G)));
+const cx_ = c => (c % GW) * G + G / 2, cy_ = c => ((c / GW) | 0) * G + G / 2;
+function seedCell(grid, x, y) {
+  const c0 = cellOf(x, y); if (grid[c0]) return c0;
+  let best = -1, bd = 1e9; const ccx = c0 % GW, ccy = (c0 / GW) | 0;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const nx = ccx + dx, ny = ccy + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    const c = ny * GW + nx; if (!grid[c]) continue; const d = Math.hypot(cx_(c) - x, cy_(c) - y); if (d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+function portalPartner(m, idx) {
+  const p = m.items[idx]; if (!p || p.t !== 'portal') return -1;
+  const same = []; m.items.forEach((it, i) => { if (it.t === 'portal' && it.n === p.n) same.push(i); });
+  if (same.length < 2) return -1;
+  return same[(same.indexOf(idx) + 1) % same.length];
+}
+function portalLinks(m, grid) {
+  const L = new Map();
+  m.items.forEach((it, i) => {
+    if (it.t !== 'portal') return; const pi = portalPartner(m, i); if (pi < 0) return;
+    const to = seedCell(grid, m.items[pi].x, m.items[pi].y), from = seedCell(grid, it.x, it.y); if (to < 0 || from < 0) return;
+    (L.get(from) || L.set(from, []).get(from)).push(to);
+  });
+  return L;
+}
+function field(grid, seeds, links) {
+  const d = new Int32Array(GW * GH).fill(-1), q = new Int32Array(GW * GH); let h = 0, t = 0;
+  for (const s of seeds) if (s >= 0 && grid[s] && d[s] < 0) { d[s] = 0; q[t++] = s; }
+  // links đi CHIỀU NGƯỢC (tính khoảng cách tới đích) → đảo map
+  let rev = null; if (links) { rev = new Map(); for (const [a, bs] of links) for (const b of bs) (rev.get(b) || rev.set(b, []).get(b)).push(a); }
+  while (h < t) {
+    const c = q[h++], ccx = c % GW, ccy = (c / GW) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx; if (!grid[n] || d[n] >= 0) continue;
+      if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue;
+      d[n] = d[c] + 1; q[t++] = n;
+    }
+    if (rev) { const L = rev.get(c); if (L) for (const n of L) if (grid[n] && d[n] < 0) { d[n] = d[c] + 1; q[t++] = n; } }
+  }
+  return d;
+}
+// kiểm có đường ra: đi từ Start, lượm chìa → mở cửa cùng số → lặp
+function wayOut(m) {
+  const st = m.items.find(i => i.t === 'start'), ex = m.items.find(i => i.t === 'exit');
+  if (!st || !ex) return { ok: false, why: !st ? 'Put a Start first!' : 'Put an Exit first!' };
+  const have = new Set();
+  for (let it = 0; it < 8; it++) {
+    const open = new Set(); m.items.forEach((x, i) => { if (x.t === 'door' && have.has(x.n)) open.add(i); });
+    const grid = buildGrid(barsOf(m, open)), links = portalLinks(m, grid);
+    // từ Start đi XUÔI → dùng links đảo chiều của field (field đảo sẵn) ⇒ truyền map đảo để thành xuôi
+    const fwd = new Map(); for (const [a, bs] of links) for (const b of bs) (fwd.get(b) || fwd.set(b, []).get(b)).push(a);
+    const d = field(grid, [seedCell(grid, st.x, st.y)], fwd);
+    const at = it2 => { const c = seedCell(grid, it2.x, it2.y); return c >= 0 && d[c] >= 0; };
+    if (at(ex)) return { ok: true };
+    let changed = false;
+    m.items.forEach(k => { if (k.t === 'key' && !have.has(k.n) && at(k)) { have.add(k.n); changed = true; } });
+    if (!changed) break;
+  }
+  return { ok: false, why: 'No way out! 🤔' };
+}
+
+// ====================== tiếng ======================
+const SFX = { ctx: null, buf: {}, log: [], master: null, loops: {} };
+const AC = window.AudioContext || window.webkitAudioContext;
+function audioInit() {
+  if (SFX.ctx || !AC) return;
+  try { SFX.ctx = new AC(); SFX.master = SFX.ctx.createGain(); SFX.master.gain.value = 0.9; SFX.master.connect(SFX.ctx.destination); } catch (e) { SFX.ctx = null; }
+}
+function unlock() { audioInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
+addEventListener('pointerdown', unlock, true); addEventListener('touchend', unlock, true); addEventListener('keydown', unlock, true);
+function decode(key, cb) {
+  if (SFX.buf[key]) { cb(SFX.buf[key]); return; }
+  const src = (window.MAZE_SOUNDS || {})[key]; if (!SFX.ctx || !src) return;
+  const bin = atob(src.split(',')[1]), arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  SFX.ctx.decodeAudioData(arr.buffer, b => { SFX.buf[key] = b; cb(b); }, () => SFX.log.push('decodeErr:' + key));
+}
+function play(key, vol, rate, delay) {
+  SFX.log.push(key);
+  if (set.mute[key] || !SFX.ctx) return;
+  decode(key, b => {
+    const s = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+    s.buffer = b; s.playbackRate.value = rate || 1; g.gain.value = vol == null ? 1 : vol;
+    s.connect(g); g.connect(SFX.master); s.start(SFX.ctx.currentTime + (delay || 0));
+  });
+}
+function loopOn(key, vol) {
+  if (!SFX.loops[key]) SFX.log.push('loop:' + key);
+  if (SFX.loops[key] || set.mute[key] || !SFX.ctx) { if (SFX.loops[key]) SFX.loops[key].g.gain.setTargetAtTime(vol, SFX.ctx.currentTime, 0.4); return; }
+  SFX.loops[key] = { pending: true };
+  decode(key, b => {
+    if (!SFX.loops[key] || !SFX.loops[key].pending) return;
+    const s = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+    s.buffer = b; s.loop = true; g.gain.value = 0; g.gain.setTargetAtTime(vol, SFX.ctx.currentTime, 0.6);
+    s.connect(g); g.connect(SFX.master); s.start(); SFX.loops[key] = { s, g };
+  });
+}
+function loopOff(key) {
+  const L = SFX.loops[key]; if (!L) return; delete SFX.loops[key];
+  if (L.s) { L.g.gain.setTargetAtTime(0, SFX.ctx.currentTime, 0.3); const s = L.s; setTimeout(() => { try { s.stop(); } catch (e) {} }, 1500); }
+}
+function allLoopsOff() { Object.keys(SFX.loops).forEach(loopOff); }
+
+// ====================== hình 4 bạn (tấm chụp Blender, giống Bon's Smash) ======================
+const FROG_IMG = {}, FRIEND_IMG = {}, FRIEND_META = {};
+for (const k of Object.keys(window.FROG_SPRITES || {})) { const im = new Image(); im.src = FROG_SPRITES[k]; FROG_IMG[k] = im; }
+for (const id of Object.keys(window.FRIEND_SPRITES || {})) {
+  FRIEND_IMG[id] = {}; FRIEND_META[id] = FRIEND_SPRITES[id].meta;
+  for (const k of Object.keys(FRIEND_SPRITES[id].img)) { const im = new Image(); im.src = FRIEND_SPRITES[id].img[k]; FRIEND_IMG[id][k] = im; }
+}
+const ok = im => im && im.complete && im.naturalWidth > 0;
+function part(c, id, name, x, z, ang, r) {
+  const im = FRIEND_IMG[id][name], m = FRIEND_META[id][name]; if (!ok(im) || !m) return;
+  const sz = m[0] * r; c.save(); c.translate(x * r, -z * r); if (ang) c.rotate(ang);
+  c.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz); c.restore();
+}
+const PILLOW_POSE = { ouch: ['tense', 0.78, 1.2], idle: ['idle', 1, 1], blink: ['idle', 1, 1], panic: ['tense', 0.78, 1.2], phew: ['sag', 1.16, 0.8] };
+function drawFriendAt(c, id, face, r, wob) {
+  if (id === 'froggy') { const im = FROG_IMG[face] || FROG_IMG.idle; if (!ok(im)) return; const sz = 3.4 * r; c.drawImage(im, -sz / 2, -sz / 2 - 0.15 * r, sz, sz); }
+  else if (id === 'chicken') {
+    for (let s = -1; s <= 1; s += 2) part(c, id, 'leg', s * 0.3, -0.9, (wob || 0) * s * 0.4, r);
+    part(c, id, FRIEND_IMG.chicken[face] ? face : 'idle', 0, 0, 0, r);
+    const petals = [Math.PI / 2 - 0.95, Math.PI / 2 - 0.32, Math.PI / 2 + 0.32, Math.PI / 2 + 0.95];
+    c.save(); c.translate(0, 0.55 * r);
+    petals.forEach((b, i) => part(c, id, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, b - Math.PI / 2 + (wob || 0) * (i < 2 ? -0.3 : 0.3), r));
+    c.restore(); part(c, id, 'hat', 0, 1.02 + Math.max(0, wob || 0) * 0.3, 0, r);
+  } else if (id === 'babyfrog') {
+    part(c, id, FRIEND_IMG.babyfrog[face] ? face : 'idle', 0, 0, 0, r);
+    part(c, id, 'cup', 0.02, -0.32, (wob || 0) * 0.3, r); part(c, id, 'crown', 0, 0.84 + Math.max(0, wob || 0) * 0.3, 0, r);
+  } else {
+    const [pose, kx, kz] = PILLOW_POSE[face] || PILLOW_POSE.idle;
+    for (const [n, sx, sz] of [['cornerTL', -1, 1], ['cornerTR', 1, 1], ['cornerBL', -1, -1], ['cornerBR', 1, -1]]) part(c, id, n, sx * 0.98 * kx, sz * 0.56 * kz, -sx * (wob || 0) * 0.5, r);
+    part(c, id, pose, 0, 0, 0, r);
+  }
+}
+function thumb(id, size) {
+  const cvs = document.createElement('canvas'); cvs.width = size * 2; cvs.height = size * 2;
+  const g = cvs.getContext('2d'); g.translate(size, size * 1.08);
+  const go = () => { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cvs.width, cvs.height); g.restore(); drawFriendAt(g, id, 'idle', size * 0.6, 0); };
+  go(); setTimeout(go, 200); setTimeout(go, 800); return cvs;
+}
+
+// ====================== nền đá + tường (vẽ sẵn vào canvas phụ) ======================
+let bg = null, bgDirty = true, bgK = 1;
+let seedR = 7; const rnd = () => { seedR = (seedR * 16807) % 2147483647; return (seedR - 1) / 2147483646; };
+function drawFloor(g) {
+  seedR = 7;
+  g.fillStyle = '#121419'; g.fillRect(0, 0, W, H);
+  const S = 50;
+  for (let y = 0; y < H / S; y++) for (let x = 0; x < W / S; x++) {
+    const ox = (y % 2) * S / 2, v = rnd();
+    g.fillStyle = `rgb(${34 + v * 16 | 0},${37 + v * 16 | 0},${46 + v * 18 | 0})`;
+    g.beginPath(); g.roundRect ? g.roundRect(x * S - ox + 2, y * S + 2, S - 4, S - 4, 6) : g.rect(x * S - ox + 2, y * S + 2, S - 4, S - 4); g.fill();
+    if (rnd() < 0.25) { g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); const sx = x * S - ox + 8 + rnd() * 30, sy = y * S + 8 + rnd() * 30; g.moveTo(sx, sy); g.lineTo(sx + rnd() * 14 - 7, sy + 8); g.lineTo(sx + rnd() * 14 - 4, sy + 16); g.stroke(); }
+    if (rnd() < 0.18) { g.fillStyle = 'rgba(70,120,80,.18)'; for (let k = 0; k < 6; k++) { g.beginPath(); g.arc(x * S - ox + rnd() * S, y * S + rnd() * S, 2 + rnd() * 4, 0, 7); g.fill(); } }
+  }
+}
+function strokeSegs(g, segs, w, color, dx, dy) {
+  g.strokeStyle = color; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); for (const s of segs) { g.moveTo(s.ax + dx, s.ay + dy); g.lineTo(s.bx + dx, s.by + dy); } g.stroke();
+}
+function rebuildBg() {
+  bgK = Math.min(2.5, Math.max(1, scale * dpr));
+  if (!bg) bg = document.createElement('canvas');
+  bg.width = Math.round(W * bgK); bg.height = Math.round(H * bgK);
+  const g = bg.getContext('2d'); g.setTransform(bgK, 0, 0, bgK, 0, 0);
+  drawFloor(g);
+  const border = [{ ax: 0, ay: 0, bx: W, by: 0 }, { ax: W, ay: 0, bx: W, by: H }, { ax: W, ay: H, bx: 0, by: H }, { ax: 0, ay: H, bx: 0, by: 0 }];
+  const segs = maze.walls.concat(border);
+  strokeSegs(g, segs, HT * 2 + 12, 'rgba(0,0,0,.45)', 5, 7);
+  strokeSegs(g, segs, HT * 2 + 3, '#2c303b', 0, 0);
+  strokeSegs(g, segs, HT * 2 - 2, '#4d5363', 0, 0);
+  strokeSegs(g, segs, 3, '#737b90', -1.5, -2);
+  bgDirty = false;
+}
+
+// ====================== màn hình ======================
+function resize() {
+  const r = stage.getBoundingClientRect(); cssW = r.width; cssH = r.height;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  scale = Math.min(cssW / W, (cssH - 8) / H) * 0.98; offX = (cssW - W * scale) / 2; offY = Math.max(4, (cssH - H * scale) / 2);
+  bgDirty = true;
+}
+addEventListener('resize', resize);
+const toWorld = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale }; };
+
+// ====================== nút bảng phải ======================
+const nums = $('nums');
+[1, 2, 3, 4].forEach(n => { const b = document.createElement('button'); b.className = 'num'; b.textContent = n; b.style.background = COLORS[n]; b.dataset.n = n; nums.appendChild(b); });
+function refreshPanel() {
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  document.querySelectorAll('.num').forEach(b => b.classList.toggle('on', +b.dataset.n === num));
+  document.querySelectorAll('.sp').forEach(b => b.classList.toggle('on', b.dataset.sp === maze.speed));
+  $('pDraw').classList.toggle('hide', mode !== 'draw'); $('pPlay').classList.toggle('hide', mode === 'draw');
+  setHint();
+}
+const HINTS = {
+  wall: 'Draw walls with your finger — they turn straight!', erase: 'Rub over a wall or a thing to erase it',
+  start: 'Tap where the baby starts', exit: 'Tap where the way out is', key: 'Tap to put a key (pick a number)',
+  door: 'Draw a short line across a path for a door', portal: 'Tap two portals with the same number',
+  snake: 'Tap to add a snake 🐍', baby: 'Tap to add a baby chaser 🧸',
+};
+let hintOverride = null, hintT = 0;
+function setHint(msg, secs) {
+  if (msg) { hintOverride = msg; hintT = performance.now() + (secs || 2500); }
+  const h = (hintOverride && performance.now() < hintT) ? hintOverride : (mode === 'draw' ? HINTS[tool] : (mode === 'play' ? 'Slide your finger anywhere to move' : ''));
+  if ($('hint').textContent !== h) $('hint').textContent = h;
+}
+document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; refreshPanel(); }));
+nums.addEventListener('click', e => { const b = e.target.closest('.num'); if (b) { num = +b.dataset.n; if (!['key', 'door', 'portal'].includes(tool)) tool = 'key'; refreshPanel(); } });
+$('speeds').addEventListener('click', e => { const b = e.target.closest('.sp'); if (b) { maze.speed = b.dataset.sp; save(); refreshPanel(); } });
+$('undo').addEventListener('click', () => { if (!undoStack.length) return; maze = JSON.parse(undoStack.pop()); bgDirty = true; save(); refreshPanel(); });
+$('clearBtn').addEventListener('click', () => { if (!maze.walls.length && !maze.items.length) return; pushUndo(); maze = { walls: [], items: [], speed: maze.speed }; bgDirty = true; save(); setHint('All clear! (Undo brings it back)'); });
+$('playBtn').addEventListener('click', () => {
+  const w = wayOut(maze); if (!w.ok) { setHint(w.why, 3000); flashWhy = performance.now(); return; }
+  showPick();
+});
+$('editBtn').addEventListener('click', () => toDraw());
+$('restartBtn').addEventListener('click', () => startPlay(game.friend));
+$('again').addEventListener('click', () => { $('end').classList.add('hide'); startPlay(game.friend); });
+$('toEdit').addEventListener('click', () => { $('end').classList.add('hide'); toDraw(); });
+let flashWhy = 0;
+
+function showPick() {
+  const box = $('picks'); box.innerHTML = '';
+  FRIENDS.forEach(id => {
+    const b = document.createElement('button'); b.className = 'pk'; b.dataset.f = id;
+    b.appendChild(thumb(id, 48)); const s = document.createElement('span'); s.textContent = FNAME[id]; b.appendChild(s);
+    b.addEventListener('click', () => { $('pick').classList.add('hide'); startPlay(id); });
+    box.appendChild(b);
+  });
+  $('pick').classList.remove('hide');
+}
+
+// ====================== VẼ ======================
+let stroke = null, ghosts = [], tapStart = null, erasing = false;
+function nearestItem(p, r) {
+  let bi = -1, bd = r;
+  maze.items.forEach((it, i) => {
+    const d = it.t === 'door' ? segDist(p.x, p.y, it.x, it.y, it.x2, it.y2).d : Math.hypot(it.x - p.x, it.y - p.y);
+    if (d < bd) { bd = d; bi = i; }
+  });
+  return bi;
+}
+function eraseAt(p) {
+  let changed = false;
+  const before = maze.walls.length;
+  const wi = maze.walls.findIndex(s => segDist(p.x, p.y, s.ax, s.ay, s.bx, s.by).d < 16);
+  const ii = nearestItem(p, 26);
+  if (wi >= 0 || ii >= 0) { if (!erasing) { pushUndo(); erasing = true; } }
+  if (wi >= 0) { maze.walls.splice(wi, 1); changed = true; }
+  if (ii >= 0) { maze.items.splice(ii, 1); changed = true; }
+  if (changed) { bgDirty = true; save(); }
+  return before !== maze.walls.length;
+}
+function placeAt(p) {
+  clampW(p);
+  const t = tool;
+  if (!['start', 'exit', 'key', 'portal', 'snake', 'baby'].includes(t)) return;
+  pushUndo();
+  if (t === 'start' || t === 'exit') maze.items = maze.items.filter(i => i.t !== t);
+  const it = { t, x: Math.round(p.x), y: Math.round(p.y) };
+  if (t === 'key' || t === 'portal') it.n = num;
+  maze.items.push(it); save(); play('snap', 0.5);
+  if (t === 'portal') { const cnt = maze.items.filter(i => i.t === 'portal' && i.n === num).length; setHint(cnt % 2 ? 'Now tap the other portal ' + num : 'Portal ' + num + ' connected! ✨'); }
+}
+function finishStroke() {
+  const raw = stroke; stroke = null; if (!raw) return;
+  const isDoor = tool === 'door';
+  const pts = straighten(raw, isDoor);
+  if (!pts) { if (isDoor) setHint('Drag a line across the path'); return; }
+  pushUndo();
+  if (isDoor) { const a = pts[0], b = pts[pts.length - 1]; maze.items.push({ t: 'door', x: Math.round(a.x), y: Math.round(a.y), x2: Math.round(b.x), y2: Math.round(b.y), n: num }); }
+  else for (let i = 1; i < pts.length; i++) maze.walls.push({ ax: Math.round(pts[i - 1].x), ay: Math.round(pts[i - 1].y), bx: Math.round(pts[i].x), by: Math.round(pts[i].y) });
+  ghosts.push({ pts: raw, t0: performance.now() });
+  bgDirty = true; save(); play('snap', 0.45);
+}
+
+// ====================== CHƠI ======================
+const game = { friend: 'froggy' };
+let P = null, chasers = [], grid = null, links = null, fieldP = null, fieldT = 0, openDoors = new Set(), keys = new Set(), fx = [];
+let joy = null, keysDown = {}, heartT = 0, hissT = 0, lastT = 0, playT0 = 0, dark = { blackout: 0, nextBlack: 0 };
+function rebuildPlayGrid() { grid = buildGrid(barsOf(maze, openDoors)); links = portalLinks(maze, grid); fieldT = 0; }
+function startPlay(friendId) {
+  game.friend = friendId; mode = 'play'; game.over = false;
+  const st = maze.items.find(i => i.t === 'start');
+  P = { x: st.x, y: st.y, vx: 0, vy: 0, face: 1, moving: 0, stepT: 0, lock: -1, scared: 0 };
+  openDoors = new Set(); keys = new Set(); fx = []; ghosts = [];
+  rebuildPlayGrid();
+  const others = FRIENDS.filter(f => f !== friendId); let oi = 0;
+  chasers = maze.items.filter(i => i.t === 'snake' || i.t === 'baby').map(i => ({
+    kind: i.t, x: i.x, y: i.y, ang: Math.PI, trail: [], lock: -1, friend: i.t === 'baby' ? others[(oi++) % others.length] : null, wig: Math.random() * 6,
+  }));
+  dark.nextBlack = performance.now() + 5000 + Math.random() * 3000; dark.blackout = 0;
+  playT0 = performance.now(); heartT = 0;
+  refreshInv(); refreshPanel();
+  unlock(); loopOn('amb', 0.55); if (set.dark !== 'A') loopOn('wind', 0.22); else loopOff('wind');
+}
+function toDraw() { mode = 'draw'; allLoopsOff(); joy = null; $('end').classList.add('hide'); refreshPanel(); }
+function refreshInv() {
+  const inv = $('inv'); inv.innerHTML = '';
+  if (!keys.size) { inv.textContent = 'none yet'; return; }
+  [...keys].sort().forEach(n => { const s = document.createElement('span'); s.textContent = '🔑' + n; s.style.cssText = `background:${COLORS[n]};color:#111;border-radius:8px;padding:3px 6px;font-weight:700;font-size:14px`; inv.appendChild(s); });
+}
+function collide(e, r) {
+  const bars = barsOf(maze, openDoors);
+  for (let it = 0; it < 3; it++) {
+    for (const b of bars) {
+      const q = segDist(e.x, e.y, b.ax, b.ay, b.bx, b.by), m = r + b.hw;
+      if (q.d < m && q.d > 1e-6) { const k = (m - q.d) / q.d; e.x += (e.x - q.x) * k; e.y += (e.y - q.y) * k; }
+    }
+    e.x = Math.max(r + 1, Math.min(W - r - 1, e.x)); e.y = Math.max(r + 1, Math.min(H - r - 1, e.y));
+  }
+}
+function endGame(win) {
+  if (game.over) return; game.over = true; joy = null;
+  allLoopsOff();
+  if (win) { play('win', 0.9); for (let i = 0; i < 60; i++) fx.push({ x: P.x, y: P.y, vx: (Math.random() - .5) * 260, vy: (Math.random() - .8) * 260, t: 0, life: 1.4, c: ['#ffd24d', '#7dffa8', '#4da3ff', '#ff8ad8'][i % 4] }); }
+  else play('lose', 0.85);
+  setTimeout(() => { if (mode !== 'play' || !game.over) return; $('endMsg').textContent = win ? 'You found the way out! 🌟' : (game.caughtBy === 'snake' ? 'The snake got you! 🐍' : 'Caught! Try again!'); $('end').classList.remove('hide'); }, win ? 1100 : 900);
+}
+function inputVec() {
+  let x = 0, y = 0;
+  if (joy) { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.hypot(dx, dy); if (l > 6) { const k = Math.min(1, l / 55); x = dx / l * k; y = dy / l * k; } }
+  if (keysDown.ArrowLeft || keysDown.a) x -= 1; if (keysDown.ArrowRight || keysDown.d) x += 1;
+  if (keysDown.ArrowUp || keysDown.w) y -= 1; if (keysDown.ArrowDown || keysDown.s) y += 1;
+  if (TEST.auto) { const a = autopilot(); if (a) { x = a.x; y = a.y; } }
+  const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+  return { x, y };
+}
+function updatePlay(dt, now) {
+  if (game.over) { fx.forEach(f => { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 300 * dt; }); fx = fx.filter(f => f.t < f.life); return; }
+  // em bé
+  const iv = inputVec();
+  const tvx = iv.x * PLAYER_SPEED, tvy = iv.y * PLAYER_SPEED, a = Math.min(1, dt * 12);
+  P.vx += (tvx - P.vx) * a; P.vy += (tvy - P.vy) * a;
+  const steps = Math.max(1, Math.ceil(Math.hypot(P.vx, P.vy) * dt / 6));
+  for (let s = 0; s < steps; s++) { P.x += P.vx * dt / steps; P.y += P.vy * dt / steps; collide(P, PR); }
+  const sp = Math.hypot(P.vx, P.vy); P.moving = sp > 20 ? P.moving + dt : 0;
+  if (Math.abs(P.vx) > 15) P.face = P.vx > 0 ? 1 : -1;
+  if (sp > 40) { P.stepT -= dt; if (P.stepT <= 0) { play('step', 0.35, 0.9 + Math.random() * 0.25); P.stepT = 0.34; } }
+  // chìa
+  maze.items.forEach((it, i) => { if (it.t === 'key' && !keys.has(it.n) && !it._got && Math.hypot(it.x - P.x, it.y - P.y) < PR + 16) { keys.add(it.n); play('key', 0.9); refreshInv(); setHint('Got key ' + it.n + '! 🔑'); burst(it.x, it.y, COLORS[it.n]); } });
+  // cửa
+  maze.items.forEach((it, i) => {
+    if (it.t !== 'door' || openDoors.has(i)) return;
+    const d = segDist(P.x, P.y, it.x, it.y, it.x2, it.y2).d;
+    if (d < PR + HT + 10) {
+      if (keys.has(it.n)) { openDoors.add(i); rebuildPlayGrid(); play('lock', 1); play('creak', 0.8, 1, 0.35); setHint('Door ' + it.n + ' open!'); burst((it.x + it.x2) / 2, (it.y + it.y2) / 2, COLORS[it.n]); }
+      else if (!it._warnT || now > it._warnT) { it._warnT = now + 2500; setHint('Need key ' + it.n + ' 🔑'); }
+    }
+  });
+  // portal
+  if (P.lock >= 0) { const L = maze.items[P.lock]; if (!L || Math.hypot(L.x - P.x, L.y - P.y) > 34) P.lock = -1; }
+  else maze.items.forEach((it, i) => {
+    if (P.lock >= 0 || it.t !== 'portal') return; const pi = portalPartner(maze, i); if (pi < 0) return;
+    if (Math.hypot(it.x - P.x, it.y - P.y) < 18) { burst(it.x, it.y, COLORS[it.n]); const to = maze.items[pi]; P.x = to.x; P.y = to.y; P.lock = pi; play(set.portalSnd, 0.9); burst(to.x, to.y, COLORS[it.n]); fieldT = 0; }
+  });
+  // lối ra
+  const ex = maze.items.find(i => i.t === 'exit'); if (ex && Math.hypot(ex.x - P.x, ex.y - P.y) < 26) { endGame(true); return; }
+  // bản đồ khoảng cách tới em bé (cho kẻ đuổi)
+  fieldT -= dt; if (fieldT <= 0) { fieldP = field(grid, [seedCell(grid, P.x, P.y)], set.snakePortal ? links : null); fieldT = 0.2; }
+  // kẻ đuổi
+  let nearest = 1e9;
+  const spd = SPEEDS[maze.speed] || 105;
+  for (const c of chasers) {
+    if (TEST.freeze) break;
+    const r = c.kind === 'snake' ? SR : PR, v = spd * (c.kind === 'baby' ? 0.92 : 1);
+    const cc = cellOf(c.x, c.y);
+    let cur = grid[cc] ? fieldP[cc] : -1, best = -1, bv = cur >= 0 ? cur : 1e9;
+    const ccx = cc % GW, ccy = (cc / GW) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx; if (!grid[n] || fieldP[n] < 0) continue;
+      if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue;
+      if (fieldP[n] < bv) { bv = fieldP[n]; best = n; }
+    }
+    let tx, ty;
+    if (best >= 0) { tx = cx_(best); ty = cy_(best); }
+    else if (cur === 0 || Math.hypot(P.x - c.x, P.y - c.y) < 60) { tx = P.x; ty = P.y; }
+    else { c.ang += (Math.random() - .5) * 2 * dt; tx = c.x + Math.cos(c.ang) * 30; ty = c.y + Math.sin(c.ang) * 30; }
+    // portal cho kẻ đuổi: đứng trên portal mà phía bên kia gần em bé hơn → nhảy
+    if (set.snakePortal && c.lock < 0) maze.items.forEach((it, i) => {
+      if (c.lock >= 0 || it.t !== 'portal' || Math.hypot(it.x - c.x, it.y - c.y) > 22) return; const pi = portalPartner(maze, i); if (pi < 0) return;
+      const to = maze.items[pi], tc = seedCell(grid, to.x, to.y); if (tc >= 0 && fieldP[tc] >= 0 && (cur < 0 || fieldP[tc] < cur)) { c.x = to.x; c.y = to.y; c.lock = pi; c.trail = []; play(set.portalSnd, 0.5, 0.8); }
+    });
+    if (c.lock < 0) maze.items.forEach((it, i) => { if (it.t === 'portal' && best >= 0 && links && links.has(cc) && Math.hypot(it.x - c.x, it.y - c.y) < 40 && fieldP[best] >= cur) { tx = it.x; ty = it.y; } });
+    if (c.lock >= 0) { const L = maze.items[c.lock]; if (!L || Math.hypot(L.x - c.x, L.y - c.y) > 36) c.lock = -1; }
+    const want = Math.atan2(ty - c.y, tx - c.x);
+    let da = want - c.ang; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const turn = (c.kind === 'snake' ? 5 : 9) * dt; c.ang += Math.max(-turn, Math.min(turn, da));
+    c.x += Math.cos(c.ang) * v * dt; c.y += Math.sin(c.ang) * v * dt; collide(c, r);
+    c.wig += dt * 9;
+    if (c.kind === 'snake') { const last = c.trail[0]; if (!last || Math.hypot(last.x - c.x, last.y - c.y) > 2) { c.trail.unshift({ x: c.x, y: c.y }); if (c.trail.length > 90) c.trail.length = 90; } }
+    const dpl = Math.hypot(P.x - c.x, P.y - c.y);
+    const pd = (grid[cc] && fieldP[cc] >= 0) ? fieldP[cc] * G : dpl * 1.5; nearest = Math.min(nearest, Math.max(dpl, pd));
+    if (dpl < PR + r - 5) { game.caughtBy = c.kind; endGame(false); return; }
+    if (c.kind === 'snake' && dpl < 170 && now > hissT) { hissT = now + 2600 + Math.random() * 1500; play('hiss', 0.75, 0.9 + Math.random() * 0.2); }
+  }
+  P.scared = nearest < 140 ? 1 : 0;
+  // tim đập theo đường đi (không theo đường chim bay) tới kẻ gần nhất
+  if (nearest < 480) { heartT -= dt; if (heartT <= 0) { const k = nearest / 480; play('heart', 0.35 + 0.65 * (1 - k), 1 + (1 - k) * 0.15); heartT = 0.32 + k * 0.85; } }
+  fx.forEach(f => { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.96; f.vy *= 0.96; }); fx = fx.filter(f => f.t < f.life);
+}
+function burst(x, y, c) { for (let i = 0; i < 18; i++) { const a = Math.random() * 6.3, s = 40 + Math.random() * 120; fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: 0.7, c }); } }
+
+// lái tự động (chỉ cho máy tự kiểm): tới chìa cần → cửa → lối ra
+function autopilot() {
+  const ex = maze.items.find(i => i.t === 'exit');
+  const fwd = new Map(); for (const [a, bs] of links) for (const b of bs) (fwd.get(b) || fwd.set(b, []).get(b)).push(a);
+  const fromP = field(grid, [seedCell(grid, P.x, P.y)], fwd);
+  const can = it => { const c = seedCell(grid, it.x, it.y); return c >= 0 && fromP[c] >= 0; };
+  let seeds = null;
+  if (can(ex)) seeds = [seedCell(grid, ex.x, ex.y)];
+  else {
+    const doors = maze.items.map((it, i) => [it, i]).filter(([it, i]) => it.t === 'door' && !openDoors.has(i));
+    const dk = doors.find(([d]) => keys.has(d.n));
+    if (dk) { const d = dk[0]; seeds = []; for (let c = 0; c < GW * GH; c++) if (grid[c] && fromP[c] >= 0 && segDist(cx_(c), cy_(c), d.x, d.y, d.x2, d.y2).d < 30) seeds.push(c); }
+    if (!seeds || !seeds.length) { const k = maze.items.find(it => it.t === 'key' && !keys.has(it.n) && can(it)); if (k) seeds = [seedCell(grid, k.x, k.y)]; }
+  }
+  if (!seeds || !seeds.length) return null;
+  const f = field(grid, seeds, links), cc = seedCell(grid, P.x, P.y); if (cc < 0) return null;
+  let best = -1, bv = f[cc] >= 0 ? f[cc] : 1e9; const ccx = cc % GW, ccy = (cc / GW) | 0;
+  for (let k = 0; k < 8; k++) { const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const n = ny * GW + nx; if (!grid[n] || f[n] < 0) continue; if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue; if (f[n] < bv) { bv = f[n]; best = n; } }
+  let tx, ty;
+  const pl = links.get(cc); if (pl && pl.some(n => f[n] >= 0 && f[n] < bv)) { const pt = maze.items.find(it => it.t === 'portal' && seedCell(grid, it.x, it.y) === cc); if (pt) { tx = pt.x; ty = pt.y; } }
+  if (tx == null) { if (best < 0) { const s = seeds[0]; tx = cx_(s); ty = cy_(s); } else { tx = cx_(best); ty = cy_(best); } }
+  const dx = tx - P.x, dy = ty - P.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l };
+}
+
+// ====================== VẼ HÌNH ======================
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawStart(g, it, t) {
+  g.save(); g.translate(it.x, it.y);
+  const gr = g.createRadialGradient(0, 0, 4, 0, 0, 30); gr.addColorStop(0, 'rgba(150,210,255,.35)'); gr.addColorStop(1, 'rgba(150,210,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 30, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(170,220,255,.7)'; g.lineWidth = 2; g.setLineDash([5, 5]); g.lineDashOffset = -t * 20; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = 'rgba(200,230,255,.85)'; g.font = '700 11px Fredoka,sans-serif'; g.textAlign = 'center'; g.fillText('START', 0, 38);
+  g.restore();
+}
+function drawExit(g, it, t) {
+  g.save(); g.translate(it.x, it.y);
+  const pul = 1 + Math.sin(t * 3) * 0.08;
+  const gr = g.createRadialGradient(0, 0, 2, 0, 0, 46 * pul); gr.addColorStop(0, 'rgba(140,255,200,.75)'); gr.addColorStop(0.4, 'rgba(60,220,170,.3)'); gr.addColorStop(1, 'rgba(60,220,170,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 46 * pul, 0, 7); g.fill();
+  // cổng vòm đá
+  g.fillStyle = '#2a2f3a'; rr(g, -20, -22, 40, 40, 6); g.fill();
+  g.fillStyle = '#0d2a22'; g.beginPath(); g.moveTo(-12, 14); g.lineTo(-12, -6); g.arc(0, -6, 12, Math.PI, 0); g.lineTo(12, 14); g.closePath(); g.fill();
+  const ig = g.createLinearGradient(0, -18, 0, 14); ig.addColorStop(0, '#b6ffe0'); ig.addColorStop(1, '#2fd59a'); g.fillStyle = ig; g.globalAlpha = 0.65 + Math.sin(t * 4) * 0.2;
+  g.beginPath(); g.moveTo(-9, 14); g.lineTo(-9, -6); g.arc(0, -6, 9, Math.PI, 0); g.lineTo(9, 14); g.closePath(); g.fill(); g.globalAlpha = 1;
+  g.fillStyle = 'rgba(190,255,225,.9)'; g.font = '700 11px Fredoka,sans-serif'; g.textAlign = 'center'; g.fillText('EXIT', 0, 34);
+  g.restore();
+}
+function drawKey(g, it, t) {
+  if (mode === 'play' && keys.has(it.n)) return;
+  const c = COLORS[it.n]; g.save(); g.translate(it.x, it.y + Math.sin(t * 3 + it.x) * 2.5); g.rotate(-0.5);
+  g.shadowColor = c; g.shadowBlur = 14; g.strokeStyle = c; g.fillStyle = c; g.lineWidth = 4;
+  g.beginPath(); g.arc(-8, 0, 7, 0, 7); g.stroke();
+  g.beginPath(); g.moveTo(-1, 0); g.lineTo(16, 0); g.stroke();
+  g.fillRect(9, 0, 3, 7); g.fillRect(14, 0, 3, 5);
+  g.shadowBlur = 0; g.rotate(0.5); g.fillStyle = '#fff'; g.font = '700 10px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(it.n, -8 * Math.cos(-0.5), -8 * Math.sin(-0.5) + 0.5); g.restore();
+}
+function drawDoor(g, it, i, t) {
+  const c = COLORS[it.n], open = mode === 'play' && openDoors.has(i);
+  g.save(); g.lineCap = 'round';
+  if (open) { g.globalAlpha = 0.28; g.setLineDash([6, 6]); g.strokeStyle = c; g.lineWidth = 3; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke(); g.restore(); return; }
+  g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 20; g.beginPath(); g.moveTo(it.x + 4, it.y + 6); g.lineTo(it.x2 + 4, it.y2 + 6); g.stroke();
+  g.shadowColor = c; g.shadowBlur = 10; g.strokeStyle = c; g.lineWidth = 15; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke();
+  g.shadowBlur = 0; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.setLineDash([3, 7]); g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke(); g.setLineDash([]);
+  const mx = (it.x + it.x2) / 2, my = (it.y + it.y2) / 2; g.translate(mx, my);
+  g.fillStyle = '#20232c'; g.strokeStyle = '#d9dbe6'; g.lineWidth = 3; g.beginPath(); g.arc(0, -7, 6, Math.PI, 0); g.stroke();
+  rr(g, -9, -6, 18, 15, 3); g.fillStyle = '#e7e9f2'; g.fill();
+  g.fillStyle = c; g.font = '700 11px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(it.n, 0, 2);
+  g.restore();
+}
+function drawPortal(g, it, i, t) {
+  const c = COLORS[it.n], pi = portalPartner(maze, i);
+  g.save(); g.translate(it.x, it.y);
+  const gr = g.createRadialGradient(0, 0, 2, 0, 0, 30); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.globalAlpha = pi < 0 ? 0.45 : 0.9; g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 30, 0, 7); g.fill();
+  g.strokeStyle = c; g.lineWidth = 3;
+  for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(0, 0, 12 + k * 6, t * (2 + k) + k, t * (2 + k) + k + 3.6); g.stroke(); }
+  g.globalAlpha = 1; g.fillStyle = '#0b0c12'; g.beginPath(); g.arc(17, -17, 8, 0, 7); g.fill();
+  g.fillStyle = c; g.font = '700 11px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(it.n, 17, -16.5);
+  g.restore();
+}
+function drawSnakeBody(g, pts, t, ang) {
+  // pts: đầu → đuôi
+  const n = pts.length; if (!n) return;
+  for (let i = n - 1; i >= 0; i--) {
+    const p = pts[i], k = i / Math.max(1, n - 1), r = SR * (1 - k * 0.6);
+    g.fillStyle = i % 2 ? '#2f6b33' : '#3f8a3e'; g.strokeStyle = '#132a15'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(p.x, p.y, r, 0, 7); g.fill(); g.stroke();
+    if (i % 3 === 0 && i) { g.fillStyle = '#c9b23a'; g.beginPath(); g.arc(p.x, p.y, r * 0.35, 0, 7); g.fill(); }
+  }
+  const h = pts[0];
+  g.save(); g.translate(h.x, h.y); g.rotate(ang);
+  if (Math.sin(t * 5) > 0.55) { g.strokeStyle = '#ff3b55'; g.lineWidth = 2; g.beginPath(); g.moveTo(SR, 0); g.lineTo(SR + 10, 0); g.moveTo(SR + 10, 0); g.lineTo(SR + 14, -3); g.moveTo(SR + 10, 0); g.lineTo(SR + 14, 3); g.stroke(); }
+  g.fillStyle = '#4c9a48'; g.strokeStyle = '#132a15'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(2, 0, SR + 2, SR - 1, 0, 0, 7); g.fill(); g.stroke();
+  g.restore();
+}
+function snakeEyes(g, x, y, ang, glow) {
+  g.save(); g.translate(x, y); g.rotate(ang);
+  for (const s of [-1, 1]) {
+    if (glow) { g.shadowColor = '#ffde3b'; g.shadowBlur = 12; }
+    g.fillStyle = '#ffe23b'; g.beginPath(); g.ellipse(7, s * 6, 4, 3.2, 0, 0, 7); g.fill(); g.shadowBlur = 0;
+    g.fillStyle = '#111'; g.beginPath(); g.ellipse(8, s * 6, 1.2, 2.8, 0, 0, 7); g.fill();
+  }
+  g.restore();
+}
+function snakePts(c) {
+  // lấy mẫu dọc vết đầu, cách đều 8 đơn vị, 15 đốt, lắc ngang theo sóng
+  const out = [{ x: c.x, y: c.y }]; let need = 8, acc = 0;
+  for (let i = 1; i < c.trail.length && out.length < 15; i++) {
+    const a = c.trail[i - 1], b = c.trail[i], d = Math.hypot(b.x - a.x, b.y - a.y); acc += d;
+    while (acc >= need && out.length < 15) { const k = 1 - (acc - need) / (d || 1); out.push({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }); need += 8; }
+  }
+  while (out.length < 15) { const l = out[out.length - 1]; out.push({ x: l.x - Math.cos(c.ang) * 8, y: l.y - Math.sin(c.ang) * 8 }); }
+  for (let i = 1; i < out.length; i++) { const w = Math.sin(c.wig - i * 0.7) * Math.min(1, i / 3) * 3.5; out[i].x += -Math.sin(c.ang) * w; out[i].y += Math.cos(c.ang) * w; }
+  return out;
+}
+function drawMarkerSnake(g, it, t) {
+  const fake = { x: it.x, y: it.y, ang: 0, trail: [], wig: t * 3 };
+  for (let i = 0; i < 30; i++) fake.trail.push({ x: it.x - i * 4, y: it.y + Math.sin(i * 0.4) * 4 });
+  drawSnakeBody(g, snakePts(fake), t, 0); snakeEyes(g, it.x, it.y, 0, false);
+}
+function drawChaserBaby(g, c, t, scared) {
+  g.save(); g.translate(c.x, c.y);
+  const gr = g.createRadialGradient(0, 4, 2, 0, 4, 26); gr.addColorStop(0, 'rgba(255,40,60,.55)'); gr.addColorStop(1, 'rgba(255,40,60,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 4, 26, 0, 7); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(0, PR * 0.9, PR * 0.9, 5, 0, 0, 7); g.fill();
+  if (Math.cos(c.ang) < 0) g.scale(-1, 1);
+  g.translate(0, Math.sin(c.wig) * 1.5); drawFriendAt(g, c.friend, 'idle', PR * 0.78, Math.sin(c.wig) * 0.5);
+  g.restore();
+}
+function drawPlayer(g, t) {
+  g.save(); g.translate(P.x, P.y);
+  g.fillStyle = 'rgba(0,0,0,.5)'; g.beginPath(); g.ellipse(0, PR * 0.95, PR * 0.95, 5, 0, 0, 7); g.fill();
+  const bob = P.moving ? Math.sin(P.moving * 14) * 1.8 : 0;
+  g.translate(0, bob); if (P.face < 0) g.scale(-1, 1);
+  const face = game.over ? 'idle' : (P.scared ? (game.friend === 'pillow' ? 'ouch' : 'panic') : ((t % 3.2) < 0.12 ? 'blink' : 'idle'));
+  drawFriendAt(g, game.friend, face, PR * 0.82, P.moving ? Math.sin(P.moving * 14) * 0.6 : 0);
+  g.restore();
+}
+// ----- bóng tối -----
+const dk = document.createElement('canvas'); dk.width = W / 2; dk.height = H / 2; const dg = dk.getContext('2d');
+// sương = nhiều đám mây mềm (gradient tròn), vẽ 1 lần; tràn qua mép để lặp không thấy đường nối
+const fog = document.createElement('canvas'); fog.width = 500; fog.height = 350;
+(() => {
+  const g = fog.getContext('2d'); seedR = 99;
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * 500, y = rnd() * 350, r = 30 + rnd() * 80, a = 0.05 + rnd() * 0.12;
+    for (const ox of [-500, 0, 500]) for (const oy of [-350, 0, 350]) {
+      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gr.addColorStop(0, `rgba(150,160,185,${a})`); gr.addColorStop(1, 'rgba(150,160,185,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x + ox, y + oy, r, 0, 7); g.fill();
+    }
+  }
+})();
+function drawDarkness(g, t, now) {
+  let style = set.dark;
+  if (style === 'C') {
+    if (!dark.blackout && now > dark.nextBlack) { dark.blackout = now + 1500; }
+    if (dark.blackout && now > dark.blackout) { dark.blackout = 0; dark.nextBlack = now + 5000 + Math.random() * 4000; }
+  }
+  const black = style === 'A' || (style === 'C' && dark.blackout && Math.sin(now / 37) > -0.6);
+  dg.setTransform(1, 0, 0, 1, 0, 0); dg.globalCompositeOperation = 'source-over'; dg.clearRect(0, 0, dk.width, dk.height);
+  dg.setTransform(0.5, 0, 0, 0.5, 0, 0);
+  const flick = 1 + Math.sin(t * 11) * 0.02 + Math.sin(t * 23) * 0.015;
+  if (black) {
+    dg.fillStyle = 'rgba(3,4,8,.985)'; dg.fillRect(0, 0, W, H);
+    dg.globalCompositeOperation = 'destination-out';
+    const R = (style === 'C' ? 110 : 150) * flick;
+    let gr = dg.createRadialGradient(P.x, P.y, R * 0.25, P.x, P.y, R); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.6, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    dg.fillStyle = gr; dg.beginPath(); dg.arc(P.x, P.y, R, 0, 7); dg.fill();
+    for (const it of maze.items) if (it.t === 'exit' || it.t === 'portal') {
+      const r2 = it.t === 'exit' ? 44 : 30; gr = dg.createRadialGradient(it.x, it.y, 2, it.x, it.y, r2); gr.addColorStop(0, 'rgba(0,0,0,.8)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      dg.fillStyle = gr; dg.beginPath(); dg.arc(it.x, it.y, r2, 0, 7); dg.fill();
+    }
+  } else {
+    dg.fillStyle = 'rgba(3,4,10,.62)'; dg.fillRect(0, 0, W, H);
+    dg.globalCompositeOperation = 'destination-out';
+    const R = 230 * flick, gr = dg.createRadialGradient(P.x, P.y, 30, P.x, P.y, R); gr.addColorStop(0, 'rgba(0,0,0,.85)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    dg.fillStyle = gr; dg.beginPath(); dg.arc(P.x, P.y, R, 0, 7); dg.fill();
+  }
+  g.drawImage(dk, 0, 0, W, H);
+  // ánh đèn lồng vàng ấm quanh em bé
+  { const R = (black ? 150 : 200) * flick, gr = g.createRadialGradient(P.x, P.y, 6, P.x, P.y, R); gr.addColorStop(0, 'rgba(255,190,110,.22)'); gr.addColorStop(1, 'rgba(255,190,110,0)');
+    g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(P.x, P.y, R, 0, 7); g.fill(); g.restore(); }
+  if (!black) {
+    // sương trôi + viền tối
+    g.save(); g.globalAlpha = 0.9; g.imageSmoothingEnabled = true;
+    const ox = (t * 9) % W, oy = (t * 4) % H;
+    for (const [sx, sy] of [[-ox, -oy], [W - ox, -oy], [-ox, H - oy], [W - ox, H - oy]]) g.drawImage(fog, sx, sy, W, H);
+    g.globalAlpha = 0.6; const ox2 = (t * -6) % W;
+    for (const sx of [ox2, ox2 + W, ox2 - W]) g.drawImage(fog, sx, 0, W, H);
+    g.restore();
+    const vg = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.62); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.7)');
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  }
+  // mắt rắn sáng trong bóng tối
+  for (const c of chasers) {
+    if (c.kind === 'snake') snakeEyes(g, c.x, c.y, c.ang, true);
+    else { g.save(); g.shadowColor = '#ff2a3a'; g.shadowBlur = 10; g.fillStyle = '#ff4050'; for (const s of [-1, 1]) { g.beginPath(); g.arc(c.x + s * 5, c.y - 6, 2.4, 0, 7); g.fill(); } g.restore(); }
+  }
+}
+
+function render(now) {
+  const t = now / 1000;
+  if (bgDirty || !bg) rebuildBg();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#06070b'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+  ctx.drawImage(bg, 0, 0, W, H);
+  // nét gốc mờ dần sau khi nắn
+  ghosts = ghosts.filter(gh => now - gh.t0 < 450);
+  for (const gh of ghosts) { ctx.save(); ctx.globalAlpha = 0.55 * (1 - (now - gh.t0) / 450); ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); gh.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); }
+  maze.items.forEach((it, i) => {
+    if (it.t === 'start') drawStart(ctx, it, t); else if (it.t === 'exit') drawExit(ctx, it, t);
+    else if (it.t === 'portal') drawPortal(ctx, it, i, t); else if (it.t === 'door') drawDoor(ctx, it, i, t);
+  });
+  maze.items.forEach(it => { if (it.t === 'key') drawKey(ctx, it, t); });
+  if (mode === 'draw') {
+    maze.items.forEach(it => {
+      if (it.t === 'snake') drawMarkerSnake(ctx, it, t);
+      if (it.t === 'baby') { ctx.save(); ctx.translate(it.x, it.y); ctx.fillStyle = 'rgba(255,60,80,.25)'; ctx.beginPath(); ctx.arc(0, 0, 20, 0, 7); ctx.fill(); ctx.strokeStyle = '#ff6070'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧸', 0, 1); ctx.restore(); }
+    });
+    if (stroke && stroke.length > 1) { ctx.save(); ctx.strokeStyle = tool === 'door' ? COLORS[num] : '#e8f4ff'; ctx.globalAlpha = 0.85; ctx.lineWidth = tool === 'door' ? 10 : 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10; ctx.beginPath(); stroke.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); }
+    if (flashWhy && now - flashWhy < 900) { ctx.fillStyle = `rgba(255,60,80,${0.25 * (1 - (now - flashWhy) / 900)})`; ctx.fillRect(0, 0, W, H); }
+  } else if (P) {
+    for (const c of chasers) {
+      if (c.kind === 'snake') { drawSnakeBody(ctx, snakePts(c), t, c.ang); snakeEyes(ctx, c.x, c.y, c.ang, false); }
+      else drawChaserBaby(ctx, c, t);
+    }
+    drawPlayer(ctx, t);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip(); drawDarkness(ctx, t, now); ctx.restore();
+    for (const f of fx) { ctx.globalAlpha = Math.max(0, 1 - f.t / f.life); ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(f.x, f.y, 3, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+    if (joy) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(joy.sx, joy.sy, 55, 0, 7); ctx.stroke();
+      const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.hypot(dx, dy), k = l > 55 ? 55 / l : 1;
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(joy.sx + dx * k * scale, joy.sy + dy * k * scale, 18, 0, 7); ctx.fill();
+    }
+  }
+}
+
+// ====================== nhập ======================
+let pid = null;
+cv.addEventListener('pointerdown', e => {
+  if (pid !== null) return; pid = e.pointerId; try { cv.setPointerCapture(pid); } catch (er) {}
+  const p = toWorld(e);
+  if (mode === 'draw') {
+    if (tool === 'wall' || tool === 'door') stroke = [p];
+    else if (tool === 'erase') { erasing = false; eraseAt(p); }
+    else tapStart = p;
+  } else if (mode === 'play' && !game.over) {
+    const r = cv.getBoundingClientRect(); joy = { ox: p.x, oy: p.y, x: p.x, y: p.y, sx: e.clientX - r.left, sy: e.clientY - r.top };
+  }
+  e.preventDefault();
+});
+cv.addEventListener('pointermove', e => {
+  if (e.pointerId !== pid) return; const p = toWorld(e);
+  if (mode === 'draw') {
+    if (stroke) { const l = stroke[stroke.length - 1]; if (Math.hypot(l.x - p.x, l.y - p.y) > 3) stroke.push(p); }
+    else if (tool === 'erase') eraseAt(p);
+  } else if (joy) { joy.x = p.x; joy.y = p.y; }
+});
+function up(e) {
+  if (e.pointerId !== pid) return; pid = null; const p = toWorld(e);
+  if (mode === 'draw') {
+    if (stroke) finishStroke();
+    else if (tapStart && Math.hypot(p.x - tapStart.x, p.y - tapStart.y) < 20) placeAt(tapStart);
+    tapStart = null; erasing = false;
+  }
+  joy = null;
+}
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+addEventListener('keydown', e => { keysDown[e.key] = true; });
+addEventListener('keyup', e => { keysDown[e.key] = false; });
+
+// ====================== ⚙ (chỉ trong mẫu — chữ Việt cho anh Nam) ======================
+const SNDLIST = [['amb', 'Nhạc nền u u'], ['wind', 'Gió rít (kiểu B, C)'], ['heart', 'Tim đập khi rắn gần'], ['hiss', 'Rắn rít'], ['step', 'Tiếng bước chân'], ['key', 'Lượm chìa'], ['lock', 'Mở khoá'], ['creak', 'Cửa cót két'], ['portal', 'Portal kiểu 1'], ['portal2', 'Portal kiểu 2'], ['win', 'Thắng'], ['lose', 'Thua'], ['snap', 'Nét được nắn']];
+function renderGear() {
+  const g = $('gear');
+  g.innerHTML = `<h3>Mẫu thử — đổi kiểu (anh xem rồi chọn)</h3>
+  <div><b>Kiểu tối</b></div>
+  <div class="opt" id="gDark">
+    <button data-v="A">A · Đèn lồng (chỉ thấy quanh em bé)</button>
+    <button data-v="B">B · Thấy cả mê cung, mờ + sương</button>
+    <button data-v="C">C · Như B, lâu lâu tắt đèn</button></div>
+  <div><b>Tiếng portal</b></div>
+  <div class="opt" id="gPortal"><button data-v="portal">Kiểu 1 (vút phép)</button><button data-v="portal2">Kiểu 2 (xoáy gió)</button></div>
+  <label><input type="checkbox" id="gSnakeP" ${set.snakePortal ? 'checked' : ''}> Rắn + các em đuổi đi qua portal được</label>
+  <div style="margin-top:8px"><b>Tiếng</b> (bỏ tick = tắt; ▶ = nghe thử)</div>
+  <div class="snd">${SNDLIST.map(([k, n]) => `<span>${n}</span><button data-play="${k}">▶</button><input type="checkbox" data-mute="${k}" ${set.mute[k] ? '' : 'checked'}>`).join('')}</div>
+  <div class="opt"><button id="gSample">Nạp mê cung mẫu</button><button id="gClose">Đóng</button></div>
+  <div class="note">• Bon vẽ tường bằng ngón → buông ra là nét tự thẳng. Đầu nét chỉ dính vào tường khi khe còn lại nhỏ hơn em bé (đằng nào cũng không lọt).<br>
+  • Chìa giữ luôn sau khi mở cửa (mở được mọi cửa cùng số) — mình tự đặt.<br>
+  • Kẻ đuổi đi theo đường ngắn nhất tới em bé, không xuyên tường; cửa còn khoá thì nó cũng không qua.<br>
+  • Tim đập nhanh dần khi kẻ đuổi tới gần (tính theo đường đi, không theo đường chim bay).<br>
+  • Tiếng: thu sẵn thật từ Mixkit. Rắn rít = "Monster hiss" (kho không có tiếng rắn thật).<br>
+  • Máy tính: phím mũi tên cũng đi được.</div>`;
+  const mark = () => { g.querySelectorAll('#gDark button').forEach(b => b.classList.toggle('on', b.dataset.v === set.dark)); g.querySelectorAll('#gPortal button').forEach(b => b.classList.toggle('on', b.dataset.v === set.portalSnd)); };
+  mark();
+  g.querySelector('#gDark').onclick = e => { const b = e.target.closest('button'); if (!b) return; set.dark = b.dataset.v; save(); mark(); if (mode === 'play') { if (set.dark !== 'A') loopOn('wind', 0.22); else loopOff('wind'); } };
+  g.querySelector('#gPortal').onclick = e => { const b = e.target.closest('button'); if (!b) return; set.portalSnd = b.dataset.v; save(); mark(); unlock(); play(set.portalSnd, 0.9); };
+  g.querySelector('#gSnakeP').onchange = e => { set.snakePortal = e.target.checked; save(); };
+  g.querySelectorAll('[data-play]').forEach(b => b.onclick = () => { unlock(); const k = b.dataset.play; const was = set.mute[k]; set.mute[k] = false; play(k, 0.9); set.mute[k] = was; });
+  g.querySelectorAll('[data-mute]').forEach(b => b.onchange = () => { set.mute[b.dataset.mute] = !b.checked; if (!b.checked) loopOff(b.dataset.mute); save(); });
+  g.querySelector('#gSample').onclick = () => { pushUndo(); maze = sampleMaze(); bgDirty = true; save(); toDraw(); g.classList.add('hide'); setHint('Sample maze loaded'); };
+  g.querySelector('#gClose').onclick = () => g.classList.add('hide');
+}
+$('gearBtn').addEventListener('click', () => { const g = $('gear'); if (g.classList.contains('hide')) { renderGear(); g.classList.remove('hide'); } else g.classList.add('hide'); });
+
+// ====================== vòng lặp ======================
+const TEST = { auto: false, freeze: false };
+function frame(now) {
+  const dt = Math.min(0.05, (now - (lastT || now)) / 1000); lastT = now;
+  if (mode === 'play' && P) updatePlay(dt, now);
+  setHint();
+  render(now);
+  requestAnimationFrame(frame);
+}
+if (!load()) { maze = sampleMaze(); save(); }
+resize(); refreshPanel(); requestAnimationFrame(frame);
+
+// cửa cho máy tự kiểm (không ảnh hưởng người chơi)
+window.__mz = {
+  TEST, get mode() { return mode; }, get maze() { return maze; }, get P() { return P; }, get chasers() { return chasers; },
+  get keys() { return [...keys]; }, get openDoors() { return [...openDoors]; }, get over() { return !!game.over; }, get set() { return set; },
+  sfx: () => SFX.log.slice(), wayOut: () => wayOut(maze), loadSample() { maze = sampleMaze(); bgDirty = true; save(); toDraw(); },
+  clear() { maze = { walls: [], items: [], speed: 'normal' }; bgDirty = true; save(); }, setTool(t, n) { tool = t; if (n) num = n; refreshPanel(); },
+  start: f => startPlay(f || 'froggy'), worldToClient(x, y) { const r = cv.getBoundingClientRect(); return { x: r.left + offX + x * scale, y: r.top + offY + y * scale }; },
+  hint: () => $('hint').textContent,
+};
+})();
+</script>
+</body>
+</html>
