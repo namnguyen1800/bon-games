@@ -114,6 +114,7 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
 <script src="lib/froggy_sprites.js"></script>
 <script src="lib/friend_sprites.js"></script>
 <script src="lib/sounds.js"></script>
+<script src="lib/smash_sounds.js"></script>
 <script>
 (() => {
 'use strict';
@@ -309,9 +310,16 @@ function audioInit() {
 }
 function unlock() { audioInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
 addEventListener('pointerdown', unlock, true); addEventListener('touchend', unlock, true); addEventListener('keydown', unlock, true);
+// tiếng hét của từng em = đúng bộ Nam chọn bên Bon's Smash (11-16), kéo giọng theo em
+const SCREAM_PITCH = { froggy: 0.85, chicken: 1.05, babyfrog: 1.3, pillow: 1.15 };
+function soundSrc(key) {
+  if (key.startsWith('scream_')) return ((window.SMASH_SOUNDS || {}).scream || {})[key.slice(7)];
+  return (window.MAZE_SOUNDS || {})[key];
+}
+function scream(id, vol) { play('scream_' + id, vol == null ? 1 : vol, SCREAM_PITCH[id] || 1); }
 function decode(key, cb) {
   if (SFX.buf[key]) { cb(SFX.buf[key]); return; }
-  const src = (window.MAZE_SOUNDS || {})[key]; if (!SFX.ctx || !src) return;
+  const src = soundSrc(key); if (!SFX.ctx || !src) return;
   const bin = atob(src.split(',')[1]), arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   SFX.ctx.decodeAudioData(arr.buffer, b => { SFX.buf[key] = b; cb(b); }, () => SFX.log.push('decodeErr:' + key));
@@ -579,7 +587,7 @@ function collide(e, r) {
 function endGame(win) {
   if (game.over) return; game.over = true; joy = null; allLoopsOff();
   if (win) { play('win', 0.9); for (let i = 0; i < 60; i++) fx.push({ x: P.x, y: P.y, vx: (Math.random() - .5) * 260, vy: (Math.random() - .8) * 260, t: 0, life: 1.4, c: ['#ffd24d', '#7dffa8', '#4da3ff', '#ff8ad8'][i % 4] }); }
-  else play('lose', 0.85);
+  else scream(game.friend, 1);   // bị bắt → em đang chơi hét (thay tiếng thua, Nam dặn 11-17)
   setTimeout(() => { if (mode !== 'play' || !game.over) return; $('endMsg').textContent = win ? 'You found the way out! 🌟' : (game.caughtBy === 'snake' ? 'The snake got you! 🐍' : 'Caught! Try again!'); $('end').classList.remove('hide'); }, win ? 1100 : 900);
 }
 function inputVec() {
@@ -943,7 +951,7 @@ addEventListener('keydown', e => { keysDown[e.key] = true; });
 addEventListener('keyup', e => { keysDown[e.key] = false; });
 
 // ====================== ⚙ (chỉ trong mẫu — chữ Việt cho anh Nam) ======================
-const SNDLIST = [['amb', 'Nhạc nền u u'], ['wind', 'Gió rít (kiểu B, C)'], ['heart', 'Tim đập khi rắn gần'], ['hiss', 'Rắn rít'], ['step', 'Tiếng bước chân'], ['key', 'Lượm chìa'], ['lock', 'Mở khoá'], ['creak', 'Cửa cót két'], ['portal', 'Portal kiểu 1'], ['portal2', 'Portal kiểu 2'], ['win', 'Thắng'], ['lose', 'Thua'], ['snap', 'Nét được nắn']];
+const SNDLIST = [['amb', 'Nhạc nền u u'], ['wind', 'Gió rít (kiểu B, C)'], ['heart', 'Tim đập khi rắn gần'], ['hiss', 'Rắn rít'], ['step', 'Tiếng bước chân'], ['key', 'Lượm chìa'], ['lock', 'Mở khoá'], ['creak', 'Cửa cót két'], ['portal', 'Portal kiểu 1'], ['portal2', 'Portal kiểu 2'], ['win', 'Thắng'], ['scream_froggy', 'Bị bắt: Froggy hét'], ['scream_chicken', 'Bị bắt: Chicken hét'], ['scream_babyfrog', 'Bị bắt: Baby Froggy hét'], ['scream_pillow', 'Bị bắt: Gối hét'], ['snap', 'Nét được nắn']];
 function renderGear() {
   const g = $('gear');
   g.innerHTML = `<h3>Mẫu thử — đổi kiểu (anh xem rồi chọn)</h3>
@@ -968,7 +976,7 @@ function renderGear() {
   g.querySelector('#gDark').onclick = e => { const b = e.target.closest('button'); if (!b) return; set.dark = b.dataset.v; save(); mark(); syncLoops(); };
   g.querySelector('#gPortal').onclick = e => { const b = e.target.closest('button'); if (!b) return; set.portalSnd = b.dataset.v; save(); mark(); unlock(); play(set.portalSnd, 0.9); };
   g.querySelector('#gSnakeP').onchange = e => { set.snakePortal = e.target.checked; save(); };
-  g.querySelectorAll('[data-play]').forEach(b => b.onclick = () => { unlock(); const k = b.dataset.play; const was = set.mute[k]; set.mute[k] = false; play(k, 0.9); set.mute[k] = was; });
+  g.querySelectorAll('[data-play]').forEach(b => b.onclick = () => { unlock(); const k = b.dataset.play; const was = set.mute[k]; set.mute[k] = false; if (k.startsWith('scream_')) scream(k.slice(7), 0.9); else play(k, 0.9); set.mute[k] = was; });
   g.querySelectorAll('[data-mute]').forEach(b => b.onchange = () => { set.mute[b.dataset.mute] = !b.checked; if (!b.checked) loopOff(b.dataset.mute); save(); });
   g.querySelector('#gSample').onclick = () => { pushUndo(); maze = sampleMaze(); setWorld(maze.w, maze.h); clampCam(); save(); toDraw(); g.classList.add('hide'); setHint('Sample maze loaded'); };
   g.querySelector('#gClose').onclick = () => g.classList.add('hide');
