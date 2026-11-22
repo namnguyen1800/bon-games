@@ -48,42 +48,80 @@
   #sheet .acts { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
   .banner { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:15; background:rgba(20,16,12,.92); border:2px solid var(--gold); border-radius:18px; padding:14px 18px; display:flex; gap:12px; align-items:center; font-size:20px; font-weight:800; }
   #loading { position:fixed; inset:0; z-index:40; background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--sub); }
+  #maker { position:fixed; inset:0; z-index:32; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; }
+  #maker .card { width:min(620px,96vw); max-height:94vh; overflow:auto; background:#201a16; border:2px solid var(--line); border-radius:22px; padding:16px 18px 20px; }
+  #maker h2 { margin:0 0 4px; font-size:22px; color:var(--gold); }
+  #maker .note { font-size:14px; color:var(--sub); margin-bottom:10px; }
+  #maker .grp { margin:8px 0 6px; font-size:15px; color:var(--sub); font-weight:700; }
+  .mk-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #mkName { font:inherit; font-size:18px; font-weight:700; width:150px; padding:8px 10px; border-radius:12px; border:2px solid var(--line); background:rgba(255,255,255,.07); color:var(--txt); }
+  .mk-emojis { display:flex; gap:6px; flex-wrap:wrap; }
+  .mk-emojis button { font-size:26px; width:46px; height:46px; border-radius:12px; border:2px solid var(--line); background:rgba(255,255,255,.06); cursor:pointer; padding:0; }
+  .mk-emojis button.on { border-color:var(--gold); background:rgba(255,207,106,.2); }
+  .mk-grids { display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+  .grid5 { display:grid; grid-template-columns:repeat(5, 50px); grid-template-rows:repeat(5, 50px); gap:4px; }
+  .grid5 button { font:inherit; font-size:22px; font-weight:800; border-radius:10px; border:2px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:var(--txt); cursor:pointer; padding:0; }
+  .grid5 button.ctr { background:#7a0f18; border-color:#ffcf6a; font-size:26px; cursor:default; }
+  .grid5[data-g=move] button.s1, .grid5[data-g=move] button.s2 { background:rgba(70,200,90,.35); border-color:#7fe08a; }
+  .grid5[data-g=attack] button.s1, .grid5[data-g=attack] button.s2 { background:rgba(230,60,60,.35); border-color:#ff7b7b; }
+  #maker .opts { display:flex; flex-wrap:wrap; gap:8px; }
+  #maker .opt { font:inherit; font-size:15px; font-weight:700; color:var(--txt); background:rgba(255,255,255,.06); border:2px solid var(--line); border-radius:12px; padding:9px 11px; cursor:pointer; }
+  #maker .acts { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+  .panel.setup .row.r2 { display:none; }
+  .setuprow .btn { font-size:18px; min-height:52px; padding:0 12px; }
+  .setuprow .btn.on { border-color:var(--gold); background:rgba(255,207,106,.22); }
+  #promoList { position:fixed; z-index:25; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.35); border-radius:10px; }
+  #promoList .pl-card { background:rgba(26,21,17,.97); border:3px solid var(--gold); border-radius:22px; padding:14px 16px 18px; box-shadow:0 18px 50px rgba(0,0,0,.6); max-width:94%; }
+  #promoList .pl-title { font-size:22px; font-weight:800; color:var(--gold); text-align:center; margin-bottom:12px; }
+  #promoList .pl-opts { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  #promoList .pl-opt { width:112px; height:126px; border-radius:16px; border:2px solid var(--line); background:rgba(255,255,255,.08); color:var(--txt); font:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; }
+  #promoList .pl-opt:active { transform:scale(.95); border-color:var(--gold); }
+  #promoList .pl-opt .ic { font-size:66px; line-height:1; }
+  #promoList .pl-opt .ic img { width:72px; height:72px; display:block; }
+  #promoList .pl-opt .nm { font-size:17px; font-weight:800; }
 </style>
 </head>
 <body>
 <div id="loading">Loading Bon's Chess…</div>
 <div class="panel" id="pB" data-side="b"><div class="frame"></div><div class="pin">
   <div class="row"><div class="who"><span class="pc">♚</span> Black</div><div class="status">Waiting…</div><div class="dice"></div></div>
-  <div class="row"><div class="caps"></div><div style="flex:1"></div>
+  <div class="row r2"><div class="caps"></div><div style="flex:1"></div>
     <button class="btn endturn hidden">End turn ✓</button>
     <button class="btn newg gold hidden">New game</button>
     <button class="btn flag">🏳</button></div>
   <div class="row promo hidden"><button class="btn" data-p="q">♛</button><button class="btn" data-p="r">♜</button><button class="btn" data-p="b">♝</button><button class="btn" data-p="n">♞</button></div>
   <div class="row flagmenu hidden"><button class="btn red resign">Resign</button><button class="btn offer">Offer draw</button><button class="btn close">✕</button></div>
   <div class="row selrow hidden"><span class="who">🎲 Tap pieces for the dice card</span><button class="btn gold seldone">Done</button></div>
+  <div class="row setuprow hidden"><button class="btn tool" data-tool="wall">🧱 Wall</button><button class="btn tool" data-tool="piece">⭐ Piece</button><button class="btn team">⬜ White</button><button class="btn tool" data-tool="erase">🗑️ Erase</button><button class="btn make">+ Make</button><button class="btn gold done">✓ Done</button></div>
   <div class="row drawask hidden"><span class="who">Draw?</span><button class="btn gold yes">✓ Yes</button><button class="btn no">✗ No</button></div>
 </div></div>
 <div id="boardWrap"><div id="board3d"></div></div>
 <div class="panel" id="pW" data-side="w"><div class="frame"></div><div class="pin">
   <div class="row"><div class="who"><span class="pc">♔</span> White</div><div class="status">Your turn</div><div class="dice"></div></div>
-  <div class="row"><div class="caps"></div><div style="flex:1"></div>
+  <div class="row r2"><div class="caps"></div><div style="flex:1"></div>
     <button class="btn endturn hidden">End turn ✓</button>
     <button class="btn newg gold hidden">New game</button>
     <button class="btn flag">🏳</button></div>
   <div class="row promo hidden"><button class="btn" data-p="q">♕</button><button class="btn" data-p="r">♖</button><button class="btn" data-p="b">♗</button><button class="btn" data-p="n">♘</button></div>
   <div class="row flagmenu hidden"><button class="btn red resign">Resign</button><button class="btn offer">Offer draw</button><button class="btn close">✕</button></div>
   <div class="row selrow hidden"><span class="who">🎲 Tap pieces for the dice card</span><button class="btn gold seldone">Done</button></div>
+  <div class="row setuprow hidden"><button class="btn tool" data-tool="wall">🧱 Wall</button><button class="btn tool" data-tool="piece">⭐ Piece</button><button class="btn team">⬜ White</button><button class="btn tool" data-tool="erase">🗑️ Erase</button><button class="btn make">+ Make</button><button class="btn gold done">✓ Done</button></div>
   <div class="row drawask hidden"><span class="who">Draw?</span><button class="btn gold yes">✓ Yes</button><button class="btn no">✗ No</button></div>
 </div></div>
 
 <button id="gear" title="Settings (sample only)">⚙</button>
-<div id="ver">Bản 1 · mẫu</div>
+<div id="ver">Bản 2 · mẫu</div>
+<div id="promoList" class="hidden"><div class="pl-card"><div class="pl-title">Your pawn made it! Pick a piece</div><div class="pl-opts"></div></div></div>
 
 <div id="sheet" class="hidden"><div class="card">
   <h2>⚙ Chỉnh mẫu (chỉ có trong mẫu)</h2>
   <div class="note">Anh bấm thử từng kiểu rồi chọn. Game thật sẽ không có nút ⚙ này.</div>
-  <div class="grp">Kiểu hình</div>
-  <div class="opts" data-k="style"><button class="opt" data-v="classic">Gỗ cổ điển</button><button class="opt" data-v="warriors">Chiến binh hoạt hình</button><button class="opt" data-v="crystal">Pha lê phát sáng</button></div>
+  <div class="grp">Bàn cờ lúc chơi</div>
+  <div class="opts" data-k="board"><button class="opt" data-v="flat">Phẳng kiểu chess.com (ý anh gửi)</button><button class="opt" data-v="tiltTurn">3D nghiêng — xoay về người tới lượt</button><button class="opt" data-v="tiltFixed">3D nghiêng — cố định một phía</button><button class="opt" data-v="topBadge">3D từ trên xuống + huy hiệu to</button><button class="opt" data-v="top">3D từ trên xuống (như bản 1)</button></div>
+  <div class="grp">Quân 3D (khi chọn bàn 3D)</div>
+  <div class="opts" data-k="style"><button class="opt" data-v="warriors">Chiến binh</button><button class="opt" data-v="classic">Gỗ cổ điển</button><button class="opt" data-v="crystal">Pha lê phát sáng</button></div>
+  <div class="grp">Lúc ăn quân</div>
+  <div class="opts" data-k="fight"><button class="opt" data-v="arena">Chuyển cảnh sang đấu trường (cut-screen)</button><button class="opt" data-v="board">Đánh ngay trên bàn (như bản 1)</button></div>
   <div class="grp">Kiểu chết</div>
   <div class="opts" data-k="death"><button class="opt" data-v="shatter">Vỡ tan từng mảnh</button><button class="opt" data-v="topple">Ngã ra, sao quay, hoá khói</button><button class="opt" data-v="bow">Cúi chào rồi bay về hộp</button></div>
   <div class="grp">Cảnh đánh nhau</div>
@@ -98,6 +136,20 @@
   <div class="opts" data-k="demo"><button class="opt" data-v="p-q">Tốt đánh Hậu</button><button class="opt" data-v="n-r">Mã đánh Xe</button><button class="opt" data-v="q-b">Hậu đánh Tượng</button><button class="opt" data-v="k-p">Vua đánh Tốt</button></div>
   <div class="opts" data-k="demoMode" style="margin-top:8px"><button class="opt" data-v="show">Thẻ diễn</button><button class="opt" data-v="dice">Thẻ xúc xắc</button></div>
   <div class="acts"><button class="btn gold" id="sDemo">⚔️ Try a battle (sample only)</button><button class="btn" id="sNew">New game</button><button class="btn" id="sClose">Đóng</button></div>
+  <div class="grp">🧱 Tường + quân Bon tự chế (ý anh trong Notion)</div>
+  <div class="acts" style="margin-top:6px"><button class="btn gold" id="sSetup">🧱 Set up board (sample only)</button><button class="btn" id="sMake">⭐ Make a piece</button></div>
+</div></div>
+
+<div id="maker" class="hidden"><div class="card">
+  <h2>⭐ Make a Bon piece</h2>
+  <div class="note">↑ = toward the enemy. Tap a square: <b style="color:#7fe08a">green</b> = can MOVE there · <b style="color:#ff7b7b">red</b> = can ATTACK there. Tap a square next to the piece again → it keeps going (∞).</div>
+  <div class="mk-top"><input id="mkName" maxlength="14" value="Bon 1" aria-label="name"><div class="mk-emojis"></div></div>
+  <div class="mk-grids">
+    <div><div class="grp">Moves</div><div class="grid5" data-g="move"></div></div>
+    <div><div class="grp">Attacks</div><div class="grid5" data-g="attack"></div></div>
+  </div>
+  <div class="opts" style="margin-top:10px"><button class="opt" data-pre="ps">Move straight · attack diagonal</button><button class="opt" data-pre="rook">Like a rook</button><button class="opt" data-pre="knight">Like a knight</button><button class="opt" data-pre="clear">Clear</button></div>
+  <div class="acts"><button class="btn gold" id="mkSave">Save piece</button><button class="btn" id="mkCancel">Cancel</button></div>
 </div></div>
 
 
@@ -105,6 +157,7 @@
 <script src="lib/pp/BufferGeometryUtils.js"></script>
 <script src="assets/tex.js"></script>
 <script src="assets/sounds.js"></script>
+<script src="assets/icons.js"></script>
 <script src="chess_core.js"></script>
 <script src="chess_view.js"></script>
 <script src="chess_app.js"></script>
