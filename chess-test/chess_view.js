@@ -395,7 +395,7 @@
     return new T.ShaderMaterial({
       uniforms: { col: { value: new T.Color(hex) }, k: { value: 1.0 } },
       vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }',
-      fragmentShader: 'uniform vec3 col; uniform float k; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0-abs(dot(vN,vV)), 2.2); gl_FragColor = vec4(col*f*1.6*k, f*k); }',
+      fragmentShader: 'uniform vec3 col; uniform float k; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(max(0.0, 1.0-abs(dot(vN,vV))), 2.2); gl_FragColor = vec4(col*f*1.6*k, f*k); }',
       transparent: true, blending: T.AdditiveBlending, depthWrite: false
     });
   }
@@ -1041,7 +1041,7 @@
       setupMirror(floorMat);
       // phông lâu đài cong quanh phía sau (90°), đặt quanh máy quay
       if (AT) {
-        const pano = texLoader.load(AT.pano, t => { A.environment = arenaEnvFrom(t); });
+        const pano = texLoader.load(AT.pano, t => { A.environment = arenaEnvFrom(t); arena.envReady = true; }, undefined, () => { arena.envReady = true; });
         pano.encoding = T.sRGBEncoding; pano.wrapS = T.RepeatWrapping; pano.repeat.x = -1;   // nhìn từ bên trong → lật ngang cho cờ xanh nằm bên trái
         const ARC = Math.PI * 0.5, RB = 34, H0 = -11.5, H1 = 21.5;
         const bg = new T.Mesh(new T.CylinderGeometry(RB, RB, H1 - H0, 64, 1, true, Math.PI - ARC / 2, ARC),
@@ -1055,13 +1055,19 @@
       const fireMat = c => new T.SpriteMaterial({ map: TEX.glow, color: c, transparent: true, blending: T.AdditiveBlending, depthWrite: false });
       for (const [x, z] of [[-3.3, -3.4], [3.3, -3.4], [-5.6, -9.5], [5.6, -9.5]]) {     // lùi ra sau (máy quay thấp + khung rộng → bản cũ đứng sát mép, cột đá cam rực)
         box(0.5, 1.15, 0.5, x, z);
-        const bowl = new T.Mesh(new T.CylinderGeometry(0.5, 0.28, 0.32, 20), new T.MeshStandardMaterial({ color: 0x5a4630, metalness: 1, roughness: 0.32 }));
+        // chậu ánh lửa hắt (emissive): lò gần nằm sát mép khung, chậu kim loại tối soi phông tối → ló vào thành mảng ĐEN
+        // hình tam giác ở mép phải (thấy trên ảnh chụp bản 3 + 4, 11-22) — có ánh lửa thì đọc ra là miệng lò như hình đích
+        const bowl = new T.Mesh(new T.CylinderGeometry(0.5, 0.28, 0.32, 20), new T.MeshStandardMaterial({ color: 0x5a4630, metalness: 1, roughness: 0.32, emissive: 0x7a2c08, emissiveIntensity: 0.9 }));
         bowl.position.set(x, 1.31, z); A.add(bowl);
         const f1 = new T.Sprite(fireMat(0xff4a10)), f2 = new T.Sprite(fireMat(0xff9a2a)), f3 = new T.Sprite(fireMat(0xffe7a0));
         for (const f of [f1, f2, f3]) { f.position.set(x, 1.78, z); A.add(f); }
         arena.fires.push({ f1, f2, f3, x, z, ph: rnd(0, 6) });
       }
       for (const sx of [-1, 1]) { const L = new T.PointLight(0xff8a3a, 2.1, 14, 2); L.position.set(sx * 3.3, 2.3, -3.4); A.add(L); arena.fireLights.push(L); }
+      // đèn sét có sẵn trong cảnh từ đầu (tắt, cường độ 0). Bản 4 lúc đầu chỉ thêm vào lúc sét giáng → số đèn đổi → máy dịch lại
+      // chương trình vẽ của cả bộ giáp ngay khoảnh khắc đẹp nhất (đo 11-22: đứng hình 3,1 giây đúng lúc sét, 50 → 83 chương trình)
+      A.add(boltLight);
+      if (!AT) arena.envReady = true;
       setupComposer();
       // tàn lửa bay lên
       const N = 230, pos = new Float32Array(N * 3);
@@ -1100,22 +1106,92 @@
       uniforms: { uTime: { value: 0 } },
       vertexShader: 'attribute float aAge; attribute float aSide; varying float vAge; varying float vSide; varying vec3 vW;\n' +
         'void main(){ vAge = aAge; vSide = aSide; vW = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      // bản 4: ảnh bản 3 ra "dải khói mờ" → lưỡi lửa SẮC: nhiễu kéo dài dọc đường chém (vệt sao chổi), ngưỡng hẹp tách từng lưỡi,
+      // thang màu đỏ thẫm → cam → vàng → trắng nóng; mép trước sát lưỡi kiếm sáng gắt
       fragmentShader: [
         'uniform float uTime; varying float vAge; varying float vSide; varying vec3 vW;',
-        'float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }',
-        'float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
-        '  return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),',
-        '             mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }',
+        'float hs(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
+        'float ns(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+        '  return mix(mix(hs(i), hs(i + vec2(1.0, 0.0)), f.x), mix(hs(i + vec2(0.0, 1.0)), hs(i + vec2(1.0, 1.0)), f.x), f.y); }',
+        'float fb(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * ns(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }',
+        // lần đo 1 bản 4: nhiễu kéo dãn dọc đường chém → sọc song song, đuôi tan thành sợi dây. Giờ nhiễu theo TOẠ ĐỘ THẬT
+        // (ô vuông vức, cuộn xoáy, bốc lên trên) → đuôi vỡ thành từng búi lửa rồi tắt; sát lưỡi kiếm trắng nóng
         'void main(){',
-        '  float a = clamp(1.0 - vAge, 0.0, 1.0);',
-        // lưỡi lửa: nhiễu kéo dài theo đường vung (vAge) + nhiễu nhỏ → tách thành từng lưỡi, không thành tấm phẳng
-        '  float n = n3(vec3(vAge * 9.0, vSide * 3.0, 0.0) + vW * 2.5 + vec3(0.0, -uTime * 9.0, 0.0)) * 0.65 + n3(vW * 18.0 + vec3(uTime * 4.0)) * 0.35;',
-        '  float core = exp(-pow((vSide - 0.72) * 3.2, 2.0));',
-        '  float k = pow(a, 1.2) * smoothstep(0.42 - a * 0.25, 0.78, n) * (0.35 + 0.65 * core) * smoothstep(0.0, 0.25, vSide);',
-        '  vec3 col = mix(vec3(0.9, 0.12, 0.01), vec3(1.0, 0.5, 0.08), smoothstep(0.4, 0.9, n)) + vec3(1.0, 0.82, 0.45) * core * pow(a, 4.0) * 0.9;',
-        '  gl_FragColor = vec4(col * k * 1.5, 1.0);',
+        '  float age = clamp(vAge, 0.0, 1.0), a = 1.0 - age;',
+        '  vec2 q = vec2(vW.x + vW.z * 0.5, vW.y) * 3.2;',
+        '  vec2 wv = vec2(fb(q * 0.7 + vec2(0.0, -uTime * 1.6)), fb(q * 0.7 + vec2(5.2, -uTime * 1.3)));',
+        // nhiễu kéo giãn độ tương phản (lần đo 2: đặc thành một đám vàng chói — gần như chỗ nào cũng vượt ngưỡng)
+        '  float n = smoothstep(0.3, 0.76, fb(q + wv * 2.0 + vec2(0.0, -uTime * 3.0)));',
+        // mép dải lửa mềm hơn (lần đo 4: mép dải chồng lên nhau lộ thành đường thẳng cứng)
+        '  float env = smoothstep(0.0, 0.38, vSide) * (1.0 - smoothstep(0.74, 1.0, vSide));',
+        '  float lead = exp(-age * 9.0);',
+        '  float heat = n * env * pow(a, 0.5) + lead * 0.28 * env - age * 0.42;',
+        '  float m = smoothstep(0.3, 0.34, heat);',
+        '  vec3 c = mix(vec3(0.62, 0.05, 0.0), vec3(1.0, 0.34, 0.02), smoothstep(0.33, 0.48, heat));',
+        '  c = mix(c, vec3(1.0, 0.7, 0.18), smoothstep(0.5, 0.7, heat));',
+        '  c = mix(c, vec3(1.0, 0.94, 0.78), smoothstep(0.78, 0.98, heat));',
+        '  gl_FragColor = vec4(c * m * (0.65 + heat * 1.05), 1.0);',
         '}'].join('\n')
     });
+    /* dải sáng luôn quay mặt về máy quay, bề rộng tính theo ĐIỂM ẢNH (sét, tia điện trên lưỡi): lõi trắng mảnh + quầng màu.
+       (bản 3 dùng ống tròn 3D → nhìn như ống đèn neon trơn, không ra tia sét) */
+    function ribbonMat(glow, core) {
+      return new T.ShaderMaterial({
+        transparent: true, depthWrite: false, blending: T.AdditiveBlending, toneMapped: false, side: T.DoubleSide,
+        uniforms: { uRes: { value: new T.Vector2(PX, PX) }, uGlow: { value: new T.Color(glow) }, uCore: { value: new T.Color(core) }, uOp: { value: 1 } },
+        vertexShader: [
+          'attribute vec3 aOther; attribute float aSide; attribute float aW; uniform vec2 uRes; varying float vS;',
+          'void main(){',
+          '  vec4 c0 = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+          '  vec4 c1 = projectionMatrix * modelViewMatrix * vec4(aOther, 1.0);',
+          '  vec2 d = (c1.xy / c1.w - c0.xy / c0.w) * uRes; float L = length(d); d = L > 1e-5 ? d / L : vec2(1.0, 0.0);',
+          '  c0.xy += vec2(-d.y, d.x) * aSide * aW / uRes * 2.0 * c0.w;',
+          '  vS = aSide; gl_Position = c0; }'].join('\n'),
+        fragmentShader: [
+          'uniform vec3 uGlow; uniform vec3 uCore; uniform float uOp; varying float vS;',
+          // s kẹp ≤ 1: mép nét, khử răng cưa (MSAA) tính màu ở tâm điểm ảnh NẰM NGOÀI nét → |vS| > 1 → pow(số âm) = không-phải-số
+          // → điểm ảnh ĐEN tuyệt đối dọc mép tia sét (đo 11-22 trên ảnh PNG: (0,0,0) hai bên mỗi nhánh — tưởng do nén JPEG)
+          'void main(){ float s = min(abs(vS), 1.0); float core = smoothstep(0.4, 0.0, s); float glow = pow(1.0 - s, 2.3);',
+          '  gl_FragColor = vec4((uCore * core + uGlow * glow) * uOp, 1.0); }'].join('\n')
+      });
+    }
+    function ribbonGeo(lines) {          // lines: [{ pts:[Vector3], w0, w1 }] → 1 hình; bề rộng (điểm ảnh) thon từ w0 → w1
+      const pos = [], oth = [], side = [], wid = [], idx = [], q = new T.Vector3();
+      let base = 0;
+      for (const L of lines) {
+        const n = L.pts.length; if (n < 2) continue;
+        for (let i = 0; i < n; i++) {
+          const p = L.pts[i];
+          if (i < n - 1) q.copy(L.pts[i + 1]); else q.copy(p).multiplyScalar(2).sub(L.pts[i - 1]);
+          const w = L.w0 + (L.w1 - L.w0) * (i / (n - 1));
+          pos.push(p.x, p.y, p.z, p.x, p.y, p.z); oth.push(q.x, q.y, q.z, q.x, q.y, q.z); side.push(-1, 1); wid.push(w, w);
+          if (i < n - 1) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+        }
+        base += n * 2;
+      }
+      const g = new T.BufferGeometry();
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('aOther', new T.Float32BufferAttribute(oth, 3));
+      g.setAttribute('aSide', new T.Float32BufferAttribute(side, 1)); g.setAttribute('aW', new T.Float32BufferAttribute(wid, 1));
+      g.setIndex(idx); return g;
+    }
+    // đường gãy khúc kiểu tia sét: chia đôi từng đoạn + đẩy lệch ngẫu nhiên, mỗi tầng lệch ít đi (nhiều khúc nhỏ trong khúc lớn)
+    function jag(a, b, levels, rough) {
+      let pts = [a.clone(), b.clone()], disp = a.distanceTo(b) * rough;
+      const d = new T.Vector3(), r = new T.Vector3();
+      for (let l = 0; l < levels; l++) {
+        const out = [pts[0]];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p = pts[i], q = pts[i + 1], m = p.clone().lerp(q, 0.5);
+          d.subVectors(q, p).normalize();
+          r.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)); r.addScaledVector(d, -r.dot(d));
+          if (r.lengthSq() > 1e-8) m.addScaledVector(r.normalize(), rnd(-disp, disp));
+          out.push(m, q);
+        }
+        pts = out; disp *= 0.55;
+      }
+      return pts;
+    }
+    const arcMat = ribbonMat(new T.Color(0.3, 0.55, 1.7), new T.Color(2.0, 2.3, 3.0));
     const trails = [];
     const _v1 = new T.Vector3(), _v2 = new T.Vector3(), _v3 = new T.Vector3();
     function startTrail(f) {
@@ -1134,31 +1210,35 @@
         const s = new T.Sprite(new T.SpriteMaterial({ map: TEX.glow, color: i % 2 ? 0xff7a1a : 0xffb040, transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
         s.position.set(0, len * (0.25 + i * 0.14), 0); deco.add(s); flames.push(s);
       }
-      const arcGeo = new T.BufferGeometry(); arcGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(16 * 3), 3));
-      const arc = new T.Line(arcGeo, new T.LineBasicMaterial({ color: new T.Color(0.7, 0.9, 1.6).multiplyScalar(2.2), transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
-      arc.frustumCulled = false; deco.add(arc);
+      // tia điện xanh quấn lưỡi (hình đích): dải sáng gãy khúc, vẽ lại mỗi khung
+      const arc = new T.Mesh(new T.BufferGeometry(), arcMat); arc.frustumCulled = false; arc.renderOrder = 4; deco.add(arc);
       blade.add(deco);
-      f.trail = { f, blade, len, mesh, geo, samples: [], live: true, deco, flames, arc, born: clock.t };
+      f.trail = { f, blade, len, mesh, geo, samples: [], live: true, deco, flames, arc, born: clock.g };
       trails.push(f.trail);
     }
-    function stopTrail(f) { if (f && f.trail) { f.trail.live = false; f.trail = null; } }
+    function stopTrail(f) { if (f && f.trail) { f.trail.live = false; f.trail.hold = false; f.trail = null; } }
     function stepTrails(t) {
       trailMat.uniforms.uTime.value = t;
-      const LIFE = 0.34;
+      const LIFE = 0.42;                       // bản 3: 0,34 — vệt tan quá nhanh, lúc sét giáng đã gần hết lửa
       for (let ti = trails.length - 1; ti >= 0; ti--) {
         const tr = trails[ti];
+        if (tr.hold && tr.lastT !== undefined) { const d = t - tr.lastT; for (const s of tr.samples) s.t += d; }   // đang giữ: vệt lửa không già đi
+        tr.lastT = t;
         if (tr.live && tr.blade.parent) {
-          tr.blade.updateMatrixWorld(true);
-          // dải lửa chỉ ở NỬA NGOÀI lưỡi (bản đầu lấy từ chuôi → quét thành mảng trắng to che 1/3 khung)
-          const b = tr.blade.localToWorld(new T.Vector3(0, tr.len * 0.8, 0)), tip = tr.blade.localToWorld(new T.Vector3(0, tr.len * 1.06, 0));
+          // cập nhật cả chuỗi cha (thân → kiếm → lưỡi) vừa bị khung xương đổi trong khung này; updateMatrixWorld(true) chỉ đi XUỐNG
+          // nên lưỡi lấy ma trận cũ của khung trước → mẫu cuối (lúc chém trúng) bị lỡ, đuôi lửa dừng trên đầu
+          tr.blade.updateWorldMatrix(true, false);
+          // dải lửa từ 0,3 lưỡi tới quá mũi một chút (bản 3: chỉ 0,8 → 1,06 → dải hẹp như sợi khói); lưỡi lửa do shader cắt mép
+          const b = tr.blade.localToWorld(new T.Vector3(0, tr.len * 0.3, 0)), tip = tr.blade.localToWorld(new T.Vector3(0, tr.len * 1.12, 0));
           const sh = tr.f.rig.armR ? tr.f.rig.armR.getWorldPosition(new T.Vector3()) : b.clone();
           const last = tr.samples[tr.samples.length - 1];
           if (!last || last.tip.distanceToSquared(tip) > 1e-5) tr.samples.push({ b, tip, sh, t });
           // lửa + điện bám lưỡi
-          tr.flames.forEach((s, i) => { const k = (0.7 + 0.4 * Math.sin(t * 31 + i * 1.9)) * tr.len * 0.32; s.scale.set(k * 0.7, k, 1); s.material.opacity = 0.75; });
-          const ap = tr.arc.geometry.attributes.position;
-          for (let i = 0; i < 16; i++) { const y = tr.len * (0.15 + i / 15 * 0.85); ap.setXYZ(i, rnd(-0.02, 0.02), y, rnd(-0.02, 0.02)); }
-          ap.needsUpdate = true; tr.arc.visible = Math.sin(t * 50) > -0.3;
+          tr.flames.forEach((s, i) => { const k = (0.7 + 0.4 * Math.sin(t * 31 + i * 1.9)) * tr.len * 0.3; s.scale.set(k * 0.7, k, 1); s.material.opacity = 0.7; });
+          if (tr.arc.geometry) tr.arc.geometry.dispose();
+          const L = tr.len, lines = [];
+          for (let j = 0; j < 2; j++) lines.push({ pts: jag(new T.Vector3(rnd(-0.012, 0.012), L * rnd(0.08, 0.2), 0), new T.Vector3(rnd(-0.01, 0.01), L * rnd(0.92, 1.05), rnd(-0.01, 0.01)), 4, 0.06), w0: 3.2, w1: 1.2 });
+          tr.arc.geometry = ribbonGeo(lines); tr.arc.visible = Math.sin(t * 50) > -0.4;
         } else if (tr.deco.parent) tr.deco.parent.remove(tr.deco);
         while (tr.samples.length && t - tr.samples[0].t > LIFE) tr.samples.shift();
         if (!tr.live && !tr.samples.length) { arena.scene.remove(tr.mesh); tr.geo.dispose(); trails.splice(ti, 1); continue; }
@@ -1184,36 +1264,38 @@
         tr.geo.setDrawRange(0, Math.max(0, n - 1) * 6);
       }
     }
-    // sét từ trời giáng xuống điểm trúng: lõi sáng + quầng mờ, nháy 3 lần, có nhánh; loé cả đấu trường
-    const boltCore = new T.MeshBasicMaterial({ color: new T.Color(0.85, 0.92, 1.4).multiplyScalar(4), transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
-    const boltHalo = new T.MeshBasicMaterial({ color: new T.Color(0.35, 0.5, 1.2).multiplyScalar(1.2), transparent: true, opacity: 0.45, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+    // sét từ trời giáng xuống điểm trúng (bản 4): thân chính gãy khúc nhiều tầng + 9 nhánh (có nhánh con) + điện toé quanh
+    // chỗ trúng; dải sáng mảnh lõi trắng quầng xanh; nháy 3 lần, mỗi lần một hình mới; loé cả đấu trường
+    const boltMat = ribbonMat(new T.Color(0.42, 0.62, 2.0), new T.Color(2.6, 2.75, 3.2));
     const boltLight = new T.PointLight(0xbcd4ff, 0, 9, 2);
-    function boltPath(a, b, jit, segs) {
-      const pts = [];
-      for (let i = 0; i <= segs; i++) {
-        const p = a.clone().lerp(b, i / segs);
-        if (i > 0 && i < segs) { const k = jit * Math.sin(Math.PI * i / segs); p.add(new T.Vector3(rnd(-k, k), rnd(-k, k) * 0.3, rnd(-k, k) * 0.5)); }
-        pts.push(p);
-      }
-      return pts;
-    }
     function boltMeshes(at) {
-      const g = new T.Group();
-      const top = new T.Vector3(at.x + rnd(-0.6, 0.6), 13, at.z - 3.5);
-      const main = boltPath(top, at, 1.1, 34);
-      // GÃY KHÚC: nối thẳng từng đoạn (bản đầu nắn cong mượt → nhìn như ống tròn trơn, không ra tia sét)
-      const add = (pts, r) => {
-        const c = new T.CurvePath(); for (let i = 0; i < pts.length - 1; i++) c.add(new T.LineCurve3(pts[i], pts[i + 1]));
-        g.add(new T.Mesh(new T.TubeGeometry(c, (pts.length - 1) * 2, r, 4, false), boltCore));
-        g.add(new T.Mesh(new T.TubeGeometry(c, (pts.length - 1) * 2, r * 4, 5, false), boltHalo));
-      };
-      add(main, 0.016);
-      for (let k = 0; k < 4; k++) {
-        const i0 = 5 + ((Math.random() * 20) | 0), s = main[i0];
-        const end = s.clone().add(new T.Vector3(rnd(-1.8, 1.8), -rnd(1.0, 2.6), rnd(-0.8, 0.8)));
-        add(boltPath(s, end, 0.45, 10), 0.009);
+      const top = new T.Vector3(at.x + rnd(-0.5, 0.7), 13, at.z - 3.5);
+      const main = jag(top, at, 7, 0.09);
+      const lines = [{ pts: main, w0: 8, w1: 10.5 }];
+      // nhánh mọc ở khúc sét LỌT KHUNG. Đo 11-22: máy quay đấu trường thấp, chỉ thấy ~1/7 dưới cùng của thân sét → bản cũ cho nhánh
+      // mọc ở điểm 14…108 (trên 128) = toàn bộ ngoài khung; ảnh chỉ thấy 2-3 nhánh con thò xuống dù code có 9 nhánh
+      const cam = cut.views[0] && cut.views[0].cam, pool = [];
+      if (cam) for (let i = 8; i < main.length - 4; i++) { const v = main[i].clone().project(cam); if (Math.abs(v.x) < 0.97 && Math.abs(v.y) < 0.93) pool.push(i); }
+      if (pool.length < 8) for (let i = 14; i < main.length - 20; i++) pool.push(i);
+      for (let k = 0; k < 9; k++) {
+        const i0 = pool[(Math.random() * pool.length) | 0], s = main[i0];
+        const dir = main[Math.min(main.length - 1, i0 + 6)].clone().sub(s).normalize();
+        const len = rnd(0.6, 2.2) * (1 - i0 / main.length * 0.5);
+        const end = s.clone().addScaledVector(dir, len * 0.6).add(new T.Vector3(rnd(-1, 1) * len * 0.7, -rnd(0.2, 0.7) * len, rnd(-0.4, 0.4) * len));
+        const br = jag(s, end, 5, 0.18);
+        lines.push({ pts: br, w0: 4.2, w1: 0.9 });
+        if (Math.random() < 0.5) {
+          const s2 = br[(br.length * rnd(0.3, 0.7)) | 0];
+          const e2 = s2.clone().add(new T.Vector3(rnd(-0.6, 0.6), -rnd(0.2, 0.6), rnd(-0.3, 0.3)).multiplyScalar(len * 0.6));
+          lines.push({ pts: jag(s2, e2, 4, 0.2), w0: 2.5, w1: 0.7 });
+        }
       }
-      return g;
+      for (let k = 0; k < 6; k++) {               // điện toé quanh chỗ trúng
+        const e = at.clone().add(new T.Vector3(rnd(-0.5, 0.5), rnd(-0.35, 0.45), rnd(-0.4, 0.4)));
+        lines.push({ pts: jag(at, e, 4, 0.25), w0: 3.2, w1: 0.7 });
+      }
+      const m = new T.Mesh(ribbonGeo(lines), boltMat); m.frustumCulled = false; m.renderOrder = 5;
+      return m;
     }
     async function skyBolt(at) {
       if (!arena.scene) return;
@@ -1221,17 +1303,19 @@
       if (!boltLight.parent) arena.scene.add(boltLight);
       boltLight.position.copy(at).add(new T.Vector3(0, 0.6, 0.6));
       let g = null;
+      const drop = () => { if (g) { arena.scene.remove(g); g.geometry.dispose(); g = null; } };
       for (let i = 0; i < 3; i++) {
-        if (g) { arena.scene.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-        g = boltMeshes(at); arena.scene.add(g);
+        drop(); g = boltMeshes(at); arena.scene.add(g);
+        boltMat.uniforms.uOp.value = 1;
         arena.flashK = i === 0 ? 1 : 0.6; boltLight.intensity = 4.5;      // 9 → rọi Mã trắng xoá (đo: con phải 141 vs đích 114)
         await wait(0.06);
-        arena.flashK = 0.15; boltLight.intensity = 1.5;
+        arena.flashK = 0.15; boltLight.intensity = 1.5; boltMat.uniforms.uOp.value = 0.5;
         await wait(0.04);
       }
-      await tween(0.18, k => { boltHalo.opacity = 0.45 * (1 - k); boltCore.opacity = 1 - k; arena.flashK = 0.15 * (1 - k); boltLight.intensity = 3 * (1 - k); });
-      arena.scene.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-      boltHalo.opacity = 0.45; boltCore.opacity = 1; arena.flashK = 0; boltLight.intensity = 0;
+      boltMat.uniforms.uOp.value = 1;
+      await tween(0.18, k => { boltMat.uniforms.uOp.value = 1 - k; arena.flashK = 0.15 * (1 - k); boltLight.intensity = 3 * (1 - k); });
+      drop();
+      boltMat.uniforms.uOp.value = 1; arena.flashK = 0; boltLight.intensity = 0;
     }
     // tia lửa toé hình quạt (hướng ra khỏi người chém) — dùng chung danh sách tia lửa, thêm vệt kéo dài
     function fan(at, dir, n, color, power) {
@@ -1271,7 +1355,8 @@
     }
     function slowMo(sec) { arena.slowT = sec; }
     function stepArenaFx(dt, t) {
-      stepTrails(t);
+      // vệt lửa tan theo giờ TRONG CẢNH: lúc quay chậm (sét giáng) đuôi lửa còn đầy như hình đích — lần đo 3: tan theo giờ thật → lúc sét chỉ còn búi lửa lưa thưa
+      stepTrails(clock.g);
       stepStreaks();
       if (arena.slowT > 0) { arena.slowT -= dt; if (speed <= 1) speed = arena.slowT > 0 ? 0.32 : 1; }
     }
@@ -1287,11 +1372,18 @@
       // chiến binh giáp xoay chéo ~24° về phía máy quay như hình đích (thấy ngực + mặt mũ, không chỉ thấy lưng áo choàng)
       const turn = obj.userData.knight ? 0.42 : 0;
       root.rotation.y = x < 0 ? Math.PI / 2 - turn : -Math.PI / 2 + turn;
+      if (obj.userData.pose) {                // dáng giáp: đối thủ nằm lệch ±turn trong toạ độ mẫu; máy quay ở phía tay phải (con trái) / tay trái (con phải)
+        obj.userData.pose.oppYaw = x < 0 ? turn : -turn;
+        obj.userData.pose.camX = x < 0 ? -1 : 1;
+        obj.userData.tick();
+      }
       arena.scene.add(root);
       const f = { root, pivot, model: obj, rig: { armR: obj.getObjectByName('armR') || null, armL: obj.getObjectByName('armL') || null, orb: obj.getObjectByName('orb') || null }, t: src.t, c: src.c, id: src.id, def: src.def, k: ARENA_K };
       arena.fighters.push(f);
       return f;
     }
+    // khoảng cách hai con trong đấu trường: có chiến binh giáp → xa hơn một chút (hình đích: hai người cách ~1 thân, kiếm chạm mép khiên)
+    function arenaGap(ta, tb) { const KN = window.ChessKnights; return KN && (KN.has(ta) || KN.has(tb)) ? 0.9 : 0.82; }
     function arenaCamPose(cam, side, aspect) {
       // khung như hình đích: máy quay thấp ngang ngực, hai người đánh chiếm ~nửa chiều cao khung
       // đo trên hình đích: chiến binh cao ~½ khung, chân tường ở ~62% từ trên → máy quay THẤP ngang gối, ngước nhẹ lên
@@ -1329,6 +1421,105 @@
     async function veilTo(o, dur) { const o0 = +veil.style.opacity || 0; await tween(dur, k => { veil.style.opacity = String(o0 + (o - o0) * k); }, EASE.lin); }
     setTimeout(() => { try { buildArena(); } catch (e) { /* dựng lúc cần */ } }, 1200);
 
+    /* ---------- DỊCH SẴN đấu trường lúc bàn cờ đứng yên (bản 4, đo 11-22) ----------
+       Máy chỉ dịch chương trình vẽ (shader) của một thứ vào lần ĐẦU nó được VẼ. Đo (tools/look_slash.py chromium x fps 2):
+       trận đầu mỗi lần mở trang đứng hình 3,3 giây lúc vào đấu trường + 3,1 giây đúng lúc sét; trận thứ hai mượt.
+       Giờ: mỗi khung lúc bàn cờ đứng yên (không ai đang đi quân / đánh nhau) vẽ ngầm MỘT phần đấu trường theo đúng đường vẽ
+       thật (gương + hậu kỳ, đủ bộ đèn như enterArena) rồi vẽ đè bàn cờ lên → người chơi không thấy, máy dịch dần từng phần.
+       Vật liệu dùng để dịch sẵn KHÔNG dispose: dispose = máy xoá luôn chương trình vẽ → trận sau phải dịch lại. */
+    const warm = { steps: null, i: 0, cur: null, n: 0, done: false, cam: null, keep: [], t0: 0, ms: 0, quietT: 0 };
+    // chỉ dịch sẵn khi KHÔNG ai chạm màn hình + không có gì đang chuyển động ≥ WARM_QUIET giây (đo 11-22: bước dịch sẵn chạy ngay
+    // sau cú chạm → cú chạm ăn quân tới trễ 1,9 giây; chạm bỏ qua trận rồi trang còn bận 0,5–1,7 giây)
+    const WARM_QUIET = 1.5;
+    addEventListener('pointerdown', () => { warm.quietT = performance.now(); }, true);
+    function warmSteps() {
+      const S = [];
+      S.push(() => []);                                   // cảnh trống: sàn gương, phông, lò lửa, tàn lửa, tia lửa, đèn
+      let n = 0;
+      for (const t of ['k', 'n', 'q', 'r', 'b', 'p']) for (const c of ['w', 'b']) {
+        S.push(() => {                                    // từng chiến binh (giáp hoặc hoạt hình), đủ 2 màu (ảnh giáp khác nhau)
+          const f = fighterFrom({ t, c, id: -900 - (n++) }, c === 'w' ? -0.9 : 0.9);
+          arena.fighters.splice(arena.fighters.indexOf(f), 1);
+          const out = [f.root];
+          const cr = f.model.getObjectByName('crack');
+          if (cr) { cr.visible = true; cr.material.uniforms.uReveal.value = 1; warm.keep.push(cr.material); }
+          const sh = f.model.getObjectByName('shield'), face = sh && sh.getObjectByName('shieldFace');
+          const fm = face && (Array.isArray(face.material) ? face.material[0] : face.material);
+          if (fm && f.model.userData.knight) {           // mảnh khiên văng: cùng vật liệu mặt khiên nhưng hình khác
+            const o = new T.Mesh(new T.TetrahedronGeometry(0.05), fm); o.castShadow = true;
+            f.root.updateWorldMatrix(true, true); sh.getWorldPosition(o.position); o.position.z += 0.3;
+            out.push(o);
+          }
+          return out;
+        });
+      }
+      S.push(() => {                                      // vệt lửa theo lưỡi kiếm · sét · tia điện quấn lưỡi
+        const g = new T.BufferGeometry();
+        g.setAttribute('position', new T.BufferAttribute(new Float32Array([-0.3, 1.2, 0, -0.3, 1.6, 0, 0.3, 1.2, 0, 0.3, 1.6, 0]), 3));
+        g.setAttribute('aAge', new T.BufferAttribute(new Float32Array([0.2, 0.2, 0.1, 0.1]), 1));
+        g.setAttribute('aSide', new T.BufferAttribute(new Float32Array([0, 1, 0, 1]), 1));
+        g.setIndex([0, 1, 2, 1, 3, 2]);
+        const tr = new T.Mesh(g, trailMat); tr.frustumCulled = false;
+        const rib = (mat, y) => { const m = new T.Mesh(ribbonGeo([{ pts: [new T.Vector3(-0.4, y, 0), new T.Vector3(0, y + 0.1, 0), new T.Vector3(0.4, y, 0)], w0: 4, w1: 1 }]), mat); m.frustumCulled = false; return m; };
+        return [tr, rib(boltMat, 1.4), rib(arcMat, 1.0)];
+      });
+      S.push(() => {                                      // lửa bám lưỡi · vòng sóng · vệt tia lửa · xúc xắc hai màu
+        const fl = new T.Sprite(new T.SpriteMaterial({ map: TEX.glow, color: 0xff7a1a, transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        fl.position.set(0, 1.2, 0); fl.scale.setScalar(0.3);
+        const ring = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: ringTex, color: new T.Color(1.6, 1.3, 1.0), transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        ring.rotation.x = -Math.PI / 2; ring.position.set(0, 0.025, 0.5);
+        warm.keep.push(ring.material);                    // giữ 1 vật liệu sống: vòng sóng thật dùng xong dispose → khỏi dịch lại mỗi trận
+        const lg = new T.BufferGeometry();
+        lg.setAttribute('position', new T.BufferAttribute(new Float32Array([0, 1, 0, 0.2, 1.2, 0]), 3));
+        lg.setAttribute('color', new T.BufferAttribute(new Float32Array([1, 0.7, 0.3, 0.2, 0.1, 0]), 3));
+        const st = new T.LineSegments(lg, streaks.material); st.frustumCulled = false;
+        const dW = makeDie('w', ARENA_K), dB = makeDie('b', ARENA_K);   // makeDie tự gắn vào fxGrp (đang nằm trong đấu trường)
+        dW.position.set(-0.5, 0.3, 1); dB.position.set(0.5, 0.3, 1);
+        return [fl, ring, st, dW, dB];
+      });
+      return S;
+    }
+    function warmStep() {
+      if (warm.done || !arena.scene || !arena.envReady) return;
+      if (!warm.steps) {
+        warm.steps = warmSteps(); warm.cam = new T.PerspectiveCamera(40, 1, 0.1, 220); arenaCamPose(warm.cam, 'w', 1); warm.t0 = performance.now();
+        // gương soi từ máy quay trận thật chỉ thấy NỬA DƯỚI chiến binh (đo: mặt khiên + lửa bám lưỡi còn phải dịch giữa trận khi
+        // mảnh khiên / người gục rơi xuống gần sàn) → lúc dịch sẵn, gương soi từ máy quay trên cao nhìn xuống: thấy trọn mọi thứ
+        warm.camM = new T.PerspectiveCamera(50, 1, 0.1, 220); warm.camM.position.set(0, 5.5, 6.5); warm.camM.lookAt(0, 0.9, 0);
+      }
+      if (!warm.cur) {                                   // bước kế: vật của bước dựng 1 lần, các khung sau dùng lại
+        const step = warm.steps[warm.i];
+        if (!step) { warm.done = true; warm.ms = performance.now() - warm.t0; return; }
+        warm.cur = { step, objs: null, mats: null, k: 0 };
+      }
+      const C = warm.cur, hid = [];
+      arena.scene.add(sparks, fxGrp, flashLight, streaks);            // như enterArena: đúng bộ đèn + vật của trận thật
+      let objs = [];
+      try {
+        if (!C.objs) C.objs = C.step() || [];
+        objs = C.objs;
+        for (const o of objs) if (!o.parent) arena.scene.add(o);
+        // mỗi khung chỉ vẽ MỘT vật liệu của bước (vật khác của bước tạm ẩn) → lỡ trùng lúc người chơi chạm thì chỉ trễ bằng
+        // thời gian dịch 1 vật liệu (đo 11-22: dịch nguyên 1 chiến binh mỗi khung chặn trang 0,5–2,4 giây lúc máy bận)
+        const pool = [], uu = x => (Array.isArray(x.material) ? x.material : [x.material]).map(m => m.uuid);
+        for (const r of (objs.length ? objs : [arena.scene])) r.traverse(x => { if (x.visible && x.material && (x.isMesh || x.isSprite || x.isPoints || x.isLine)) pool.push(x); });
+        if (!C.mats) C.mats = [...new Set(pool.flatMap(uu))];
+        const target = C.mats[C.k];
+        for (const x of pool) if (uu(x).indexOf(target) < 0) { x.visible = false; hid.push(x); }
+        R.setScissorTest(false); R.setViewport(0, 0, PX, PX);
+        if (PP.composer && cfg.cutscene !== 'split') {
+          updateMirror(warm.camM); PP.rpass.camera = warm.cam; PP.final.uniforms.uFlash.value = 0; PP.composer.render();
+        } else { if (mirror.uni) mirror.uni.uReflK.value = 0; R.render(arena.scene, warm.cam); }
+        warm.n++;
+      } catch (e) {
+        warm.done = true; console.error('dịch sẵn đấu trường hỏng:', e);   // trận thật vẫn tự dịch như cũ; bộ thử bắt lỗi này
+      }
+      for (const x of hid) x.visible = true;
+      for (const o of objs) if (o.parent) o.parent.remove(o);
+      arena.scene.remove(streaks); scene.add(sparks, fxGrp, flashLight);  // như exitArena: trả về bàn cờ
+      if (!warm.done && ++C.k >= (C.mats ? C.mats.length : 0)) { warm.cur = null; warm.i++; }
+    }
+
     /* ---------- vẽ ---------- */
     function render() {
       if (!cut.active) {
@@ -1358,11 +1549,11 @@
       R.setScissorTest(false);
     }
     let lastT = performance.now(), frames = 0, fpsT = 0, fps = 0;
-    const clock = { t: 0 };
+    const clock = { t: 0, g: 0 };          // t = giờ thật · g = giờ TRONG CẢNH (chậm lại lúc quay chậm, nhanh lên lúc tua)
     function loop(now) {
       const raw = Math.min(0.05, (now - lastT) / 1000); lastT = now;
       const dt = raw * speed;
-      clock.t += raw;
+      clock.t += raw; clock.g += dt;
       stepTweens(dt);
       stepFx(dt);
       idle(clock.t);
@@ -1370,6 +1561,8 @@
       updateBadges();
       updateIconBadges();
       for (const o of markGrp.children) if (o.userData.pulse) o.material.opacity = 0.6 + 0.35 * Math.sin(clock.t * 5);
+      if (cut.active || playing || tweens.length) warm.quietT = performance.now();
+      else if (!warm.done && performance.now() - warm.quietT > WARM_QUIET * 1000) warmStep();   // đứng yên đủ lâu → dịch sẵn 1 vật liệu
       render();
       frames++; fpsT += raw; if (fpsT >= 1) { fps = frames / fpsT; frames = 0; fpsT = 0; }
       requestAnimationFrame(loop);
@@ -1402,13 +1595,125 @@
     }
 
     /* ---------- diễn: đòn đánh ---------- */
-    // chiến binh mặc giáp nghiêng ít hơn (cao gần gấp đôi chiến binh hoạt hình — nghiêng nhiều thành tấm ván đổ)
-    async function lean(m, ang, dur, ez) { const a0 = m.pivot.rotation.x, a1 = ang * (m.model && m.model.userData.knight ? 0.55 : 1); await tween(dur, k => { m.pivot.rotation.x = a0 + (a1 - a0) * k; }, ez); }
-    async function armSwing(m, a1, dur) { if (!m.rig || !m.rig.armR) return wait(dur); const a0 = m.rig.armR.rotation.x; await tween(dur, k => { m.rig.armR.rotation.x = a0 + (a1 - a0) * k; }); }
-    async function shield(m, up, dur) { if (!m.rig || !m.rig.armL) return wait(dur); const a0 = m.rig.armL.rotation.x, a1 = up ? -1.45 : -0.2; await tween(dur, k => { m.rig.armL.rotation.x = a0 + (a1 - a0) * k; }); }
+    // chiến binh MẶC GIÁP (chess_knights.js bản 4): nghiêng = nghiêng THÂN quanh khớp chậu (bàn chân vẫn bám sàn);
+    // giơ khiên / thủ = dáng "guard"; vung tay kiểu cũ = bỏ (đòn chém giáp có đường riêng: knightStrike)
+    async function lean(m, ang, dur, ez) {
+      if (kp(m)) return poseTo(m, { lean: ang * 0.6 }, dur, ez);
+      const a0 = m.pivot.rotation.x, a1 = ang; await tween(dur, k => { m.pivot.rotation.x = a0 + (a1 - a0) * k; }, ez);
+    }
+    async function armSwing(m, a1, dur) { if (kp(m) || !m.rig || !m.rig.armR) return wait(dur); const a0 = m.rig.armR.rotation.x; await tween(dur, k => { m.rig.armR.rotation.x = a0 + (a1 - a0) * k; }); }
+    async function shield(m, up, dur) {
+      if (kp(m)) { const o = arena.fighters.find(f => f !== m); return up && o ? knightGuard(m, o, Math.max(0.08, dur)) : knightRest(m, Math.max(0.08, dur)); }
+      if (!m.rig || !m.rig.armL) return wait(dur); const a0 = m.rig.armL.rotation.x, a1 = up ? -1.45 : -0.2; await tween(dur, k => { m.rig.armL.rotation.x = a0 + (a1 - a0) * k; });
+    }
     const contactPt = (A, D) => A.root.position.clone().lerp(D.root.position, 0.5).setY(0.55 * (A.k || 1));
-    function hitFx(A, D, heavy) {
-      const at = contactPt(A, D);
+
+    /* ---------- DÁNG chiến binh giáp: chỉ đổi con số trong model.userData.pose, khung xương tự tính góc khớp ---------- */
+    const kp = m => (m && m.model && m.model.userData.knight) ? m.model.userData.pose : null;
+    const KPOSE = () => window.ChessKnights.POSE;
+    function poseTo(m, to, dur, ez) {        // tween các số / mảng số của dáng thân
+      const P = kp(m); if (!P) return wait(dur);
+      const from = {};
+      for (const key in to) from[key] = Array.isArray(to[key]) ? P[key].slice() : P[key];
+      return tween(dur, f => {
+        for (const key in to) {
+          const a = from[key], b = to[key];
+          if (Array.isArray(b)) { for (let i = 0; i < b.length; i++) P[key][i] = a[i] + (b[i] - a[i]) * f; } else P[key] = a + (b - a) * f;
+        }
+      }, ez);
+    }
+    function swordTo(m, keys, dur, ez) {      // kiếm đi từ chỗ đang cầm qua lần lượt các khoá (đường vung cong)
+      const P = kp(m); if (!P) return wait(dur);
+      P.swk = [window.ChessKnights.swordNow(P)].concat(keys); P.swu = 0;
+      return tween(dur, f => { P.swu = f; }, ez);
+    }
+    function shieldTo(m, key, dur, ez) {
+      const P = kp(m); if (!P || !key) return wait(dur);
+      const a = JSON.parse(JSON.stringify(P.shk));
+      return tween(dur, f => { P.shk = { p: [0, 1, 2].map(i => a.p[i] + (key.p[i] - a.p[i]) * f), yaw: a.yaw + (key.yaw - a.yaw) * f, pitch: a.pitch + (key.pitch - a.pitch) * f }; }, ez);
+    }
+    function knightGuard(D, A, dur) {        // thủ trước đòn: Mã giơ khiên quay vào người chém; Vua (không khiên) đỡ bằng kiếm
+      const P = kp(D), PO = KPOSE(), two = !!D.model.userData.twoHand;
+      P.target = A.root.position.clone().setY(0.78 * (A.k || 1));
+      const jobs = [poseTo(D, PO.body.guard, dur, EASE.out)];
+      if (two) jobs.push(swordTo(D, [PO.swK.parry], dur, EASE.out));
+      else jobs.push(shieldTo(D, PO.shield.guard, dur, EASE.out), swordTo(D, [PO.swN.guard], dur, EASE.out), tween(dur, f => { P.shAimW = f; }));
+      return Promise.all(jobs);
+    }
+    function knightRest(D, dur) {
+      const P = kp(D), PO = KPOSE(), two = !!D.model.userData.twoHand, w0 = P.shAimW;
+      const jobs = [poseTo(D, PO.body.ready, dur), swordTo(D, [two ? PO.swK.rest : PO.swN.rest], dur)];
+      if (!two) jobs.push(shieldTo(D, PO.shield.rest, dur), tween(dur, f => { P.shAimW = w0 * (1 - f); }));
+      return Promise.all(jobs);
+    }
+    // điểm chém: giữa mặt khiên (Mã) · khúc giữa lưỡi kiếm đang đỡ (Vua) · ngực con hoạt hình
+    function strikePoint(A, D) {
+      const sh = kp(D) && D.model.getObjectByName('shield');
+      if (sh) { D.root.updateWorldMatrix(true, true); return sh.localToWorld(new T.Vector3(0, 0.02, 0.02)); }
+      const bl = kp(D) && D.model.getObjectByName('blade');
+      if (bl) { D.root.updateWorldMatrix(true, true); return bl.localToWorld(new T.Vector3(0, (bl.userData.len || 0.4) * 0.35, 0)); }
+      return contactPt(A, D);
+    }
+    // đòn kết trúng khiên: vết nứt đỏ rực toả ra từ chỗ trúng + mảnh khiên văng (hình đích "đỡ đòn")
+    function shieldCrack(D, A) {
+      const cr = D.model.getObjectByName('crack'), sh = D.model.getObjectByName('shield');
+      if (!cr || !sh) return;
+      cr.visible = true;
+      const U = cr.material.uniforms;
+      tween(0.26, f => { U.uReveal.value = f; U.uHeat.value = 3.2 - f * 0.8; }, EASE.out).then(() => tween(1.6, f => { U.uHeat.value = (2.4 - f * 1.1) * (0.85 + 0.15 * Math.sin(f * 40)); }, EASE.lin));
+      const face = sh.getObjectByName('shieldFace'), mat = face && Array.isArray(face.material) ? face.material[0] : null;
+      const p = sh.getWorldPosition(new T.Vector3()), away = p.clone().sub(A.root.position).setY(0).normalize(), K = D.k || 1;
+      for (let i = 0; i < 16; i++) {
+        const o = new T.Mesh(new T.TetrahedronGeometry(rnd(0.012, 0.03) * K), mat || new T.MeshStandardMaterial({ color: 0x3a2420 }));
+        o.castShadow = true;
+        o.position.copy(p).add(new T.Vector3(rnd(-0.06, 0.06), rnd(-0.08, 0.1), rnd(-0.06, 0.06)).multiplyScalar(K));
+        addDebris(o, away.clone().multiplyScalar(rnd(0.8, 2.6)).add(new T.Vector3(rnd(-1.1, 1.1), rnd(0.6, 2.6), rnd(-1.1, 1.1))), new T.Vector3(rnd(-12, 12), rnd(-12, 12), rnd(-12, 12)), rnd(1.0, 1.6));
+      }
+    }
+    /* ĐÒN CHÉM GIÁP (hình đích "đòn chém"): lấy đà vặn vai, kiếm vòng qua vai phải → lao tới chân trước bước dài, thân đổ tới,
+       kiếm quét qua đỉnh đầu rồi NGẮM thẳng vào khiên / kiếm đỡ của đối thủ (điểm chạm ~2/3 lưỡi) → trúng → thu thế */
+    async function knightStrike(A, D, opt) {
+      const P = kp(A), PO = KPOSE(), KN = window.ChessKnights, two = !!A.model.userData.twoHand, SW = two ? PO.swK : PO.swN;
+      const dKn = !!kp(D);
+      sfx('whoosh', 0.7, rnd(0.9, 1.15));
+      const guard = dKn ? knightGuard(D, A, 0.2) : (opt.block ? shield(D, true, 0.2) : Promise.resolve());
+      await Promise.all([poseTo(A, PO.body.windup, 0.2, EASE.out), swordTo(A, [SW.windup], 0.2, EASE.out), guard]);
+      const at = strikePoint(A, D);
+      P.target = at; P.aimReach = 0.075 + KN.bladeLen(A.model) * 0.64;
+      // bước tới một nhịp (đo ảnh tĩnh: không bước thì tay với không tới, điểm chạm trượt ra mũi kiếm, mũi xuyên qua khiên)
+      const p0 = A.root.position.clone(), dS = D.root.position.clone().sub(p0).setY(0).normalize(), STEP = 0.14;
+      if (cut.arena) startTrail(A);            // vệt lửa chỉ ở nhát chém xuống (như hình đích)
+      await Promise.all([
+        tween(0.14, f => { A.root.position.copy(p0).addScaledVector(dS, STEP * f); }, EASE.in),
+        poseTo(A, PO.body.lunge, 0.14, EASE.in),
+        swordTo(A, [SW.mid, SW.strike], 0.14, EASE.in),
+        tween(0.14, f => { P.aimW = Math.max(0, (f - 0.45) / 0.55); P.fLy = Math.sin(Math.min(1, f * 1.1) * Math.PI) * 0.06; }, EASE.lin)
+      ]);
+      P.aimW = 1; P.fLy = 0;
+      // đòn kết: giữ lửa bám lưỡi + đầu vệt lửa nóng thêm 0,12 giây trong cảnh (đang quay chậm → ~0,4 giây thật) để lúc sét giáng
+      // vẫn còn lửa cùng sét như hình đích (đo 11-22: tắt lửa ngay lúc chạm → khung sét chỉ còn 1 búi lửa)
+      // + lúc chạm, cả vệt lửa BÙNG lại (tuổi từng đoạn còn 35%: phần đặc chỉ có giữa nhát vung, tới lúc chạm đã vỡ thành búi)
+      // rồi ĐỨNG yên cùng tia sét suốt lúc giữ, sau đó mới tàn — như tranh hình đích: vệt lửa đặc + sét cùng một khoảnh khắc
+      if (opt.final && A.trail) {
+        const tr = A.trail, t0 = clock.g; tr.hold = true;
+        for (const s of tr.samples) s.t = t0 - (t0 - s.t) * 0.35;
+        wait(0.12).then(() => { if (A.trail === tr) stopTrail(A); });
+      } else stopTrail(A);
+      if (opt.block) {
+        hitFx(A, D, false, at); sfx(Math.random() < 0.5 ? 'clash' : 'clash2', 0.85, rnd(0.9, 1.1));
+        await (dKn ? poseTo(D, PO.body.recoil, 0.09, EASE.out) : lean(D, -0.22, 0.08));
+      } else if (opt.final) {
+        hitFx(A, D, true, at); sfx('heavy', 1);
+        if (dKn) { shieldCrack(D, A); poseTo(D, PO.body.recoil, 0.12, EASE.out); }
+      }
+      await wait(opt.final ? 0.14 : 0.05);
+      const back = [poseTo(A, PO.body.ready, 0.24), swordTo(A, [SW.rest], 0.24), tween(0.24, f => { P.aimW = 1 - f; A.root.position.copy(p0).addScaledVector(dS, STEP * (1 - f)); })];
+      if (opt.block) back.push(dKn ? knightRest(D, 0.24) : Promise.all([lean(D, 0, 0.16), shield(D, false, 0.16)]));
+      await Promise.all(back);
+      P.aimW = 0; P.target = null;
+    }
+    function hitFx(A, D, heavy, atIn) {
+      const at = atIn ? atIn.clone() : contactPt(A, D);
       if (cut.arena) {                         // đấu trường: tia lửa quạt + loé; đòn kết thêm sét trời, vòng sóng, chậm lại, rung
         const dir = D.root.position.clone().sub(A.root.position).setY(0).normalize();
         fan(at, dir, heavy ? 120 : 60, 0xffb347, heavy ? 1.35 : 0.95);
@@ -1429,6 +1734,7 @@
     }
     async function strike(A, D, opt) {       // A ra đòn, D đỡ (opt.block) hoặc trúng (opt.final)
       opt = opt || {};
+      if (kp(A)) return knightStrike(A, D, opt);
       const p0 = A.root.position.clone(), dir = D.root.position.clone().sub(p0).setY(0).normalize();
       const K = A.k || 1;                      // đấu trường: chiến binh to gấp K → bước tới, nhảy cao cũng gấp K
       // chiến binh giáp tay + kiếm dài gần gấp đôi → bước tới ít (bản đầu: kiếm chém xuyên qua sau lưng đối thủ)
@@ -1549,6 +1855,13 @@
         burst(pos.clone().setY(0.5 * MK), 40, style === 'crystal' ? 0xbff8ff : 0xffe2a0, 1.1 * MK);
         await wait(1.2);
       } else if (deathType === 'topple') {
+        if (kp(M)) {                            // chiến binh giáp: gục một gối, buông kiếm/khiên xuống, rồi mới đổ
+          const PO = KPOSE(), two = !!M.model.userData.twoHand, P = kp(M);
+          P.aimW = 0; P.shAimW = 0;
+          sfx('land', 0.7);
+          await Promise.all([poseTo(M, PO.body.kneel, 0.34, EASE.out), swordTo(M, [two ? PO.swK.down : PO.swN.down], 0.34, EASE.out), two ? Promise.resolve() : shieldTo(M, PO.shield.down, 0.34, EASE.out)]);
+          await wait(0.28);
+        }
         const away = pos.clone().sub(attackerPos).setY(0).normalize();
         const axis = new T.Vector3(away.z, 0, -away.x);
         const q0 = M.root.quaternion.clone();
@@ -1623,7 +1936,8 @@
       if (inArena) {
         buildArena();
         await veilTo(1, 0.22);
-        A = fighterFrom(A0, -0.82); D = fighterFrom(D0, 0.82);
+        const sp = arenaGap(A0.t, D0.t);
+        A = fighterFrom(A0, -sp); D = fighterFrom(D0, sp);
         enterArena(A0.c);
         stage = A.root.position.clone(); pd = D.root.position.clone();
         dir = pd.clone().sub(stage).setY(0).normalize(); mid = stage.clone().lerp(pd, 0.5);
@@ -1834,11 +2148,22 @@
       fastForward() { if (playing) speed = 4; }, skip, get skipping() { return skipping; }, get playing() { return playing; },
       setBadges(on) { badgesOn = on; refreshBadges(lastState); },
       get fps() { return fps; },
+      get warmed() { return warm.done; },
       debug: {
-        meshes, scene, renderer: R, boardCam, cut, tweens, arena, wallGrp, iconBadgeGrp,
+        meshes, scene, renderer: R, boardCam, cut, tweens, arena, wallGrp, iconBadgeGrp, warm,
         // bộ thử chụp ảnh: dựng 2 chiến binh đứng yên trong đấu trường (không diễn trận) — tools/look_knights.py
-        showArena(ta, td) { buildArena(); for (const f of arena.fighters.slice()) arena.scene.remove(f.root); arena.fighters = []; const A = fighterFrom({ t: ta, c: 'w', id: -11 }, -0.82), D = fighterFrom({ t: td, c: 'b', id: -12 }, 0.82); enterArena('w'); return { A, D }; },
-        hideArena() { exitArena(); }
+        showArena(ta, td) { buildArena(); for (const f of arena.fighters.slice()) arena.scene.remove(f.root); arena.fighters = []; const sp = arenaGap(ta, td); const A = fighterFrom({ t: ta, c: 'w', id: -11 }, -sp), D = fighterFrom({ t: td, c: 'b', id: -12 }, sp); enterArena('w'); return { A, D }; },
+        hideArena() { exitArena(); },
+        // đặt ngay một dáng có tên cho chiến binh giáp (bộ chụp ảnh tools/look_knights.py): thân / kiếm / khiên
+        knPose(f, body, sw, sh) {
+          const P = kp(f), PO = KPOSE(); if (!P) return false;
+          if (body && PO.body[body]) Object.assign(P, JSON.parse(JSON.stringify(PO.body[body])));
+          const S = f.model.userData.twoHand ? PO.swK : PO.swN;
+          if (sw && S[sw]) { P.swk = [JSON.parse(JSON.stringify(S[sw]))]; P.swu = 0; }
+          if (sh && PO.shield[sh]) P.shk = JSON.parse(JSON.stringify(PO.shield[sh]));
+          return true;
+        },
+        strikePoint
       }
     };
   }

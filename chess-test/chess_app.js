@@ -458,7 +458,7 @@
     window.addEventListener('pointerdown', e => { if (e.target !== view.canvas && view && view.playing) view.skip(); });
     newGame();
     $('#loading').classList.add('hidden');
-    if (/[?&]fps\b/.test(location.search)) setInterval(() => { $('#ver').textContent = 'Bản 2 · mẫu · ' + Math.round(view.fps) + ' fps'; }, 1000);
+    if (/[?&]fps\b/.test(location.search)) setInterval(() => { $('#ver').textContent = 'Bản 4 · mẫu · ' + Math.round(view.fps) + ' fps'; }, 1000);
     window.__chess.ready = true;
   }
   Object.defineProperty(window.__chess, 'soundsReady', { get: () => Object.keys(SND.buf).length });
