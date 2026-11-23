@@ -133,7 +133,7 @@
   <div class="grp">Âm thanh</div>
   <div class="opts" data-k="sound"><button class="opt" data-v="on">Bật</button><button class="opt" data-v="off">Tắt</button></div>
   <div class="grp">⚔️ Xem thử một trận (sample only)</div>
-  <div class="opts" data-k="demo"><button class="opt" data-v="p-q">Tốt đánh Hậu</button><button class="opt" data-v="n-r">Mã đánh Xe</button><button class="opt" data-v="q-b">Hậu đánh Tượng</button><button class="opt" data-v="k-p">Vua đánh Tốt</button></div>
+  <div class="opts" data-k="demo"><button class="opt" data-v="k-n">Vua đánh Mã (giáp mới)</button><button class="opt" data-v="p-q">Tốt đánh Hậu</button><button class="opt" data-v="n-r">Mã đánh Xe</button><button class="opt" data-v="q-b">Hậu đánh Tượng</button><button class="opt" data-v="k-p">Vua đánh Tốt</button></div>
   <div class="opts" data-k="demoMode" style="margin-top:8px"><button class="opt" data-v="show">Thẻ diễn</button><button class="opt" data-v="dice">Thẻ xúc xắc</button></div>
   <div class="acts"><button class="btn gold" id="sDemo">⚔️ Try a battle (sample only)</button><button class="btn" id="sNew">New game</button><button class="btn" id="sClose">Đóng</button></div>
   <div class="grp">🧱 Tường + quân Bon tự chế (ý anh trong Notion)</div>
@@ -155,10 +155,19 @@
 
 <script src="lib/three.min.js"></script>
 <script src="lib/pp/BufferGeometryUtils.js"></script>
+<script src="lib/pp/CopyShader.js"></script>
+<script src="lib/pp/LuminosityHighPassShader.js"></script>
+<script src="lib/pp/EffectComposer.js"></script>
+<script src="lib/pp/RenderPass.js"></script>
+<script src="lib/pp/ShaderPass.js"></script>
+<script src="lib/pp/UnrealBloomPass.js"></script>
+<script src="assets/arena_tex.js"></script>
 <script src="assets/tex.js"></script>
 <script src="assets/sounds.js"></script>
 <script src="assets/icons.js"></script>
 <script src="chess_core.js"></script>
+<script src="assets/knight_tex.js"></script>
+<script src="chess_knights.js"></script>
 <script src="chess_view.js"></script>
 <script src="chess_app.js"></script>
 </body>

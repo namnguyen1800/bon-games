@@ -8,12 +8,14 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   /* board: kiểu bàn lúc chơi — 'flat' (phẳng kiểu chess.com, Nam gửi 11-21, mặc định mới) hoặc 3 kiểu 3D (tiltTurn / tiltFixed / topBadge) + 'top'.
      style: kiểu quân khi bàn 3D. fight: 'arena' (chuyển cảnh, mặc định) / 'board'. customs + layout: quân Bon tự chế + bàn đã xếp (tường…). */
-  const DEF = { board: 'flat', style: 'warriors', fight: 'arena', death: 'topple', battleLen: 'long', cutscene: 'toward', dice: 'off', diceIds: [], sound: 'on', demo: 'p-q', demoMode: 'show',
+  const DEF = { board: 'flat', style: 'warriors', fight: 'arena', death: 'topple', battleLen: 'long', cutscene: 'toward', dice: 'off', diceIds: [], sound: 'on', demo: 'k-n', demoMode: 'show',
     customs: [], layout: { walls: [], pieces: [], removed: [] } };
   const set = Object.assign({}, DEF);
   try { Object.assign(set, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* chỗ lưu bị chặn → dùng mặc định */ }
   if (!set.layout || !Array.isArray(set.layout.walls)) set.layout = { walls: [], pieces: [], removed: [] };
   if (!Array.isArray(set.customs)) set.customs = [];
+  // 11-22: thêm cặp "Vua đánh Mã" (2 loại đã có giáp mới) — máy nào còn lưu mặc định cũ "Tốt đánh Hậu" thì chuyển 1 lần
+  if (!set.knDemo) { if (set.demo === 'p-q') set.demo = 'k-n'; set.knDemo = 1; }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(set)); } catch (e) { /* bỏ qua */ } };
   const rand = () => { try { return crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296; } catch (e) { return Math.random(); } };
 
