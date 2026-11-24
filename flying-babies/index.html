@@ -19,6 +19,22 @@
 <meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -43,7 +59,7 @@
     { id: 'pillow',   name: 'Gối chút chút' },
   ];
 
-  let W, H, DPR, S, groundY, groundH;
+  let W, H, DPR, S, groundY, groundH, TOPI = 0; // TOPI = bề cao thanh giờ/pin iPad đè lên hàng nút trên cùng (px) — chỉ có khi mở từ icon, xem __topInset ở publish_bon_games.py
   let bird, pipes, score, best, state, frameCount, deathTime, groundOffset;
   let paused = false; // chỉ bật được lúc đang bay (PLAYING); không đổi `state` — chỉ khựng update()
   let selectActors = [], selectCell = 0;
@@ -58,6 +74,7 @@
     W = window.innerWidth;
     H = window.innerHeight;
     S = H / H_REF;
+    TOPI = window.__topInset ? window.__topInset() : 0;
     c.width = Math.floor(W * DPR);
     c.height = Math.floor(H * DPR);
     c.style.width = W + 'px';
@@ -996,9 +1013,9 @@
   }
 
   // nút "Đổi bạn" góc trên trái — hiện lúc chờ bay và lúc thua
-  function swapBtn() { return { x: 14 * S, y: 14 * S, w: 112 * S, h: 38 * S }; }
+  function swapBtn() { return { x: 14 * S, y: 14 * S + TOPI, w: 112 * S, h: 38 * S }; }
   // nút loa: góc trên PHẢI, luôn hiện mọi màn (kể cả lúc đang bay) để người lớn tắt được ngay
-  function muteBtn() { const d = 38 * S; return { x: W - 14 * S - d, y: 14 * S, w: d, h: d }; }
+  function muteBtn() { const d = 38 * S; return { x: W - 14 * S - d, y: 14 * S + TOPI, w: d, h: d }; }
   function drawMuteBtn() {
     const b = muteBtn(), cx = b.x + b.w / 2, cy = b.y + b.h / 2, u = b.w / 38;
     ctx.fillStyle = 'rgba(255,255,255,0.92)';

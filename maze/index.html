@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Bon's Maze</title>
+<style>
+@font-face{font-family:Fredoka;src:url(maze/fonts/fredoka-600.ttf);font-weight:600}
+@font-face{font-family:Fredoka;src:url(maze/fonts/fredoka-700.ttf);font-weight:700}
+html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:Fredoka,system-ui,sans-serif;color:#e8e6f0}
+#wrap{position:fixed;inset:0;display:flex}
+#stage{flex:1;position:relative;min-width:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+#panel{width:158px;flex:none;background:linear-gradient(#12141c,#0a0b10);border-left:1px solid #23263a;padding:calc(var(--ti, env(safe-area-inset-top)) + 8px) 8px calc(8px + env(safe-area-inset-bottom));box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.sec{display:flex;flex-direction:column;gap:6px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+:where(button){font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tb{height:50px;border-radius:13px;border:2px solid #2a2e43;background:#161926;color:#cfd2e3;font-size:11.5px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;position:relative}
+.tb .ic{font-size:20px;line-height:1.1}
+.tb.on{border-color:#ffd24d;background:#2b2511;color:#fff;box-shadow:0 0 12px #ffd24d55}
+.tb.row{flex-direction:row;gap:5px;height:44px}
+.tb.row .ic{font-size:18px}
+.tb.glow{border-color:#7dffa8;background:#13281b;color:#fff;box-shadow:0 0 14px #33c46a99;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 4px #33c46a55}}
+.badge{position:absolute;top:-6px;right:-6px;background:#33c46a;color:#08130c;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px}
+.num{height:34px;border-radius:50%;border:3px solid transparent;color:#111;font-size:16px;font-weight:700;padding:0}
+.num.on{border-color:#fff;box-shadow:0 0 10px #fff9}
+.sp{height:34px;border-radius:10px;border:2px solid #2a2e43;background:#161926;color:#cfd2e3;font-size:12px;font-weight:600;padding:0}
+.sp.on{border-color:#7ee0a0;background:#13281b;color:#fff}
+.lbl{font-size:10.5px;color:#8b8fa8;margin:1px 2px -3px;font-weight:600;letter-spacing:.5px}
+.big{height:60px;border-radius:16px;border:none;font-size:22px;font-weight:700;color:#08130c;background:linear-gradient(#7dffa8,#33c46a);box-shadow:0 0 18px #33c46a66}
+.big.edit{background:linear-gradient(#ffe08a,#e0a92e);color:#2a1d00;box-shadow:0 0 18px #e0a92e55}
+.light{height:56px;border-radius:16px;border:2px solid #b8941f;background:#3a2f0c;color:#ffe9a8;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px}
+.light.off{border-color:#3a3f5c;background:#0b0c14;color:#9aa0c0}
+.light .ic{font-size:24px}
+.inv{min-height:40px;border-radius:12px;background:#0d0f16;border:1px dashed #2a2e43;display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:center;padding:4px;font-size:12px;color:#8b8fa8}
+.hide{display:none!important}
+#homeBtn{position:absolute;left:10px;top:calc(var(--ti, env(safe-area-inset-top)) + 10px);width:46px;height:46px;border-radius:50%;border:2px solid #b8941f;background:#3a2f0c;font-size:24px;z-index:9;padding:0}
+#hint{position:absolute;left:64px;right:10px;top:calc(var(--ti, env(safe-area-inset-top)) + 14px);text-align:center;pointer-events:none;font-size:15px;color:#e5e7f2;text-shadow:0 2px 6px #000,0 0 3px #000;z-index:4}
+.ov{position:absolute;inset:0;background:rgba(3,4,8,.78);display:flex;align-items:center;justify-content:center;z-index:8}
+.card{background:linear-gradient(#171a27,#0e1018);border:2px solid #2d3150;border-radius:22px;padding:18px 20px;text-align:center;box-shadow:0 10px 40px #000;max-width:92%}
+.card h2{margin:4px 0 12px;font-size:28px;letter-spacing:.5px}
+.picks{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.pk{width:112px;height:132px;border-radius:18px;border:2px solid #2d3150;background:#10131d;color:#e8e6f0;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0}
+.pk canvas{width:84px;height:84px}
+.row2{display:flex;gap:12px;justify-content:center;margin-top:14px}
+.btn{min-width:150px;height:60px;border-radius:16px;border:none;font-size:20px;font-weight:700;padding:0 18px}
+.b1{background:linear-gradient(#7dffa8,#33c46a);color:#08130c}
+.b2{background:#232741;color:#e8e6f0}
+</style>
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bon's Games">
+<meta name="theme-color" content="#70c5ce">
+<meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <button id="homeBtn" class="hide" aria-label="Bon's Games">🏠</button>
+    <div id="hint"></div>
+    <div id="pick" class="ov hide"><div class="card"><h2>Pick your baby!</h2><div class="picks" id="picks"></div></div></div>
+    <div id="end" class="ov hide"><div class="card"><h2 id="endMsg"></h2><div class="row2"><button class="btn b1" id="again">Try again</button><button class="btn b2" id="toEdit">Edit maze</button></div></div></div>
+  </div>
+  <div id="panel">
+    <div class="sec" id="pDraw">
+      <div class="g2">
+        <button class="tb on" data-tool="wall"><span class="ic">✏️</span>Wall</button>
+        <button class="tb" data-tool="erase"><span class="ic">🧽</span>Erase</button>
+        <button class="tb" data-tool="start"><span class="ic">🚪</span>Start</button>
+        <button class="tb" data-tool="exit"><span class="ic">🏁</span>Exit</button>
+        <button class="tb" data-tool="key"><span class="ic">🔑</span>Key</button>
+        <button class="tb" data-tool="door"><span class="ic">🔒</span>Door</button>
+        <button class="tb" data-tool="portal"><span class="ic">🌀</span>Portal</button>
+        <button class="tb" data-tool="snake"><span class="ic">🐍</span>Snake</button>
+        <button class="tb" data-tool="baby"><span class="ic">🧸</span>Baby</button>
+        <button class="tb" data-tool="move"><span class="ic">✋</span>Move</button>
+        <button class="tb" id="undo"><span class="ic">↶</span>Undo</button>
+        <button class="tb" id="seeAll"><span class="ic">🗺️</span>See all</button>
+      </div>
+      <button class="tb row" id="doneBtn"><span class="ic">✅</span>Done drawing<span class="badge hide" id="pendN">0</span></button>
+      <div class="lbl">NUMBER</div>
+      <div class="g4" id="nums"></div>
+      <div class="lbl">CHASER SPEED</div>
+      <div class="g3" id="speeds">
+        <button class="sp" data-sp="slow">Slow</button><button class="sp" data-sp="normal">Normal</button><button class="sp" data-sp="fast">Fast</button>
+      </div>
+      <button class="light" id="lightDraw"><span class="ic">💡</span><span>Light ON</span></button>
+      <button class="big" id="playBtn">▶ Play</button>
+      <div class="g2">
+        <button class="tb row" id="biggerBtn"><span class="ic">↔️</span>Bigger</button>
+        <button class="tb row" id="clearBtn"><span class="ic">🗑</span>Clear</button>
+      </div>
+    </div>
+    <div class="sec hide" id="pPlay">
+      <button class="big edit" id="editBtn">✏️ Edit</button>
+      <button class="light" id="lightPlay"><span class="ic">💡</span><span>Light ON</span></button>
+      <div class="lbl">KEYS</div>
+      <div class="inv" id="inv">none yet</div>
+      <button class="tb row" id="restartBtn"><span class="ic">↺</span>Restart</button>
+    </div>
+  </div>
+</div>
+<script src="maze/lib/froggy_sprites.js"></script>
+<script src="maze/lib/friend_sprites.js"></script>
+<script src="maze/lib/sounds.js"></script>
+<script src="maze/lib/smash_sounds.js"></script>
+<script>
+(() => {
+'use strict';
+// ====================== hằng số ======================
+let W = 2000, H = 1400;              // cỡ mê cung (to hơn màn hình, màn trượt theo); nút Bigger nới thêm
+const MAXW = 3000, MAXH = 2100;
+const HT = 6;                        // nửa bề dày tường
+const PR = 18;                       // bán kính em bé
+const SR = 14;                       // bán kính đầu rắn
+const G = 10; let GW = W / G, GH = H / G;
+const CLR = HT + PR - 3;             // ô lưới "đi được" khi cách tường >= CLR
+const COLORS = { 1: '#ff4d5e', 2: '#4da3ff', 3: '#5dff8f', 4: '#ffd24d' };
+const SPEEDS = { slow: 75, normal: 110, fast: 150 };
+const PLAYER_SPEED = 165;
+const FRIENDS = ['froggy', 'babyfrog', 'chicken', 'pillow'];
+const FNAME = { froggy: 'Froggy', babyfrog: 'Baby Froggy', chicken: 'Chicken Banana', pillow: 'Gối chút chút' };
+const STORE = 'bon_maze_mau_v2';
+const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+let dpr = 1, cssW = 0, cssH = 0;
+const cam = { x: 0, y: 0, z: 1, fit: false };
+
+// ====================== dữ liệu ======================
+let maze = null;
+let set = { dark: 'A', mute: {}, portalSnd: 'portal', snakePortal: true };
+let tool = 'wall', num = 1, mode = 'draw';
+const undoStack = [];
+function setWorld(w, h) { W = w; H = h; GW = W / G; GH = H / G; bgDirty = true; }
+function save() { try { localStorage.setItem(STORE, JSON.stringify({ maze, set })); } catch (e) {} }
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s && s.maze && s.maze.w) { maze = s.maze; maze.pending = maze.pending || []; return true; } } catch (e) {} // KHÔNG đọc lại `set` đã lưu: kiểu tối + tiếng đã chốt cứng (Nam chốt 11-23: đèn lồng, mọi tiếng bật, portal kiểu 1) — bản mẫu có ⚙ từng lưu lựa chọn cùng khoá này
+  return false;
+}
+function pushUndo() { undoStack.push(JSON.stringify(maze)); if (undoStack.length > 60) undoStack.shift(); }
+function emptyMaze(w, h) { return { w: w || 2000, h: h || 1400, walls: [], pending: [], items: [], speed: 'normal', light: 'off' }; }
+
+function sampleMaze() {
+  const k = 2, w = (x1, y1, x2, y2) => ({ ax: x1 * k, ay: y1 * k, bx: x2 * k, by: y2 * k });
+  const P = (o) => Object.assign(o, { x: o.x * k, y: o.y * k }, o.x2 != null ? { x2: o.x2 * k, y2: o.y2 * k } : {});
+  return {
+    w: 2000, h: 1400, speed: 'normal', light: 'off', pending: [],
+    walls: [
+      w(250, 0, 250, 520), w(500, 180, 500, 700), w(500, 180, 1000, 180), w(750, 180, 750, 560),
+      w(0, 300, 170, 300), w(250, 350, 420, 350), w(560, 470, 750, 470), w(330, 470, 330, 590),
+      w(820, 90, 1000, 90), w(600, 90, 700, 90),
+      w(80, 420, 250, 420), w(0, 560, 160, 560), w(330, 220, 500, 220), w(330, 100, 330, 220),
+      w(420, 470, 420, 700), w(600, 260, 680, 260), w(600, 260, 600, 380), w(880, 260, 880, 470),
+      w(820, 400, 1000, 400),
+    ],
+    items: [
+      P({ t: 'start', x: 100, y: 640 }), P({ t: 'exit', x: 920, y: 640 }),
+      P({ t: 'portal', x: 460, y: 640, n: 2 }), P({ t: 'portal', x: 625, y: 640, n: 2 }),
+      P({ t: 'key', x: 660, y: 320, n: 1 }),
+      P({ t: 'door', x: 750, y: 560, x2: 750, y2: 700, n: 1 }),
+      P({ t: 'snake', x: 900, y: 135 }), P({ t: 'baby', x: 110, y: 90 }), P({ t: 'snake', x: 940, y: 320 }),
+    ],
+  };
+}
+
+// ====================== hình học ======================
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  let t = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = ax + t * dx, qy = ay + t * dy;
+  return { d: Math.hypot(px - qx, py - qy), x: qx, y: qy };
+}
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length - 1]; let md = 0, mi = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = segDist(pts[i].x, pts[i].y, a.x, a.y, b.x, b.y).d; if (d > md) { md = d; mi = i; } }
+  if (md > eps) { const l = rdp(pts.slice(0, mi + 1), eps), r = rdp(pts.slice(mi), eps); return l.slice(0, -1).concat(r); }
+  return [a, b];
+}
+const clampW = p => { p.x = Math.max(0, Math.min(W, p.x)); p.y = Math.max(0, Math.min(H, p.y)); return p; };
+function strokeLen(raw) { let l = 0; for (let i = 1; i < raw.length; i++) l += Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y); return l; }
+function barsOf(m, openDoors) {
+  const out = m.walls.map(s => ({ ax: s.ax, ay: s.ay, bx: s.bx, by: s.by, hw: HT }));
+  m.items.forEach((it, i) => { if (it.t === 'door' && !(openDoors && openDoors.has(i))) out.push({ ax: it.x, ay: it.y, bx: it.x2, by: it.y2, hw: HT + 1, door: i, n: it.n }); });
+  return out;
+}
+// nét tay → các đoạn thẳng: giản lược, bắt góc 0/45/90°. KHÔNG tự nối vào tường khác (Nam dặn 11-17).
+function straighten(raw, single) {
+  if (raw.length < 2 || strokeLen(raw) < 18) return null;
+  const pts = single ? [raw[0], raw[raw.length - 1]] : rdp(raw, 16);
+  const kept = [pts[0]];
+  for (let i = 1; i < pts.length; i++) { const p = pts[i], q = kept[kept.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) < 16 && i < pts.length - 1) continue; kept.push(p); }
+  const res = [{ x: kept[0].x, y: kept[0].y }];
+  for (let i = 1; i < kept.length; i++) {
+    const p = kept[i - 1], q = kept[i];
+    let ang = Math.atan2(q.y - p.y, q.x - p.x); const l = Math.hypot(q.x - p.x, q.y - p.y);
+    const s = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4); if (Math.abs(ang - s) < 0.21) ang = s;
+    const pr = res[res.length - 1]; res.push({ x: pr.x + Math.cos(ang) * l, y: pr.y + Math.sin(ang) * l });
+  }
+  return res.map(clampW);
+}
+function commitPending() {
+  if (!maze.pending.length) return 0;
+  pushUndo(); let n = 0;
+  for (const raw of maze.pending) {
+    const pts = straighten(raw); if (!pts) continue;
+    for (let i = 1; i < pts.length; i++) { maze.walls.push({ ax: Math.round(pts[i - 1].x), ay: Math.round(pts[i - 1].y), bx: Math.round(pts[i].x), by: Math.round(pts[i].y) }); n++; }
+    ghosts.push({ pts: raw, t0: performance.now() });
+  }
+  maze.pending = []; bgDirty = true; save(); play('snap', 0.6); refreshPanel();
+  return n;
+}
+
+// ====================== lưới + dò đường ======================
+function buildGrid(bars) {
+  const g = new Uint8Array(GW * GH);
+  for (let cy = 0; cy < GH; cy++) for (let cx = 0; cx < GW; cx++) {
+    const x = cx * G + G / 2, y = cy * G + G / 2;
+    g[cy * GW + cx] = (x < CLR || y < CLR || x > W - CLR || y > H - CLR) ? 0 : 1;
+  }
+  for (const b of bars) {
+    const r = CLR + (b.hw - HT);
+    const x0 = Math.max(0, Math.floor((Math.min(b.ax, b.bx) - r) / G)), x1 = Math.min(GW - 1, Math.floor((Math.max(b.ax, b.bx) + r) / G));
+    const y0 = Math.max(0, Math.floor((Math.min(b.ay, b.by) - r) / G)), y1 = Math.min(GH - 1, Math.floor((Math.max(b.ay, b.by) + r) / G));
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++)
+      if (segDist(cx * G + G / 2, cy * G + G / 2, b.ax, b.ay, b.bx, b.by).d < r) g[cy * GW + cx] = 0;
+  }
+  return g;
+}
+const cellOf = (x, y) => Math.max(0, Math.min(GH - 1, Math.floor(y / G))) * GW + Math.max(0, Math.min(GW - 1, Math.floor(x / G)));
+const cx_ = c => (c % GW) * G + G / 2, cy_ = c => ((c / GW) | 0) * G + G / 2;
+function seedCell(grid, x, y) {
+  const c0 = cellOf(x, y); if (grid[c0]) return c0;
+  let best = -1, bd = 1e9; const ccx = c0 % GW, ccy = (c0 / GW) | 0;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const nx = ccx + dx, ny = ccy + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    const c = ny * GW + nx; if (!grid[c]) continue; const d = Math.hypot(cx_(c) - x, cy_(c) - y); if (d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+function portalPartner(m, idx) {
+  const p = m.items[idx]; if (!p || p.t !== 'portal') return -1;
+  const same = []; m.items.forEach((it, i) => { if (it.t === 'portal' && it.n === p.n) same.push(i); });
+  if (same.length < 2) return -1;
+  return same[(same.indexOf(idx) + 1) % same.length];
+}
+function portalLinks(m, grid) {   // ô cửa portal → ô portal bên kia (đi xuôi)
+  const L = new Map();
+  m.items.forEach((it, i) => {
+    if (it.t !== 'portal') return; const pi = portalPartner(m, i); if (pi < 0) return;
+    const to = seedCell(grid, m.items[pi].x, m.items[pi].y), from = seedCell(grid, it.x, it.y); if (to < 0 || from < 0) return;
+    (L.get(from) || L.set(from, []).get(from)).push(to);
+  });
+  return L;
+}
+const flip = L => { const r = new Map(); for (const [a, bs] of L) for (const b of bs) (r.get(b) || r.set(b, []).get(b)).push(a); return r; };
+// khoảng cách từ seeds; jumps: ô → các ô nhảy tới được trong 1 bước
+function field(grid, seeds, jumps) {
+  const d = new Int32Array(GW * GH).fill(-1), q = new Int32Array(GW * GH); let h = 0, t = 0;
+  for (const s of seeds) if (s >= 0 && grid[s] && d[s] < 0) { d[s] = 0; q[t++] = s; }
+  while (h < t) {
+    const c = q[h++], ccx = c % GW, ccy = (c / GW) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx; if (!grid[n] || d[n] >= 0) continue;
+      if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue;
+      d[n] = d[c] + 1; q[t++] = n;
+    }
+    if (jumps) { const L = jumps.get(c); if (L) for (const n of L) if (grid[n] && d[n] < 0) { d[n] = d[c] + 1; q[t++] = n; } }
+  }
+  return d;
+}
+// có đường ra: đi từ Start, lượm chìa → mở cửa cùng số → lặp
+function wayOut(m) {
+  const st = m.items.find(i => i.t === 'start'), ex = m.items.find(i => i.t === 'exit');
+  if (!st || !ex) return { ok: false, why: !st ? 'Put a Start first!' : 'Put an Exit first!' };
+  const have = new Set();
+  for (let it = 0; it < 8; it++) {
+    const open = new Set(); m.items.forEach((x, i) => { if (x.t === 'door' && have.has(x.n)) open.add(i); });
+    const grid = buildGrid(barsOf(m, open));
+    const d = field(grid, [seedCell(grid, st.x, st.y)], portalLinks(m, grid));
+    const at = o => { const c = seedCell(grid, o.x, o.y); return c >= 0 && d[c] >= 0; };
+    if (at(ex)) return { ok: true };
+    let changed = false;
+    m.items.forEach(k => { if (k.t === 'key' && !have.has(k.n) && at(k)) { have.add(k.n); changed = true; } });
+    if (!changed) break;
+  }
+  return { ok: false, why: 'No way out! 🤔' };
+}
+
+// ====================== tiếng ======================
+const SFX = { ctx: null, buf: {}, log: [], master: null, loops: {} };
+const AC = window.AudioContext || window.webkitAudioContext;
+function audioInit() {
+  if (SFX.ctx || !AC) return;
+  try { SFX.ctx = new AC(); SFX.master = SFX.ctx.createGain(); SFX.master.gain.value = 0.9; SFX.master.connect(SFX.ctx.destination); } catch (e) { SFX.ctx = null; }
+}
+function unlock() { audioInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); }
+addEventListener('pointerdown', unlock, true); addEventListener('touchend', unlock, true); addEventListener('keydown', unlock, true);
+// tiếng hét của từng em = đúng bộ Nam chọn bên Bon's Smash (11-16), kéo giọng theo em
+const SCREAM_PITCH = { froggy: 0.85, chicken: 1.05, babyfrog: 1.3, pillow: 1.15 };
+function soundSrc(key) {
+  if (key.startsWith('scream_')) return ((window.SMASH_SOUNDS || {}).scream || {})[key.slice(7)];
+  return (window.MAZE_SOUNDS || {})[key];
+}
+function scream(id, vol) { play('scream_' + id, vol == null ? 1 : vol, SCREAM_PITCH[id] || 1); }
+function decode(key, cb) {
+  if (SFX.buf[key]) { cb(SFX.buf[key]); return; }
+  const src = soundSrc(key); if (!SFX.ctx || !src) return;
+  const bin = atob(src.split(',')[1]), arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  SFX.ctx.decodeAudioData(arr.buffer, b => { SFX.buf[key] = b; cb(b); }, () => SFX.log.push('decodeErr:' + key));
+}
+function play(key, vol, rate, delay) {
+  SFX.log.push(key);
+  if (set.mute[key] || !SFX.ctx) return;
+  decode(key, b => {
+    const s = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+    s.buffer = b; s.playbackRate.value = rate || 1; g.gain.value = vol == null ? 1 : vol;
+    s.connect(g); g.connect(SFX.master); s.start(SFX.ctx.currentTime + (delay || 0));
+  });
+}
+function loopOn(key, vol) {
+  if (!SFX.loops[key]) SFX.log.push('loop:' + key);
+  if (SFX.loops[key] || set.mute[key] || !SFX.ctx) { if (SFX.loops[key] && SFX.loops[key].g) SFX.loops[key].g.gain.setTargetAtTime(vol, SFX.ctx.currentTime, 0.4); return; }
+  SFX.loops[key] = { pending: true };
+  decode(key, b => {
+    if (!SFX.loops[key] || !SFX.loops[key].pending) return;
+    const s = SFX.ctx.createBufferSource(), g = SFX.ctx.createGain();
+    s.buffer = b; s.loop = true; g.gain.value = 0; g.gain.setTargetAtTime(vol, SFX.ctx.currentTime, 0.6);
+    s.connect(g); g.connect(SFX.master); s.start(); SFX.loops[key] = { s, g };
+  });
+}
+function loopOff(key) {
+  const L = SFX.loops[key]; if (!L) return; delete SFX.loops[key];
+  if (L.s) { L.g.gain.setTargetAtTime(0, SFX.ctx.currentTime, 0.3); const s = L.s; setTimeout(() => { try { s.stop(); } catch (e) {} }, 1500); }
+}
+function allLoopsOff() { Object.keys(SFX.loops).forEach(loopOff); }
+
+// ====================== hình 4 bạn (tấm chụp Blender, giống Bon's Smash) ======================
+const FROG_IMG = {}, FRIEND_IMG = {}, FRIEND_META = {};
+for (const k of Object.keys(window.FROG_SPRITES || {})) { const im = new Image(); im.src = FROG_SPRITES[k]; FROG_IMG[k] = im; }
+for (const id of Object.keys(window.FRIEND_SPRITES || {})) {
+  FRIEND_IMG[id] = {}; FRIEND_META[id] = FRIEND_SPRITES[id].meta;
+  for (const k of Object.keys(FRIEND_SPRITES[id].img)) { const im = new Image(); im.src = FRIEND_SPRITES[id].img[k]; FRIEND_IMG[id][k] = im; }
+}
+const ok = im => im && im.complete && im.naturalWidth > 0;
+function part(c, id, name, x, z, ang, r) {
+  const im = FRIEND_IMG[id][name], m = FRIEND_META[id][name]; if (!ok(im) || !m) return;
+  const sz = m[0] * r; c.save(); c.translate(x * r, -z * r); if (ang) c.rotate(ang);
+  c.drawImage(im, m[1] * r - sz / 2, -m[2] * r - sz / 2, sz, sz); c.restore();
+}
+const PILLOW_POSE = { ouch: ['tense', 0.78, 1.2], idle: ['idle', 1, 1], blink: ['idle', 1, 1], panic: ['tense', 0.78, 1.2] };
+function drawFriendAt(c, id, face, r, wob) {
+  if (id === 'froggy') { const im = FROG_IMG[face] || FROG_IMG.idle; if (!ok(im)) return; const sz = 3.4 * r; c.drawImage(im, -sz / 2, -sz / 2 - 0.15 * r, sz, sz); }
+  else if (id === 'chicken') {
+    for (let s = -1; s <= 1; s += 2) part(c, id, 'leg', s * 0.3, -0.9, (wob || 0) * s * 0.4, r);
+    part(c, id, FRIEND_IMG.chicken[face] ? face : 'idle', 0, 0, 0, r);
+    const petals = [Math.PI / 2 - 0.95, Math.PI / 2 - 0.32, Math.PI / 2 + 0.32, Math.PI / 2 + 0.95];
+    c.save(); c.translate(0, 0.55 * r);
+    petals.forEach((b, i) => part(c, id, i === 1 || i === 2 ? 'petalA' : 'petalB', 0, 0, b - Math.PI / 2 + (wob || 0) * (i < 2 ? -0.3 : 0.3), r));
+    c.restore(); part(c, id, 'hat', 0, 1.02 + Math.max(0, wob || 0) * 0.3, 0, r);
+  } else if (id === 'babyfrog') {
+    part(c, id, FRIEND_IMG.babyfrog[face] ? face : 'idle', 0, 0, 0, r);
+    part(c, id, 'cup', 0.02, -0.32, (wob || 0) * 0.3, r); part(c, id, 'crown', 0, 0.84 + Math.max(0, wob || 0) * 0.3, 0, r);
+  } else {
+    const [pose, kx, kz] = PILLOW_POSE[face] || PILLOW_POSE.idle;
+    for (const [n, sx, sz] of [['cornerTL', -1, 1], ['cornerTR', 1, 1], ['cornerBL', -1, -1], ['cornerBR', 1, -1]]) part(c, id, n, sx * 0.98 * kx, sz * 0.56 * kz, -sx * (wob || 0) * 0.5, r);
+    part(c, id, pose, 0, 0, 0, r);
+  }
+}
+function thumb(id, size) {
+  const cvs = document.createElement('canvas'); cvs.width = size * 2; cvs.height = size * 2;
+  const g = cvs.getContext('2d'); g.translate(size, size * 1.08);
+  const go = () => { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cvs.width, cvs.height); g.restore(); drawFriendAt(g, id, 'idle', size * 0.6, 0); };
+  go(); setTimeout(go, 200); setTimeout(go, 800); return cvs;
+}
+
+// ====================== nền đá + tường (vẽ sẵn) ======================
+let bg = null, bgDirty = true, bgK = 1;
+let seedR = 7; const rnd = () => { seedR = (seedR * 16807) % 2147483647; return (seedR - 1) / 2147483646; };
+function drawFloor(g) {
+  seedR = 7; g.fillStyle = '#121419'; g.fillRect(0, 0, W, H);
+  const S = 50;
+  for (let y = 0; y < H / S; y++) for (let x = 0; x <= W / S; x++) {
+    const ox = (y % 2) * S / 2, v = rnd();
+    g.fillStyle = `rgb(${34 + v * 16 | 0},${37 + v * 16 | 0},${46 + v * 18 | 0})`;
+    g.beginPath(); g.roundRect ? g.roundRect(x * S - ox + 2, y * S + 2, S - 4, S - 4, 6) : g.rect(x * S - ox + 2, y * S + 2, S - 4, S - 4); g.fill();
+    if (rnd() < 0.25) { g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; g.beginPath(); const sx = x * S - ox + 8 + rnd() * 30, sy = y * S + 8 + rnd() * 30; g.moveTo(sx, sy); g.lineTo(sx + rnd() * 14 - 7, sy + 8); g.lineTo(sx + rnd() * 14 - 4, sy + 16); g.stroke(); }
+    if (rnd() < 0.18) { g.fillStyle = 'rgba(70,120,80,.18)'; for (let k = 0; k < 6; k++) { g.beginPath(); g.arc(x * S - ox + rnd() * S, y * S + rnd() * S, 2 + rnd() * 4, 0, 7); g.fill(); } }
+  }
+}
+function strokeSegs(g, segs, w, color, dx, dy) {
+  g.strokeStyle = color; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); for (const s of segs) { g.moveTo(s.ax + dx, s.ay + dy); g.lineTo(s.bx + dx, s.by + dy); } g.stroke();
+}
+function rebuildBg() {
+  // trần số điểm ảnh: iPad từ chối canvas quá to (~16 triệu điểm)
+  bgK = Math.max(0.6, Math.min(2.2, cam.z * dpr, Math.sqrt(11e6 / (W * H))));
+  if (!bg) bg = document.createElement('canvas');
+  bg.width = Math.round(W * bgK); bg.height = Math.round(H * bgK);
+  const g = bg.getContext('2d'); g.setTransform(bgK, 0, 0, bgK, 0, 0);
+  drawFloor(g);
+  const border = [{ ax: 0, ay: 0, bx: W, by: 0 }, { ax: W, ay: 0, bx: W, by: H }, { ax: W, ay: H, bx: 0, by: H }, { ax: 0, ay: H, bx: 0, by: 0 }];
+  const segs = maze.walls.concat(border);
+  strokeSegs(g, segs, HT * 2 + 12, 'rgba(0,0,0,.45)', 5, 7);
+  strokeSegs(g, segs, HT * 2 + 3, '#2c303b', 0, 0);
+  strokeSegs(g, segs, HT * 2 - 2, '#4d5363', 0, 0);
+  strokeSegs(g, segs, 3, '#737b90', -1.5, -2);
+  bgDirty = false;
+}
+
+// ====================== camera ======================
+// phóng theo DIỆN TÍCH màn (không theo cạnh hẹp) → em bé to đều cả iPad ngang lẫn dọc
+function baseZoom() { return Math.max(0.8, Math.min(1.6, Math.sqrt(cssW * cssH) / Math.sqrt(820 * 620))); }
+function fitZoom() { return Math.min(cssW / W, cssH / H) * 0.97; }
+function clampCam() {
+  const vw = cssW / cam.z, vh = cssH / cam.z;
+  cam.x = vw >= W ? -(vw - W) / 2 : Math.max(0, Math.min(W - vw, cam.x));
+  cam.y = vh >= H ? -(vh - H) / 2 : Math.max(0, Math.min(H - vh, cam.y));
+}
+function setZoom(z, keepX, keepY) {   // giữ điểm (keepX,keepY) đứng yên trên màn
+  const sx = (keepX - cam.x) * cam.z, sy = (keepY - cam.y) * cam.z;
+  cam.z = z; cam.x = keepX - sx / z; cam.y = keepY - sy / z; clampCam(); bgDirty = true;
+}
+function centerOn(x, y) { cam.x = x - cssW / cam.z / 2; cam.y = y - cssH / cam.z / 2; clampCam(); }
+function resize() {
+  const r = stage.getBoundingClientRect(); cssW = r.width; cssH = r.height;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  cam.z = cam.fit ? fitZoom() : baseZoom(); clampCam();
+  dk.width = Math.ceil(cssW / 2); dk.height = Math.ceil(cssH / 2);
+  bgDirty = true;
+}
+addEventListener('resize', () => resize());
+const toWorld = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / cam.z + cam.x, y: (e.clientY - r.top) / cam.z + cam.y }; };
+
+// ====================== bảng nút ======================
+const nums = $('nums');
+[1, 2, 3, 4].forEach(n => { const b = document.createElement('button'); b.className = 'num'; b.textContent = n; b.style.background = COLORS[n]; b.dataset.n = n; nums.appendChild(b); });
+function lightBtn(el, onv) { el.classList.toggle('off', !onv); el.querySelector('.ic').textContent = onv ? '💡' : '🌑'; el.lastElementChild.textContent = onv ? 'Light ON' : 'Light OFF'; }
+function refreshPanel() {
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  document.querySelectorAll('.num').forEach(b => b.classList.toggle('on', +b.dataset.n === num));
+  document.querySelectorAll('.sp').forEach(b => b.classList.toggle('on', b.dataset.sp === maze.speed));
+  $('pDraw').classList.toggle('hide', mode !== 'draw'); $('pPlay').classList.toggle('hide', mode === 'draw');
+  const pn = maze.pending.length; $('pendN').textContent = pn; $('pendN').classList.toggle('hide', !pn); $('doneBtn').classList.toggle('glow', pn > 0);
+  $('seeAll').classList.toggle('on', cam.fit);
+  $('biggerBtn').style.opacity = (W >= MAXW && H >= MAXH) ? 0.4 : 1;
+  lightBtn($('lightDraw'), maze.light === 'on'); lightBtn($('lightPlay'), game.light === 'on');
+  setHint();
+}
+const HINTS = {
+  wall: 'Draw your walls, then tap ✅ Done', erase: 'Rub over a wall or a thing to erase it',
+  start: 'Tap where the baby starts', exit: 'Tap where the way out is', key: 'Tap to put a key (pick a number)',
+  door: 'Draw a short line across a path for a door', portal: 'Tap two portals with the same number',
+  snake: 'Tap to add a snake 🐍', baby: 'Tap to add a baby chaser 🧸', move: 'Slide to look around the maze',
+};
+let hintOverride = null, hintT = 0;
+function setHint(msg, secs) {
+  if (msg) { hintOverride = msg; hintT = performance.now() + (secs || 2500); }
+  const h = (hintOverride && performance.now() < hintT) ? hintOverride : (mode === 'draw' ? HINTS[tool] : (mode === 'play' ? 'Slide your finger anywhere to move' : ''));
+  if ($('hint').textContent !== h) $('hint').textContent = h;
+}
+document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; refreshPanel(); }));
+nums.addEventListener('click', e => { const b = e.target.closest('.num'); if (b) { num = +b.dataset.n; if (!['key', 'door', 'portal'].includes(tool)) tool = 'key'; refreshPanel(); } });
+$('speeds').addEventListener('click', e => { const b = e.target.closest('.sp'); if (b) { maze.speed = b.dataset.sp; save(); refreshPanel(); } });
+$('undo').addEventListener('click', () => { if (!undoStack.length) return; maze = JSON.parse(undoStack.pop()); setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); });
+$('doneBtn').addEventListener('click', () => { const n = commitPending(); setHint(n ? 'Walls made straight! ✨' : 'Draw some walls first ✏️'); });
+$('seeAll').addEventListener('click', () => { cam.fit = !cam.fit; const cx = cam.x + cssW / cam.z / 2, cy = cam.y + cssH / cam.z / 2; cam.z = cam.fit ? fitZoom() : baseZoom(); centerOn(cx, cy); bgDirty = true; refreshPanel(); });
+$('biggerBtn').addEventListener('click', () => {
+  if (W >= MAXW && H >= MAXH) { setHint('This is the biggest maze!'); return; }
+  pushUndo(); maze.w = Math.min(MAXW, Math.round(W * 1.5)); maze.h = Math.min(MAXH, Math.round(H * 1.5)); setWorld(maze.w, maze.h);
+  if (cam.fit) cam.z = fitZoom(); clampCam(); save(); refreshPanel(); setHint('Bigger maze! Use ✋ Move to look around');
+});
+$('clearBtn').addEventListener('click', () => { if (!maze.walls.length && !maze.items.length && !maze.pending.length) return; pushUndo(); const l = maze.light; maze = emptyMaze(); maze.light = l; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); setHint('All clear! (Undo brings it back)'); });
+$('lightDraw').addEventListener('click', () => { maze.light = maze.light === 'on' ? 'off' : 'on'; save(); refreshPanel(); });
+$('lightPlay').addEventListener('click', () => { game.light = game.light === 'on' ? 'off' : 'on'; play('lock', 0.4, 1.6); syncLoops(); refreshPanel(); });
+$('playBtn').addEventListener('click', () => {
+  if (maze.pending.length) commitPending();          // còn nét chưa bấm Done → nắn luôn trước khi chơi
+  const w = wayOut(maze); if (!w.ok) { setHint(w.why, 3000); flashWhy = performance.now(); return; }
+  showPick();
+});
+$('editBtn').addEventListener('click', () => toDraw());
+$('restartBtn').addEventListener('click', () => startPlay(game.friend));
+$('again').addEventListener('click', () => { $('end').classList.add('hide'); startPlay(game.friend); });
+$('toEdit').addEventListener('click', () => { $('end').classList.add('hide'); toDraw(); });
+let flashWhy = 0;
+function showPick() {
+  const box = $('picks'); box.innerHTML = '';
+  FRIENDS.forEach(id => {
+    const b = document.createElement('button'); b.className = 'pk'; b.dataset.f = id;
+    b.appendChild(thumb(id, 48)); const s = document.createElement('span'); s.textContent = FNAME[id]; b.appendChild(s);
+    b.addEventListener('click', () => { $('pick').classList.add('hide'); startPlay(id); });
+    box.appendChild(b);
+  });
+  $('pick').classList.remove('hide');
+}
+
+// ====================== VẼ ======================
+let stroke = null, ghosts = [], tapStart = null, erasing = false, panFrom = null;
+function nearestItem(p, r) {
+  let bi = -1, bd = r;
+  maze.items.forEach((it, i) => { const d = it.t === 'door' ? segDist(p.x, p.y, it.x, it.y, it.x2, it.y2).d : Math.hypot(it.x - p.x, it.y - p.y); if (d < bd) { bd = d; bi = i; } });
+  return bi;
+}
+function eraseAt(p) {
+  const wi = maze.walls.findIndex(s => segDist(p.x, p.y, s.ax, s.ay, s.bx, s.by).d < 16);
+  const pi = maze.pending.findIndex(raw => raw.some((q, i) => i && segDist(p.x, p.y, raw[i - 1].x, raw[i - 1].y, q.x, q.y).d < 16));
+  const ii = nearestItem(p, 26);
+  if ((wi >= 0 || ii >= 0 || pi >= 0) && !erasing) { pushUndo(); erasing = true; }
+  if (wi >= 0) { maze.walls.splice(wi, 1); bgDirty = true; }
+  if (pi >= 0) maze.pending.splice(pi, 1);
+  if (ii >= 0) maze.items.splice(ii, 1);
+  if (wi >= 0 || ii >= 0 || pi >= 0) { save(); refreshPanel(); }
+}
+function placeAt(p) {
+  clampW(p); const t = tool;
+  if (!['start', 'exit', 'key', 'portal', 'snake', 'baby'].includes(t)) return;
+  pushUndo();
+  if (t === 'start' || t === 'exit') maze.items = maze.items.filter(i => i.t !== t);
+  const it = { t, x: Math.round(p.x), y: Math.round(p.y) };
+  if (t === 'key' || t === 'portal') it.n = num;
+  maze.items.push(it); save(); play('snap', 0.5);
+  if (t === 'portal') { const cnt = maze.items.filter(i => i.t === 'portal' && i.n === num).length; setHint(cnt % 2 ? 'Now tap the other portal ' + num : 'Portal ' + num + ' connected! ✨'); }
+}
+function finishStroke() {
+  const raw = stroke; stroke = null; if (!raw) return;
+  if (tool === 'door') {
+    const pts = straighten(raw, true); if (!pts) { setHint('Drag a line across the path'); return; }
+    pushUndo(); const a = pts[0], b = pts[1];
+    maze.items.push({ t: 'door', x: Math.round(a.x), y: Math.round(a.y), x2: Math.round(b.x), y2: Math.round(b.y), n: num }); save(); play('snap', 0.45); return;
+  }
+  if (raw.length < 2 || strokeLen(raw) < 18) return;
+  pushUndo(); maze.pending.push(raw.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }))); save(); refreshPanel();
+}
+
+// ====================== CHƠI ======================
+const game = { friend: 'froggy', light: 'off' };
+let P = null, chasers = [], grid = null, links = null, fieldP = null, fieldT = 0, openDoors = new Set(), keys = new Set(), fx = [];
+let joy = null, keysDown = {}, heartT = 0, hissT = 0, lastT = 0, dark = { blackout: 0, nextBlack: 0 };
+function rebuildPlayGrid() { grid = buildGrid(barsOf(maze, openDoors)); links = portalLinks(maze, grid); fieldT = 0; }
+function syncLoops() { if (mode !== 'play' || game.over) return; loopOn('amb', game.light === 'on' ? 0.35 : 0.55); if (game.light === 'off' && set.dark !== 'A') loopOn('wind', 0.22); else loopOff('wind'); }
+function startPlay(friendId) {
+  game.friend = friendId; mode = 'play'; game.over = false; game.light = maze.light || 'off';
+  cam.fit = false; cam.z = baseZoom();
+  const st = maze.items.find(i => i.t === 'start');
+  P = { x: st.x, y: st.y, vx: 0, vy: 0, face: 1, moving: 0, stepT: 0, lock: -1, scared: 0 };
+  centerOn(P.x, P.y); bgDirty = true;
+  openDoors = new Set(); keys = new Set(); fx = []; ghosts = [];
+  rebuildPlayGrid();
+  const others = FRIENDS.filter(f => f !== friendId); let oi = 0;
+  chasers = maze.items.filter(i => i.t === 'snake' || i.t === 'baby').map(i => ({ kind: i.t, x: i.x, y: i.y, ang: Math.PI, trail: [], lock: -1, friend: i.t === 'baby' ? others[(oi++) % others.length] : null, wig: Math.random() * 6 }));
+  dark.nextBlack = performance.now() + 5000 + Math.random() * 3000; dark.blackout = 0; heartT = 0; hissT = 0;
+  refreshInv(); refreshPanel(); unlock(); syncLoops();
+}
+function toDraw() { mode = 'draw'; allLoopsOff(); joy = null; $('end').classList.add('hide'); refreshPanel(); }
+function refreshInv() {
+  const inv = $('inv'); inv.innerHTML = '';
+  if (!keys.size) { inv.textContent = 'none yet'; return; }
+  [...keys].sort().forEach(n => { const s = document.createElement('span'); s.textContent = '🔑' + n; s.style.cssText = `background:${COLORS[n]};color:#111;border-radius:8px;padding:3px 6px;font-weight:700;font-size:14px`; inv.appendChild(s); });
+}
+function collide(e, r) {
+  const bars = barsOf(maze, openDoors);
+  for (let it = 0; it < 3; it++) {
+    for (const b of bars) {
+      if (e.x < Math.min(b.ax, b.bx) - r - 10 || e.x > Math.max(b.ax, b.bx) + r + 10 || e.y < Math.min(b.ay, b.by) - r - 10 || e.y > Math.max(b.ay, b.by) + r + 10) continue;
+      const q = segDist(e.x, e.y, b.ax, b.ay, b.bx, b.by), m = r + b.hw;
+      if (q.d < m && q.d > 1e-6) { const k = (m - q.d) / q.d; e.x += (e.x - q.x) * k; e.y += (e.y - q.y) * k; }
+    }
+    e.x = Math.max(r + HT, Math.min(W - r - HT, e.x)); e.y = Math.max(r + HT, Math.min(H - r - HT, e.y));
+  }
+}
+function endGame(win) {
+  if (game.over) return; game.over = true; joy = null; allLoopsOff();
+  if (win) { play('win', 0.9); for (let i = 0; i < 60; i++) fx.push({ x: P.x, y: P.y, vx: (Math.random() - .5) * 260, vy: (Math.random() - .8) * 260, t: 0, life: 1.4, c: ['#ffd24d', '#7dffa8', '#4da3ff', '#ff8ad8'][i % 4] }); }
+  else scream(game.friend, 1);   // bị bắt → em đang chơi hét (thay tiếng thua, Nam dặn 11-17)
+  setTimeout(() => { if (mode !== 'play' || !game.over) return; $('endMsg').textContent = win ? 'You found the way out! 🌟' : (game.caughtBy === 'snake' ? 'The snake got you! 🐍' : 'Caught! Try again!'); $('end').classList.remove('hide'); }, win ? 1100 : 900);
+}
+function inputVec() {
+  let x = 0, y = 0;
+  if (joy) { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, l = Math.hypot(dx, dy); if (l > 6) { const k = Math.min(1, l / 55); x = dx / l * k; y = dy / l * k; } }
+  if (keysDown.ArrowLeft || keysDown.a) x -= 1; if (keysDown.ArrowRight || keysDown.d) x += 1;
+  if (keysDown.ArrowUp || keysDown.w) y -= 1; if (keysDown.ArrowDown || keysDown.s) y += 1;
+  if (TEST.auto) { const a = autopilot(); if (a) { x = a.x; y = a.y; } }
+  const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+  return { x, y };
+}
+function updatePlay(dt, now) {
+  // camera trượt theo em bé
+  const tx = P.x - cssW / cam.z / 2, ty = P.y - cssH / cam.z / 2, kc = Math.min(1, dt * 5);
+  cam.x += (tx - cam.x) * kc; cam.y += (ty - cam.y) * kc; clampCam();
+  if (game.over) { fx.forEach(f => { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 300 * dt; }); fx = fx.filter(f => f.t < f.life); return; }
+  const iv = inputVec();
+  const tvx = iv.x * PLAYER_SPEED, tvy = iv.y * PLAYER_SPEED, a = Math.min(1, dt * 12);
+  P.vx += (tvx - P.vx) * a; P.vy += (tvy - P.vy) * a;
+  const steps = Math.max(1, Math.ceil(Math.hypot(P.vx, P.vy) * dt / 6));
+  for (let s = 0; s < steps; s++) { P.x += P.vx * dt / steps; P.y += P.vy * dt / steps; collide(P, PR); }
+  const sp = Math.hypot(P.vx, P.vy); P.moving = sp > 20 ? P.moving + dt : 0;
+  if (Math.abs(P.vx) > 15) P.face = P.vx > 0 ? 1 : -1;
+  if (sp > 40) { P.stepT -= dt; if (P.stepT <= 0) { play('step', 0.35, 0.9 + Math.random() * 0.25); P.stepT = 0.34; } }
+  maze.items.forEach(it => { if (it.t === 'key' && !keys.has(it.n) && Math.hypot(it.x - P.x, it.y - P.y) < PR + 16) { keys.add(it.n); play('key', 0.9); refreshInv(); setHint('Got key ' + it.n + '! 🔑'); burst(it.x, it.y, COLORS[it.n]); } });
+  maze.items.forEach((it, i) => {
+    if (it.t !== 'door' || openDoors.has(i)) return;
+    const d = segDist(P.x, P.y, it.x, it.y, it.x2, it.y2).d;
+    if (d < PR + HT + 10) {
+      if (keys.has(it.n)) { openDoors.add(i); rebuildPlayGrid(); play('lock', 1); play('creak', 0.8, 1, 0.35); setHint('Door ' + it.n + ' open!'); burst((it.x + it.x2) / 2, (it.y + it.y2) / 2, COLORS[it.n]); }
+      else if (!it._warnT || now > it._warnT) { it._warnT = now + 2500; setHint('Need key ' + it.n + ' 🔑'); }
+    }
+  });
+  if (P.lock >= 0) { const L = maze.items[P.lock]; if (!L || Math.hypot(L.x - P.x, L.y - P.y) > 38) P.lock = -1; }
+  else maze.items.forEach((it, i) => {
+    if (P.lock >= 0 || it.t !== 'portal') return; const pi = portalPartner(maze, i); if (pi < 0) return;
+    if (Math.hypot(it.x - P.x, it.y - P.y) < 20) { burst(it.x, it.y, COLORS[it.n]); const to = maze.items[pi]; P.x = to.x; P.y = to.y; P.lock = pi; play(set.portalSnd, 0.9); burst(to.x, to.y, COLORS[it.n]); fieldT = 0; }
+  });
+  const ex = maze.items.find(i => i.t === 'exit'); if (ex && Math.hypot(ex.x - P.x, ex.y - P.y) < 28) { endGame(true); return; }
+  fieldT -= dt; if (fieldT <= 0) { fieldP = field(grid, [seedCell(grid, P.x, P.y)], set.snakePortal ? flip(links) : null); fieldT = 0.2; }
+  let nearest = 1e9; const spd = SPEEDS[maze.speed] || 110;
+  for (const c of chasers) {
+    if (TEST.freeze) break;
+    const r = c.kind === 'snake' ? SR : PR, v = spd * (c.kind === 'baby' ? 0.92 : 1);
+    const cc = cellOf(c.x, c.y);
+    const cur = grid[cc] ? fieldP[cc] : -1; let best = -1, bv = cur >= 0 ? cur : 1e9;
+    const ccx = cc % GW, ccy = (cc / GW) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx; if (!grid[n] || fieldP[n] < 0) continue;
+      if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue;
+      if (fieldP[n] < bv) { bv = fieldP[n]; best = n; }
+    }
+    let tx2, ty2;
+    if (best >= 0) { tx2 = cx_(best); ty2 = cy_(best); }
+    else if (cur === 0 || Math.hypot(P.x - c.x, P.y - c.y) < 60) { tx2 = P.x; ty2 = P.y; }
+    else { c.ang += (Math.random() - .5) * 2 * dt; tx2 = c.x + Math.cos(c.ang) * 30; ty2 = c.y + Math.sin(c.ang) * 30; }
+    if (set.snakePortal && c.lock < 0) maze.items.forEach((it, i) => {
+      if (c.lock >= 0 || it.t !== 'portal') return; const pi = portalPartner(maze, i); if (pi < 0) return;
+      const near = Math.hypot(it.x - c.x, it.y - c.y);
+      const to = maze.items[pi], tc = seedCell(grid, to.x, to.y); if (tc < 0 || fieldP[tc] < 0 || (cur >= 0 && fieldP[tc] >= cur - 1)) return;
+      if (near < 22) { c.x = to.x; c.y = to.y; c.lock = pi; c.trail = []; play(set.portalSnd, 0.5, 0.8); }
+      else if (near < 70) { tx2 = it.x; ty2 = it.y; }
+    });
+    if (c.lock >= 0) { const L = maze.items[c.lock]; if (!L || Math.hypot(L.x - c.x, L.y - c.y) > 40) c.lock = -1; }
+    const want = Math.atan2(ty2 - c.y, tx2 - c.x);
+    let da = want - c.ang; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const turn = (c.kind === 'snake' ? 5 : 9) * dt; c.ang += Math.max(-turn, Math.min(turn, da));
+    c.x += Math.cos(c.ang) * v * dt; c.y += Math.sin(c.ang) * v * dt; collide(c, r);
+    c.wig += dt * 9;
+    if (c.kind === 'snake') { const last = c.trail[0]; if (!last || Math.hypot(last.x - c.x, last.y - c.y) > 2) { c.trail.unshift({ x: c.x, y: c.y }); if (c.trail.length > 140) c.trail.length = 140; } }
+    const dpl = Math.hypot(P.x - c.x, P.y - c.y);
+    const pd = (grid[cc] && fieldP[cc] >= 0) ? fieldP[cc] * G : dpl * 1.5; nearest = Math.min(nearest, Math.max(dpl, pd));
+    if (dpl < PR + r - 5) { game.caughtBy = c.kind; endGame(false); return; }
+    if (c.kind === 'snake' && dpl < 180 && now > hissT) { hissT = now + 2600 + Math.random() * 1500; play('hiss', 0.75, 0.9 + Math.random() * 0.2); }
+  }
+  P.scared = nearest < 150 ? 1 : 0;
+  if (nearest < 520) { heartT -= dt; if (heartT <= 0) { const k = nearest / 520; play('heart', 0.35 + 0.65 * (1 - k), 1 + (1 - k) * 0.15); heartT = 0.32 + k * 0.85; } }
+  fx.forEach(f => { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.96; f.vy *= 0.96; }); fx = fx.filter(f => f.t < f.life);
+}
+function burst(x, y, c) { for (let i = 0; i < 18; i++) { const a = Math.random() * 6.3, s = 40 + Math.random() * 120; fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: 0.7, c }); } }
+// lái tự động (chỉ máy tự kiểm dùng)
+function autopilot() {
+  const ex = maze.items.find(i => i.t === 'exit');
+  const fromP = field(grid, [seedCell(grid, P.x, P.y)], links);
+  const can = it => { const c = seedCell(grid, it.x, it.y); return c >= 0 && fromP[c] >= 0; };
+  let seeds = null;
+  if (can(ex)) seeds = [seedCell(grid, ex.x, ex.y)];
+  else {
+    const dk2 = maze.items.map((it, i) => [it, i]).find(([it, i]) => it.t === 'door' && !openDoors.has(i) && keys.has(it.n));
+    if (dk2) { const d = dk2[0]; seeds = []; for (let c = 0; c < GW * GH; c++) if (grid[c] && fromP[c] >= 0 && segDist(cx_(c), cy_(c), d.x, d.y, d.x2, d.y2).d < 30) seeds.push(c); }
+    if (!seeds || !seeds.length) { const k = maze.items.find(it => it.t === 'key' && !keys.has(it.n) && can(it)); if (k) seeds = [seedCell(grid, k.x, k.y)]; }
+  }
+  if (!seeds || !seeds.length) return null;
+  const f = field(grid, seeds, flip(links)), cc = seedCell(grid, P.x, P.y); if (cc < 0) return null;
+  let best = -1, bv = f[cc] >= 0 ? f[cc] : 1e9; const ccx = cc % GW, ccy = (cc / GW) | 0;
+  for (let k = 0; k < 8; k++) { const nx = ccx + DX[k], ny = ccy + DY[k]; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const n = ny * GW + nx; if (!grid[n] || f[n] < 0) continue; if (k >= 4 && (!grid[ccy * GW + nx] || !grid[ny * GW + ccx])) continue; if (f[n] < bv) { bv = f[n]; best = n; } }
+  let tx, ty;
+  const pl = links.get(cc); if (pl && pl.some(n => f[n] >= 0 && f[n] < bv)) { const pt = maze.items.find(it => it.t === 'portal' && seedCell(grid, it.x, it.y) === cc); if (pt) { tx = pt.x; ty = pt.y; } }
+  if (tx == null) { if (best < 0) { const s = seeds[0]; tx = cx_(s); ty = cy_(s); } else { tx = cx_(best); ty = cy_(best); } }
+  const dx = tx - P.x, dy = ty - P.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l };
+}
+
+// ====================== VẼ HÌNH ======================
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawStart(g, it, t) {
+  g.save(); g.translate(it.x, it.y);
+  const gr = g.createRadialGradient(0, 0, 4, 0, 0, 32); gr.addColorStop(0, 'rgba(150,210,255,.35)'); gr.addColorStop(1, 'rgba(150,210,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 32, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(170,220,255,.7)'; g.lineWidth = 2; g.setLineDash([5, 5]); g.lineDashOffset = -t * 20; g.beginPath(); g.arc(0, 0, 25, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = 'rgba(200,230,255,.85)'; g.font = '700 12px Fredoka,sans-serif'; g.textAlign = 'center'; g.fillText('START', 0, 42);
+  g.restore();
+}
+function drawExit(g, it, t) {
+  g.save(); g.translate(it.x, it.y);
+  const pul = 1 + Math.sin(t * 3) * 0.08;
+  const gr = g.createRadialGradient(0, 0, 2, 0, 0, 50 * pul); gr.addColorStop(0, 'rgba(140,255,200,.75)'); gr.addColorStop(0.4, 'rgba(60,220,170,.3)'); gr.addColorStop(1, 'rgba(60,220,170,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 50 * pul, 0, 7); g.fill();
+  g.fillStyle = '#2a2f3a'; rr(g, -22, -24, 44, 44, 6); g.fill();
+  g.fillStyle = '#0d2a22'; g.beginPath(); g.moveTo(-13, 16); g.lineTo(-13, -6); g.arc(0, -6, 13, Math.PI, 0); g.lineTo(13, 16); g.closePath(); g.fill();
+  const ig = g.createLinearGradient(0, -18, 0, 14); ig.addColorStop(0, '#b6ffe0'); ig.addColorStop(1, '#2fd59a'); g.fillStyle = ig; g.globalAlpha = 0.65 + Math.sin(t * 4) * 0.2;
+  g.beginPath(); g.moveTo(-10, 16); g.lineTo(-10, -6); g.arc(0, -6, 10, Math.PI, 0); g.lineTo(10, 16); g.closePath(); g.fill(); g.globalAlpha = 1;
+  g.fillStyle = 'rgba(190,255,225,.9)'; g.font = '700 12px Fredoka,sans-serif'; g.textAlign = 'center'; g.fillText('EXIT', 0, 38);
+  g.restore();
+}
+function drawKey(g, it, t) {
+  if (mode === 'play' && keys.has(it.n)) return;
+  const c = COLORS[it.n]; g.save(); g.translate(it.x, it.y + Math.sin(t * 3 + it.x) * 2.5); g.scale(1.25, 1.25); g.rotate(-0.5);
+  g.shadowColor = c; g.shadowBlur = 14; g.strokeStyle = c; g.fillStyle = c; g.lineWidth = 4;
+  g.beginPath(); g.arc(-8, 0, 7, 0, 7); g.stroke(); g.beginPath(); g.moveTo(-1, 0); g.lineTo(16, 0); g.stroke();
+  g.fillRect(9, 0, 3, 7); g.fillRect(14, 0, 3, 5);
+  g.shadowBlur = 0; g.rotate(0.5); g.fillStyle = '#fff'; g.font = '700 10px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(it.n, -8 * Math.cos(-0.5), -8 * Math.sin(-0.5) + 0.5); g.restore();
+}
+function drawDoor(g, it, i) {
+  const c = COLORS[it.n], open = mode === 'play' && openDoors.has(i);
+  g.save(); g.lineCap = 'round';
+  if (open) { g.globalAlpha = 0.28; g.setLineDash([6, 6]); g.strokeStyle = c; g.lineWidth = 3; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke(); g.restore(); return; }
+  g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 20; g.beginPath(); g.moveTo(it.x + 4, it.y + 6); g.lineTo(it.x2 + 4, it.y2 + 6); g.stroke();
+  g.shadowColor = c; g.shadowBlur = 10; g.strokeStyle = c; g.lineWidth = 15; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke();
+  g.shadowBlur = 0; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.setLineDash([3, 7]); g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke(); g.setLineDash([]);
+  g.translate((it.x + it.x2) / 2, (it.y + it.y2) / 2);
+  g.strokeStyle = '#d9dbe6'; g.lineWidth = 3; g.beginPath(); g.arc(0, -7, 6, Math.PI, 0); g.stroke();
+  rr(g, -9, -6, 18, 15, 3); g.fillStyle = '#e7e9f2'; g.fill();
+  g.fillStyle = c; g.font = '700 11px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(it.n, 0, 2);
+  g.restore();
+}
+function drawPortal(g, it, i, t) {
+  const c = COLORS[it.n], pi = portalPartner(maze, i);
+  g.save(); g.translate(it.x, it.y);
+  const gr = g.createRadialGradient(0, 0, 2, 0, 0, 32); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.globalAlpha = pi < 0 ? 0.45 : 0.9; g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 32, 0, 7); g.fill();
+  g.strokeStyle = c; g.lineWidth = 3;
+  for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(0, 0, 13 + k * 6, t * (2 + k) + k, t * (2 + k) + k + 3.6); g.stroke(); }
+  g.globalAlpha = 1; g.fillStyle = '#0b0c12'; g.beginPath(); g.arc(19, -19, 9, 0, 7); g.fill();
+  g.fillStyle = c; g.font = '700 12px Fredoka,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(it.n, 19, -18.5);
+  g.restore();
+}
+// ----- rắn lục: thân xanh lá tươi, có RẰN (vằn đậm) + sọc vàng nhạt dọc lưng, đầu tam giác -----
+const SEG = 6, NSEG = 26;
+function snakePts(c) {
+  const out = [{ x: c.x, y: c.y }]; let need = SEG, acc = 0;
+  for (let i = 1; i < c.trail.length && out.length < NSEG; i++) {
+    const a = c.trail[i - 1], b = c.trail[i], d = Math.hypot(b.x - a.x, b.y - a.y); acc += d;
+    while (acc >= need && out.length < NSEG) { const k = 1 - (acc - need) / (d || 1); out.push({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }); need += SEG; }
+  }
+  while (out.length < NSEG) { const l = out[out.length - 1]; out.push({ x: l.x - Math.cos(c.ang) * SEG, y: l.y - Math.sin(c.ang) * SEG }); }
+  for (let i = 1; i < out.length; i++) { const w = Math.sin(c.wig - i * 0.55) * Math.min(1, i / 4) * 4; out[i].x += -Math.sin(c.ang) * w; out[i].y += Math.cos(c.ang) * w; }
+  return out;
+}
+function drawSnake(g, pts, t, ang) {
+  const n = pts.length, wd = i => SR * 1.7 * (1 - Math.pow(i / (n - 1), 1.4) * 0.85);
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  const pass = (color, f, dx, dy) => { g.strokeStyle = color; for (let i = n - 1; i >= 1; i--) { g.lineWidth = f(i); g.beginPath(); g.moveTo(pts[i].x + dx, pts[i].y + dy); g.lineTo(pts[i - 1].x + dx, pts[i - 1].y + dy); g.stroke(); } };
+  pass('rgba(0,0,0,.4)', i => wd(i) + 2, 4, 6);         // bóng
+  pass('#123d0d', i => wd(i) + 3, 0, 0);               // viền
+  pass('#4fb52a', wd, 0, 0);                           // thân xanh lục
+  pass('#7fd84a', i => wd(i) * 0.45, -1, -1);          // sáng trên lưng
+  // rằn: vằn chéo xanh đậm cắt ngang thân
+  for (let i = 2; i < n - 1; i += 2) {
+    const p = pts[i], q = pts[i - 1], a = Math.atan2(q.y - p.y, q.x - p.x), w = wd(i) * 0.55;
+    g.strokeStyle = '#1f6a14'; g.lineWidth = Math.max(1.5, wd(i) * 0.22);
+    g.beginPath(); g.moveTo(p.x + Math.cos(a + 2.2) * w, p.y + Math.sin(a + 2.2) * w); g.lineTo(p.x, p.y); g.lineTo(p.x + Math.cos(a - 2.2) * w, p.y + Math.sin(a - 2.2) * w); g.stroke();
+  }
+  // sọc vàng nhạt chạy dọc hai bên
+  for (const s of [-1, 1]) { g.strokeStyle = 'rgba(232,240,120,.75)'; g.lineWidth = 1.6; g.beginPath(); for (let i = 1; i < n - 3; i++) { const p = pts[i], q = pts[i - 1], a = Math.atan2(q.y - p.y, q.x - p.x), o = wd(i) * 0.42 * s; const x = p.x - Math.sin(a) * o, y = p.y + Math.cos(a) * o; i === 1 ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke(); }
+  // đầu tam giác
+  const h = pts[0]; g.translate(h.x, h.y); g.rotate(ang);
+  if (Math.sin(t * 5) > 0.55) { g.strokeStyle = '#ff3b55'; g.lineWidth = 2; g.beginPath(); g.moveTo(SR + 4, 0); g.lineTo(SR + 15, 0); g.lineTo(SR + 19, -4); g.moveTo(SR + 15, 0); g.lineTo(SR + 19, 4); g.stroke(); }
+  g.beginPath(); g.moveTo(SR + 6, 0); g.quadraticCurveTo(SR + 4, -SR * 0.75, -2, -SR * 1.05); g.quadraticCurveTo(-SR * 0.7, -SR * 0.6, -SR * 0.75, 0);
+  g.quadraticCurveTo(-SR * 0.7, SR * 0.6, -2, SR * 1.05); g.quadraticCurveTo(SR + 4, SR * 0.75, SR + 6, 0); g.closePath();
+  g.fillStyle = '#58c22f'; g.strokeStyle = '#123d0d'; g.lineWidth = 2.5; g.fill(); g.stroke();
+  g.fillStyle = '#86e055'; g.beginPath(); g.ellipse(2, 0, SR * 0.55, SR * 0.35, 0, 0, 7); g.fill();
+  g.strokeStyle = '#1f6a14'; g.lineWidth = 2; g.beginPath(); g.moveTo(-SR * 0.4, 0); g.lineTo(SR * 0.5, 0); g.stroke();
+  g.restore();
+}
+function snakeEyes(g, x, y, ang, glow) {
+  g.save(); g.translate(x, y); g.rotate(ang);
+  for (const s of [-1, 1]) {
+    if (glow) { g.shadowColor = '#ffde3b'; g.shadowBlur = 12; }
+    g.fillStyle = '#ffe23b'; g.beginPath(); g.ellipse(SR * 0.45, s * SR * 0.62, 4.2, 3.4, 0, 0, 7); g.fill(); g.shadowBlur = 0;
+    g.fillStyle = '#111'; g.beginPath(); g.ellipse(SR * 0.5, s * SR * 0.62, 1.2, 3, 0, 0, 7); g.fill();
+  }
+  g.restore();
+}
+function drawMarkerSnake(g, it, t) {
+  const fake = { x: it.x, y: it.y, ang: 0, trail: [], wig: t * 3 };
+  for (let i = 0; i < 60; i++) fake.trail.push({ x: it.x - i * 3, y: it.y + Math.sin(i * 0.25) * 6 });
+  drawSnake(g, snakePts(fake), t, 0); snakeEyes(g, it.x, it.y, 0, false);
+}
+function drawChaserBaby(g, c) {
+  g.save(); g.translate(c.x, c.y);
+  const gr = g.createRadialGradient(0, 4, 2, 0, 4, 28); gr.addColorStop(0, 'rgba(255,40,60,.55)'); gr.addColorStop(1, 'rgba(255,40,60,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 4, 28, 0, 7); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(0, PR * 0.9, PR * 0.9, 5, 0, 0, 7); g.fill();
+  if (Math.cos(c.ang) < 0) g.scale(-1, 1);
+  g.translate(0, Math.sin(c.wig) * 1.5); drawFriendAt(g, c.friend, 'idle', PR * 0.78, Math.sin(c.wig) * 0.5);
+  g.restore();
+}
+function drawPlayer(g, t) {
+  g.save(); g.translate(P.x, P.y);
+  g.fillStyle = 'rgba(0,0,0,.5)'; g.beginPath(); g.ellipse(0, PR * 0.95, PR * 0.95, 5, 0, 0, 7); g.fill();
+  const bob = P.moving ? Math.sin(P.moving * 14) * 1.8 : 0;
+  g.translate(0, bob); if (P.face < 0) g.scale(-1, 1);
+  const face = game.over ? 'idle' : (P.scared ? (game.friend === 'pillow' ? 'ouch' : 'panic') : ((t % 3.2) < 0.12 ? 'blink' : 'idle'));
+  drawFriendAt(g, game.friend, face, PR * 0.82, P.moving ? Math.sin(P.moving * 14) * 0.6 : 0);
+  g.restore();
+}
+// ----- bóng tối (vẽ theo khung màn hình, nửa độ phân giải) -----
+const dk = document.createElement('canvas'), dg = dk.getContext('2d');
+const fog = document.createElement('canvas'); fog.width = 500; fog.height = 350;
+(() => {
+  const g = fog.getContext('2d'); seedR = 99;
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * 500, y = rnd() * 350, r = 30 + rnd() * 80, a = 0.05 + rnd() * 0.12;
+    for (const ox of [-500, 0, 500]) for (const oy of [-350, 0, 350]) {
+      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gr.addColorStop(0, `rgba(150,160,185,${a})`); gr.addColorStop(1, 'rgba(150,160,185,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x + ox, y + oy, r, 0, 7); g.fill();
+    }
+  }
+})();
+function hole(g, x, y, R, a, inner) { const gr = g.createRadialGradient(x, y, R * (inner || 0.25), x, y, R); gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.6, `rgba(0,0,0,${a * 0.75})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill(); }
+function drawDarkness(t, now) {
+  // trả về: vẽ xong lớp tối lên ctx (đang ở toạ độ thế giới)
+  const style = set.dark;
+  if (style === 'C') {
+    if (!dark.blackout && now > dark.nextBlack) dark.blackout = now + 1500;
+    if (dark.blackout && now > dark.blackout) { dark.blackout = 0; dark.nextBlack = now + 5000 + Math.random() * 4000; }
+  }
+  const black = style === 'A' || (style === 'C' && dark.blackout && Math.sin(now / 37) > -0.6);
+  const flick = 1 + Math.sin(t * 11) * 0.02 + Math.sin(t * 23) * 0.015;
+  dg.setTransform(1, 0, 0, 1, 0, 0); dg.globalCompositeOperation = 'source-over'; dg.clearRect(0, 0, dk.width, dk.height);
+  dg.fillStyle = black ? 'rgba(3,4,8,.985)' : 'rgba(3,4,10,.62)'; dg.fillRect(0, 0, dk.width, dk.height);
+  dg.setTransform(cam.z / 2, 0, 0, cam.z / 2, -cam.x * cam.z / 2, -cam.y * cam.z / 2);
+  dg.globalCompositeOperation = 'destination-out';
+  if (black) {
+    hole(dg, P.x, P.y, (style === 'C' ? 115 : 160) * flick, 1);
+    for (const it of maze.items) if (it.t === 'exit' || it.t === 'portal') hole(dg, it.x, it.y, it.t === 'exit' ? 48 : 32, 0.8, 0.05);
+  } else hole(dg, P.x, P.y, 240 * flick, 0.85, 0.12);
+  ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.drawImage(dk, 0, 0, cssW, cssH); ctx.restore();
+  { const R = (black ? 160 : 210) * flick, gr = ctx.createRadialGradient(P.x, P.y, 6, P.x, P.y, R); gr.addColorStop(0, 'rgba(255,190,110,.22)'); gr.addColorStop(1, 'rgba(255,190,110,0)');
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(P.x, P.y, R, 0, 7); ctx.fill(); ctx.restore(); }
+  if (!black) {
+    ctx.save(); ctx.imageSmoothingEnabled = true;
+    const vx0 = cam.x, vy0 = cam.y, vx1 = cam.x + cssW / cam.z, vy1 = cam.y + cssH / cam.z, TW = 1000, TH = 700;
+    for (const [al, sx, sy] of [[0.9, t * 9, t * 4], [0.6, -t * 6, 0]]) {
+      ctx.globalAlpha = al; const ox = ((sx % TW) + TW) % TW, oy = ((sy % TH) + TH) % TH;
+      for (let x = Math.floor((vx0 - ox) / TW) * TW + ox; x < vx1; x += TW) for (let y = Math.floor((vy0 - oy) / TH) * TH + oy; y < vy1; y += TH) ctx.drawImage(fog, x, y, TW, TH);
+    }
+    ctx.restore();
+  }
+  ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const vg = ctx.createRadialGradient(cssW / 2, cssH / 2, Math.min(cssW, cssH) * 0.35, cssW / 2, cssH / 2, Math.max(cssW, cssH) * 0.7); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, cssW, cssH); ctx.restore();
+  for (const c of chasers) {
+    if (c.kind === 'snake') snakeEyes(ctx, c.x, c.y, c.ang, true);
+    else { ctx.save(); ctx.shadowColor = '#ff2a3a'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff4050'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(c.x + s * 6, c.y - 7, 2.6, 0, 7); ctx.fill(); } ctx.restore(); }
+  }
+}
+
+function render(now) {
+  const t = now / 1000;
+  if (bgDirty || !bg) rebuildBg();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#06070b'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(dpr * cam.z, 0, 0, dpr * cam.z, -cam.x * dpr * cam.z, -cam.y * dpr * cam.z);
+  ctx.drawImage(bg, 0, 0, W, H);
+  ghosts = ghosts.filter(gh => now - gh.t0 < 500);
+  for (const gh of ghosts) { ctx.save(); ctx.globalAlpha = 0.55 * (1 - (now - gh.t0) / 500); ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); gh.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); }
+  maze.items.forEach((it, i) => {
+    if (it.t === 'start') drawStart(ctx, it, t); else if (it.t === 'exit') drawExit(ctx, it, t);
+    else if (it.t === 'portal') drawPortal(ctx, it, i, t); else if (it.t === 'door') drawDoor(ctx, it, i);
+  });
+  maze.items.forEach(it => { if (it.t === 'key') drawKey(ctx, it, t); });
+  if (mode === 'draw') {
+    // nét tay chưa bấm Done: phấn trắng
+    const chalk = (raw, alpha) => { ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = '#eaf4ff'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = '#bfe0ff'; ctx.shadowBlur = 8; ctx.beginPath(); raw.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); };
+    maze.pending.forEach(raw => chalk(raw, 0.8));
+    maze.items.forEach(it => {
+      if (it.t === 'snake') drawMarkerSnake(ctx, it, t);
+      if (it.t === 'baby') { ctx.save(); ctx.translate(it.x, it.y); ctx.fillStyle = 'rgba(255,60,80,.25)'; ctx.beginPath(); ctx.arc(0, 0, 22, 0, 7); ctx.fill(); ctx.strokeStyle = '#ff6070'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧸', 0, 1); ctx.restore(); }
+    });
+    if (stroke && stroke.length > 1) { if (tool === 'door') { ctx.save(); ctx.strokeStyle = COLORS[num]; ctx.globalAlpha = 0.85; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); stroke.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); } else chalk(stroke, 1); }
+    if (flashWhy && now - flashWhy < 900) { ctx.fillStyle = `rgba(255,60,80,${0.25 * (1 - (now - flashWhy) / 900)})`; ctx.fillRect(0, 0, W, H); }
+  } else if (P) {
+    for (const c of chasers) { if (c.kind === 'snake') { drawSnake(ctx, snakePts(c), t, c.ang); snakeEyes(ctx, c.x, c.y, c.ang, false); } else drawChaserBaby(ctx, c); }
+    drawPlayer(ctx, t);
+    if (game.light === 'off') drawDarkness(t, now);
+    for (const f of fx) { ctx.globalAlpha = Math.max(0, 1 - f.t / f.life); ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(f.x, f.y, 3, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+    if (joy) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(joy.sx, joy.sy, 55, 0, 7); ctx.stroke();
+      const dx = joy.cx - joy.sx, dy = joy.cy - joy.sy, l = Math.hypot(dx, dy), k = l > 55 ? 55 / l : 1;
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(joy.sx + dx * k, joy.sy + dy * k, 18, 0, 7); ctx.fill();
+    }
+  }
+}
+
+// ====================== nhập: 1 ngón vẽ/điều khiển, 2 ngón kéo bản đồ ======================
+const ptrs = new Map();
+function screenPt(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+cv.addEventListener('pointerdown', e => {
+  try { cv.setPointerCapture(e.pointerId); } catch (er) {}
+  ptrs.set(e.pointerId, screenPt(e)); e.preventDefault();
+  if (ptrs.size === 2 && mode === 'draw') { stroke = null; tapStart = null; panFrom = null; return; }   // 2 ngón: huỷ nét, chuyển sang kéo bản đồ
+  if (ptrs.size > 1) return;
+  const p = toWorld(e), s = screenPt(e);
+  if (mode === 'draw') {
+    if (tool === 'move') panFrom = s;
+    else if (tool === 'wall' || tool === 'door') stroke = [p];
+    else if (tool === 'erase') { erasing = false; eraseAt(p); }
+    else tapStart = p;
+  } else if (mode === 'play' && !game.over) {
+    // cần gạt vô hình: hướng = (ngón hiện tại − chỗ đặt ngón), đo theo màn hình
+    joy = { ox: s.x / cam.z, oy: s.y / cam.z, x: s.x / cam.z, y: s.y / cam.z, sx: s.x, sy: s.y, cx: s.x, cy: s.y };
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const prev = ptrs.get(e.pointerId), s = screenPt(e); ptrs.set(e.pointerId, s);
+  if (ptrs.size === 2 && mode === 'draw') { cam.x -= (s.x - prev.x) / 2 / cam.z; cam.y -= (s.y - prev.y) / 2 / cam.z; clampCam(); return; }
+  const p = toWorld(e);
+  if (mode === 'draw') {
+    if (panFrom) { cam.x -= (s.x - panFrom.x) / cam.z; cam.y -= (s.y - panFrom.y) / cam.z; clampCam(); panFrom = s; }
+    else if (stroke) { const l = stroke[stroke.length - 1]; if (Math.hypot(l.x - p.x, l.y - p.y) > 3) stroke.push(p); }
+    else if (tool === 'erase') eraseAt(p);
+  } else if (joy) { joy.x = s.x / cam.z; joy.y = s.y / cam.z; joy.cx = s.x; joy.cy = s.y; }
+});
+function up(e) {
+  if (!ptrs.has(e.pointerId)) return; const wasMulti = ptrs.size > 1; ptrs.delete(e.pointerId);
+  if (wasMulti) return;
+  const p = toWorld(e);
+  if (mode === 'draw') {
+    if (stroke) finishStroke();
+    else if (tapStart && Math.hypot(p.x - tapStart.x, p.y - tapStart.y) < 20) placeAt(tapStart);
+    tapStart = null; erasing = false; panFrom = null;
+  }
+  joy = null;
+}
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+addEventListener('keydown', e => { keysDown[e.key] = true; });
+addEventListener('keyup', e => { keysDown[e.key] = false; });
+
+// ====================== 🏠 về trang chủ ======================
+// App mở từ icon iPad không có nút Back. Ẩn lúc đang chơi (cả màn hình là chỗ kéo ngón để chạy — chạm nhầm là văng ra), hiện lại ở màn vẽ / thắng / thua.
+const HOME = location.protocol !== 'file:'; // mở file trên máy thì không có trang chủ → giấu (giống các game khác)
+$('homeBtn').addEventListener('click', () => { location.href = '../'; });
+function syncHome() { $('homeBtn').classList.toggle('hide', !HOME || (mode === 'play' && !game.over)); }
+
+// ====================== vòng lặp ======================
+const TEST = { auto: false, freeze: false };
+function frame(now) {
+  const dt = Math.min(0.05, (now - (lastT || now)) / 1000); lastT = now;
+  if (mode === 'play' && P) updatePlay(dt, now);
+  setHint(); syncHome(); render(now);
+  requestAnimationFrame(frame);
+}
+if (!load()) { maze = sampleMaze(); save(); }
+setWorld(maze.w, maze.h);
+resize();
+{ const st = maze.items.find(i => i.t === 'start'); if (st) centerOn(st.x, st.y); }
+refreshPanel(); requestAnimationFrame(frame);
+
+window.__mz = {
+  TEST, get mode() { return mode; }, get maze() { return maze; }, get P() { return P; }, get chasers() { return chasers; },
+  get keys() { return [...keys]; }, get openDoors() { return [...openDoors]; }, get over() { return !!game.over; }, get set() { return set; },
+  get cam() { return { ...cam }; }, get size() { return { W, H }; }, get light() { return game.light; },
+  sfx: () => SFX.log.slice(), wayOut: () => wayOut(maze),
+  loadSample() { maze = sampleMaze(); setWorld(maze.w, maze.h); clampCam(); save(); toDraw(); },
+  clear() { maze = emptyMaze(); setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); },
+  setTool(t, n) { tool = t; if (n) num = n; refreshPanel(); }, start: f => startPlay(f || 'froggy'),
+  lookAt(x, y) { centerOn(x, y); },
+  worldToClient(x, y) { const r = cv.getBoundingClientRect(); return { x: r.left + (x - cam.x) * cam.z, y: r.top + (y - cam.y) * cam.z }; },
+  hint: () => $('hint').textContent,
+};
+// hàm chung các game Bon đều có — home/check_site.py dùng để bấm 🏠 bằng chuột thật
+window.__g = { homeBtnRect: () => { const b = $('homeBtn'); if (b.classList.contains('hide')) return null; const r = b.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; } };
+})();
+</script>
+</body>
+</html>

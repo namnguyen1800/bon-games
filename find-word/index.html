@@ -39,12 +39,12 @@ button{font-family:inherit;cursor:pointer;border:0}
 .hidden{display:none!important}
 
 /* header */
-header{height:var(--hdr);display:flex;align-items:center;gap:10px;padding:0 14px;padding-top:env(safe-area-inset-top)}
+header{height:calc(var(--hdr) + var(--ti, env(safe-area-inset-top)));display:flex;align-items:center;gap:10px;padding:0 14px;padding-top:var(--ti, env(safe-area-inset-top))}
 header h1{flex:1;margin:0;font-size:clamp(20px,3.6vw,32px);font-weight:700;color:var(--title);text-shadow:var(--title-glow);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .icon-btn{width:46px;height:46px;border-radius:14px;font-size:22px;background:var(--btn);color:var(--btn-text);border:var(--btn-bd);box-shadow:var(--btn-shadow);flex:none}
 
 /* screens */
-.screen{position:absolute;left:0;right:0;top:var(--hdr);bottom:0;padding:10px 14px 14px;display:flex;gap:14px}
+.screen{position:absolute;left:0;right:0;top:calc(var(--hdr) + var(--ti, env(safe-area-inset-top)));bottom:0;padding:10px 14px 14px;display:flex;gap:14px}
 
 /* ---- SETUP ---- */
 #setup{flex-direction:column}
@@ -134,6 +134,22 @@ svg.lines{position:absolute;inset:var(--pad);width:calc(100% - 2*var(--pad));hei
 <meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
 </head>
 <body data-theme="A">
 <header>

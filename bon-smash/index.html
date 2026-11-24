@@ -13,7 +13,7 @@
   .hidden { display:none !important; }
 
   /* ---- danh sách màn ---- */
-  #menu { position:fixed; inset:0; overflow:auto; background:linear-gradient(#9fd3ff,#eaf7ff); z-index:20; padding:max(14px, env(safe-area-inset-top)) 16px 30px; box-sizing:border-box; }
+  #menu { position:fixed; inset:0; overflow:auto; background:linear-gradient(#9fd3ff,#eaf7ff); z-index:20; padding:calc(var(--ti, env(safe-area-inset-top)) + 14px) 16px 30px; box-sizing:border-box; }
   #menu h1 { margin:4px 0 2px; font-size:40px; text-align:center; color:#ff7a1a; -webkit-text-stroke:2px #fff; paint-order:stroke; letter-spacing:1px; }
   #menu .cast { display:flex; justify-content:center; gap:6px; margin-bottom:6px; }
   #menu .cast canvas { position:static; width:84px; height:84px; }
@@ -28,13 +28,13 @@
   .bcard b { font-size:22px; min-width:44px; text-align:center; }
   .bcard button, .newb { height:54px; min-width:54px; border-radius:14px; border:2px solid #dfe6ee; background:#f6f9fc; font-size:24px; cursor:pointer; }
   .newb { padding:0 18px; font-size:22px; font-weight:800; background:#fff1e6; border-color:var(--accent); height:68px; }
-  .homeb { position:absolute; left:16px; top:max(14px, env(safe-area-inset-top)); width:56px; height:56px; border-radius:16px; border:none; background:#fff; font-size:28px; box-shadow:0 3px 0 #0002; }
+  .homeb { position:absolute; left:16px; top:calc(var(--ti, env(safe-area-inset-top)) + 14px); width:56px; height:56px; border-radius:16px; border:none; background:#fff; font-size:28px; box-shadow:0 3px 0 #0002; }
 
   /* ---- nút trên màn chơi ---- */
-  .hud { position:fixed; top:max(10px, env(safe-area-inset-top)); right:12px; display:flex; gap:10px; z-index:5; }
+  .hud { position:fixed; top:calc(var(--ti, env(safe-area-inset-top)) + 10px); right:12px; display:flex; gap:10px; z-index:5; }
   .hud button, .hudl button { width:64px; height:64px; border-radius:18px; border:none; background:#fff; font-size:30px; box-shadow:0 3px 0 #0002; cursor:pointer; }
   .hud button:active, .hudl button:active { transform:translateY(2px); box-shadow:none; }
-  .hudl { position:fixed; top:max(10px, env(safe-area-inset-top)); left:12px; display:flex; gap:10px; align-items:center; z-index:5; }
+  .hudl { position:fixed; top:calc(var(--ti, env(safe-area-inset-top)) + 10px); left:12px; display:flex; gap:10px; align-items:center; z-index:5; }
   .hudl .lbl { background:#ffffffd0; padding:8px 14px; border-radius:14px; font-size:22px; font-weight:800; }
 
   /* ---- thắng ---- */
@@ -67,6 +67,22 @@
 <meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
 </head>
 <body>
 <canvas id="c"></canvas>

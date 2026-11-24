@@ -19,8 +19,8 @@
            box-shadow: 0 5px 0 rgba(46,107,115,0.5); touch-action: manipulation; }
   button:active { transform: translateY(4px); box-shadow: 0 1px 0 rgba(46,107,115,0.5); }
   .corner { position: fixed; z-index: 5; width: 56px; height: 56px; font-size: 28px; border-radius: 16px; }
-  #homeBtn { top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }
-  #muteBtn { top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+  #homeBtn { top: calc(var(--ti, env(safe-area-inset-top)) + 10px); left: max(12px, env(safe-area-inset-left)); }
+  #muteBtn { top: calc(var(--ti, env(safe-area-inset-top)) + 10px); right: max(12px, env(safe-area-inset-right)); }
   #drawBtn { position: fixed; z-index: 5; right: max(16px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom));
              width: 128px; height: 128px; border-radius: 34px; background: var(--go); color: #fff; font-size: 30px; font-weight: 900;
              display: flex; flex-direction: column; align-items: center; justify-content: center; text-shadow: 0 2px 0 rgba(0,0,0,0.2); }
@@ -41,23 +41,23 @@
   #growRow button:disabled { opacity: 0.4; }
   #growDots { position: fixed; z-index: 5; right: max(16px, env(safe-area-inset-right)); bottom: calc(max(18px, env(safe-area-inset-bottom)) + 468px); width: 128px;
               text-align: center; font-size: 13px; letter-spacing: 3px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6); pointer-events: none; }
-  #lampBtn { top: calc(max(10px, env(safe-area-inset-top)) + 68px); right: max(12px, env(safe-area-inset-right)); background: #fde68a; }
+  #lampBtn { top: calc(var(--ti, env(safe-area-inset-top)) + 78px); right: max(12px, env(safe-area-inset-right)); background: #fde68a; }
   #lampBtn.off { background: #334155; border-color: #0f172a; }
   #drawBtn.pulse { animation: pulse 1.2s infinite; }
   @keyframes pulse { 50% { transform: scale(1.08); } }
-  #banner { position: fixed; z-index: 6; left: 50%; top: 14px; transform: translateX(-50%); background: #fee2e2; border: 4px solid #dc2626; color: #991b1b; border-radius: 18px; padding: 8px 20px; font-size: 26px; font-weight: 900; white-space: nowrap; pointer-events: none; }
+  #banner { position: fixed; z-index: 6; left: 50%; top: calc(var(--ti, env(safe-area-inset-top)) + 14px); transform: translateX(-50%); background: #fee2e2; border: 4px solid #dc2626; color: #991b1b; border-radius: 18px; padding: 8px 20px; font-size: 26px; font-weight: 900; white-space: nowrap; pointer-events: none; }
   #ask { z-index: 11; }
   #ask .panel { max-width: 460px; }
   #askCv { width: 100%; height: 220px; background: linear-gradient(#a9ecee, #4cc0d3); border-radius: 18px; }
   #askYes, #askNo { flex: 1; height: 84px; font-size: 30px; font-weight: 900; }
   #askYes { background: #ef4444; color: #fff; }
-  #tip { position: fixed; z-index: 4; left: 50%; top: 18px; transform: translateX(-50%); background: rgba(255,255,255,0.92); border: 4px solid var(--edge);
+  #tip { position: fixed; z-index: 4; left: 50%; top: calc(var(--ti, env(safe-area-inset-top)) + 18px); transform: translateX(-50%); background: rgba(255,255,255,0.92); border: 4px solid var(--edge);
          border-radius: 18px; padding: 8px 18px; font-size: 24px; font-weight: 800; white-space: nowrap; transition: opacity 0.5s; pointer-events: none; }
   #tip.off { opacity: 0; }
   #notSaved { position: fixed; z-index: 4; left: 12px; bottom: 8px; font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.9); text-shadow: 0 1px 2px rgba(0,0,0,0.6); pointer-events: none; }
   /* lớp phủ: chọn loài + Ta-da */
   .veil { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-          padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+          padding: calc(var(--ti, env(safe-area-inset-top)) + 12px) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
           background: rgba(10,50,70,0.55); }
   .panel { width: 100%; max-width: 1000px; max-height: 100%; display: flex; flex-direction: column; gap: 10px; background: #fffdf7; border: 5px solid var(--go); border-radius: 26px; padding: 14px; }
   .panel h2 { font-size: 32px; color: #b45309; text-align: center; }
@@ -68,7 +68,7 @@
   .back { height: 56px; font-size: 22px; font-weight: 800; }
   /* xưởng vẽ */
   #studio { position: fixed; inset: 0; z-index: 12; display: flex; gap: 12px; background: #8fd8e2;
-            padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+            padding: calc(var(--ti, env(safe-area-inset-top)) + 10px) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   #paperBox { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; }
   #paperIn { position: relative; background: #fff; border: 5px solid var(--edge); border-radius: 20px; overflow: hidden; }
   #guide, #paper { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -140,7 +140,7 @@
     #doneBtn { height: 62px; font-size: 28px; }
     #drawBtn { width: 104px; height: 104px; font-size: 24px; }
     #drawBtn b { font-size: 44px; }
-    #tip, #banner { top: calc(max(10px, env(safe-area-inset-top)) + 64px); font-size: 19px; padding: 6px 12px; max-width: 94vw; white-space: normal; text-align: center; width: max-content; }
+    #tip, #banner { top: calc(var(--ti, env(safe-area-inset-top)) + 74px); font-size: 19px; padding: 6px 12px; max-width: 94vw; white-space: normal; text-align: center; width: max-content; }
   }
 </style>
 <link rel="manifest" href="../manifest.json">
@@ -151,6 +151,22 @@
 <meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
 </head>
 <body>
 <canvas id="tank"></canvas>

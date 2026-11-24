@@ -24,12 +24,12 @@
   body { background: var(--bg); color: var(--ink); font-family: Fredoka, "Trebuchet MS", system-ui, sans-serif;
     -webkit-user-select:none; user-select:none; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
   button { font: inherit; color: inherit; border: 0; cursor: pointer; }
-  #stage { position:fixed; inset:0; }
+  #stage { position:fixed; left:0; right:0; bottom:0; top:var(--ti, env(safe-area-inset-top)); } /* iPad mở từ icon: bàn + 2 bảng người chơi nằm dưới thanh giờ/pin */
   canvas#board { position:absolute; inset:0; width:100%; height:100%; display:block; }
   #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:20; }
 
   /* ===== màn bắt đầu ===== */
-  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; overflow:auto; padding:16px; box-sizing:border-box; z-index:5; }
+  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; overflow:auto; padding:calc(var(--ti, env(safe-area-inset-top)) + 16px) 16px 16px; box-sizing:border-box; z-index:5; }
   #start.hide, #game.hide { display:none; }
   .card { background: var(--card); border:2px solid var(--edge); border-radius:28px; padding:22px 26px; width:min(620px,100%);
     box-shadow: 0 20px 60px rgba(0,0,0,.35); box-sizing:border-box; margin:auto; }
@@ -98,6 +98,22 @@
 <meta name="apple-mobile-web-app-title" content="Bon's Games">
 <meta name="theme-color" content="#70c5ce">
 <meta name="robots" content="noindex, nofollow">
+<script>
+/* 11-23: mở từ icon ngoài màn hình chính (standalone) thì thanh giờ/pin của iPad đè lên hàng nút trên cùng
+   -> --ti = bề cao thanh đó (tối thiểu 24px, vì có máy báo env() = 0); __topInset() = cùng số đó tính ra px cho game vẽ bằng canvas.
+   Mở trong Safari / trên máy tính thì không cộng thêm gì. Chỉ có trong bản đưa lên mạng, file gốc chạy trên máy không bị đụng. */
+(function () {
+  var st = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var ti = st ? 'max(env(safe-area-inset-top), 24px)' : 'env(safe-area-inset-top)';
+  document.documentElement.style.setProperty('--ti', ti);
+  window.__topInset = function () {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;height:' + ti;
+    (document.body || document.documentElement).appendChild(d);
+    var v = d.getBoundingClientRect().height || 0; d.parentNode.removeChild(d); return v;
+  };
+})();
+</script>
 </head>
 <body class="t-neon">
 <div id="stage">
@@ -293,7 +309,7 @@
     return p === 1 ? -90 : 90; // trái–phải: người 1 bên phải, người 2 bên trái
   };
   function layout() {
-    DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight - Math.round($('stage').offsetTop); // trừ phần thanh giờ/pin (0 trên máy tính)
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
     PH = Math.max(92, Math.min(124, Math.min(W, H) * 0.13));
     const side = S.mode !== 'cpu' && S.seat === 'lr';
@@ -582,7 +598,7 @@
   cv.addEventListener('pointerdown', ev => {
     audio(); if (!G || G.over) return;
     if (S.mode === 'cpu' && G.turn === 2) return;
-    const x = ev.clientX - BX, y = ev.clientY - BY; if (x < 0 || y < 0 || x >= BS || y >= BS) return;
+    const x = ev.clientX - BX, y = ev.clientY - Math.round($('stage').offsetTop) - BY; if (x < 0 || y < 0 || x >= BS || y >= BS) return;
     const c = BS / G.n; place(Math.floor(y / c) * G.n + Math.floor(x / c));
   });
   for (const p of [1, 2]) {
