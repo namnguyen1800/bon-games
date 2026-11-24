@@ -8,7 +8,7 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   /* board: kiểu bàn lúc chơi — 'flat' (phẳng kiểu chess.com, Nam gửi 11-21, mặc định mới) hoặc 3 kiểu 3D (tiltTurn / tiltFixed / topBadge) + 'top'.
      style: kiểu quân khi bàn 3D. fight: 'arena' (chuyển cảnh, mặc định) / 'board'. customs + layout: quân Bon tự chế + bàn đã xếp (tường…). */
-  const DEF = { board: 'flat', style: 'warriors', fight: 'arena', death: 'topple', battleLen: 'long', cutscene: 'toward', dice: 'off', diceIds: [], sound: 'on', demo: 'k-n', demoMode: 'show',
+  const DEF = { board: 'flat', style: 'warriors', fight: 'arena', art: 'paint', death: 'topple', battleLen: 'long', cutscene: 'toward', dice: 'off', diceIds: [], sound: 'on', demo: 'k-n', demoMode: 'show',
     customs: [], layout: { walls: [], pieces: [], removed: [] } };
   const set = Object.assign({}, DEF);
   try { Object.assign(set, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* chỗ lưu bị chặn → dùng mặc định */ }
@@ -272,7 +272,7 @@
       if (k === 'dice' && v === 'select') { sheet.classList.add('hidden'); startSelect(); return; }
       set[k] = v; save(); paintSheet();
       if (k === 'style' || k === 'board') applyLook();
-      else if (k === 'death' || k === 'battleLen' || k === 'cutscene' || k === 'fight') view.setCfg({ [k]: v });
+      else if (k === 'death' || k === 'battleLen' || k === 'cutscene' || k === 'fight' || k === 'art') view.setCfg({ [k]: v });
       else if (k === 'dice') applyDiceToCurrent();
     });
   }
@@ -448,7 +448,7 @@
 
   function boot() {
     view = window.ChessView.create($('#board3d'), { sfx });
-    view.setCfg({ death: set.death, battleLen: set.battleLen, cutscene: set.cutscene, fight: set.fight });
+    view.setCfg({ death: set.death, battleLen: set.battleLen, cutscene: set.cutscene, fight: set.fight, art: set.art });
     applyLook();
     layout();
     window.addEventListener('resize', layout);
@@ -458,7 +458,7 @@
     window.addEventListener('pointerdown', e => { if (e.target !== view.canvas && view && view.playing) view.skip(); });
     newGame();
     $('#loading').classList.add('hidden');
-    if (/[?&]fps\b/.test(location.search)) setInterval(() => { $('#ver').textContent = 'Bản 4 · mẫu · ' + Math.round(view.fps) + ' fps'; }, 1000);
+    if (/[?&]fps\b/.test(location.search)) setInterval(() => { $('#ver').textContent = 'Bản 5 · mẫu · ' + Math.round(view.fps) + ' fps'; }, 1000);
     window.__chess.ready = true;
   }
   Object.defineProperty(window.__chess, 'soundsReady', { get: () => Object.keys(SND.buf).length });
