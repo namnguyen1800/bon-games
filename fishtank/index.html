@@ -744,7 +744,18 @@
   // ================= STICKER =================
   // Nét + màu → cắt thành sticker: lấp kín bên trong bằng giấy trắng + 1 viền trắng quanh hình, nên vẽ màu gì cũng nổi trên nước.
   const CLOSE = 6, EDGE = 6, MAX_IMG = 512;
-  function makeSticker(list) {
+  // 11-23 (Nam báo): cây nhiều thân sát nhau → khe giữa các thân bị coi là "ruột hình" và đổ giấy trắng thành khối. Cây đung đưa (Seaweed, Red Plant, Grass,
+  // Sword Plant, Kelp, Flower, Coral, Anemone, Anything! bên Plants) giờ KHÔNG đổ giấy: chỉ còn viền trắng mảnh quanh từng nét. Con vật + đồ đứng yên (đá, lâu đài, rương, tàu...) giữ nguyên.
+  function seeThroughKind(kindId) { const K = kindId && KIND[kindId]; return !!K && K.group === 'plant' && K.move !== 'still'; }
+  function paperStats(st) { // chỉ cho test: bao nhiêu điểm GIẤY (255,253,247), và bao nhiêu điểm giấy nằm XA mọi nét (> 8 điểm) = khối giấy lấp giữa các thân (viền mảnh quanh nét không tính)
+    if (!st) return null;
+    const w = st.img.width, h = st.img.height, d = st.img.getContext('2d').getImageData(0, 0, w, h).data, solid = new Uint8Array(w * h), isP = new Uint8Array(w * h); let paper = 0;
+    for (let i = 0; i < w * h; i++) { const p = i * 4; if (d[p + 3] > 250 && Math.abs(d[p] - 255) <= 2 && Math.abs(d[p + 1] - 253) <= 2 && Math.abs(d[p + 2] - 247) <= 2) { isP[i] = 1; paper++; } else solid[i] = d[p + 3] > 200 ? 1 : 0; }
+    const dist = distMap(solid, w, h); let far = 0;
+    for (let i = 0; i < w * h; i++) if (isP[i] && dist[i] > 8 * 3) far++;
+    return { w: w, h: h, paper: paper, far: far };
+  }
+  function makeSticker(list, kindId) {
     const comp = mk(PW, PH), cg = comp.getContext('2d', { willReadFrequently: true });
     cg.drawImage(fillCv, 0, 0); cg.drawImage(inkCv, 0, 0);
     const eyes = eyesOf(list);
@@ -758,13 +769,17 @@
     tg2.drawImage(comp, x0, y0, bw, bh, pad, pad, bw, bh);
     const d = tg2.getImageData(0, 0, w, h).data, solid = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) solid[i] = d[i * 4 + 3] > 60 ? 1 : 0;
-    const dist = distMap(solid, w, h), open = new Uint8Array(w * h), seeds = [];
-    for (let i = 0; i < w * h; i++) open[i] = dist[i] > CLOSE * 3 ? 1 : 0;
-    for (let i = 0; i < w; i++) seeds.push(i, (h - 1) * w + i);
-    for (let i = 0; i < h; i++) seeds.push(i * w, i * w + w - 1);
-    // lấp khe (CLOSE) và viền sticker (EDGE) là 2 việc riêng: ruột hình = không thông ra ngoài, co lại đúng CLOSE; viền tính từ ruột hình đó
-    const out = flood(open, w, h, seeds), dOut = distMap(out, w, h), core = new Uint8Array(w * h);
-    for (let i = 0; i < w * h; i++) core[i] = dOut[i] > CLOSE * 3 ? 1 : 0;
+    const core = new Uint8Array(w * h);
+    if (seeThroughKind(kindId)) core.set(solid); // cây: "ruột" = chính các nét vẽ → chỉ còn viền trắng mảnh quanh nét, khe giữa các thân trong suốt thấy nước
+    else {
+      const dist = distMap(solid, w, h), open = new Uint8Array(w * h), seeds = [];
+      for (let i = 0; i < w * h; i++) open[i] = dist[i] > CLOSE * 3 ? 1 : 0;
+      for (let i = 0; i < w; i++) seeds.push(i, (h - 1) * w + i);
+      for (let i = 0; i < h; i++) seeds.push(i * w, i * w + w - 1);
+      // lấp khe (CLOSE) và viền sticker (EDGE) là 2 việc riêng: ruột hình = không thông ra ngoài, co lại đúng CLOSE; viền tính từ ruột hình đó
+      const out = flood(open, w, h, seeds), dOut = distMap(out, w, h);
+      for (let i = 0; i < w * h; i++) core[i] = dOut[i] > CLOSE * 3 ? 1 : 0;
+    }
     const dCore = distMap(core, w, h), base = mk(w, h), bg2 = base.getContext('2d'), img = bg2.createImageData(w, h), o = img.data;
     for (let i = 0; i < w * h; i++) {
       const q = dCore[i] / 3, p4 = i * 4;
@@ -1968,7 +1983,7 @@
   let pv = null, pvMove = null, pvSt = null;
   $('doneBtn').addEventListener('click', function() {
     endStroke();
-    const st = makeSticker();
+    const st = makeSticker(undefined, curKind);
     if (!st) { showSay('Draw something first!'); noise('click'); return; }
     noise('ding'); pvSt = st; pvMove = KIND[curKind].move;
     const avg = st.eyes.length ? st.eyes.reduce(function(s, e) { return s + e.u; }, 0) / st.eyes.length : 1;
@@ -2024,7 +2039,7 @@
   function seed(kindId, x, y, scale) {
     const c = onLayers(spareL, function() {
       const a = Art(4); ART[kindId](a); replay(a.ops);
-      const st = makeSticker(a.ops); if (!st) return null;
+      const st = makeSticker(a.ops, kindId); if (!st) return null;
       const k = buildCreature(kindId, st, null, scale); k.id = nextId(); k.picId = k.id; return k;
     });
     if (c) placeCreature(c, x * W, y * H);
@@ -2148,12 +2163,15 @@
       pickShown: function() { return Array.from(document.querySelectorAll('#kinds .kind')).filter(function(b) { return !b.hidden; }).map(function(b) { return b.dataset.kind; }); },
       creature: function(i) { const c = creatures[i]; return c ? { id: c.id, kind: c.kind, move: c.move, x: c.x, y: c.y, dw: c.dw, dh: c.dh, baby: c.baby, parent: c.parent, picId: c.picId, born: c.born, awake: c.awake, n: c.n, ground: !!GROUND[c.move], yOff: c.yOff } : null; },
       art: function(id, jit) { const a = Art(jit || 0); ART[id](a); ops = a.ops; replay(); refresh(); return ops.length; },
-      sticker: function() { const s = makeSticker(); return s ? { w: s.img.width, h: s.img.height, png: s.img.toDataURL('image/png').length, eyes: s.eyes.length } : null; },
+      sticker: function(kindId) { const s = makeSticker(undefined, kindId); return s ? { w: s.img.width, h: s.img.height, png: s.img.toDataURL('image/png').length, eyes: s.eyes.length } : null; },
+      stickerPaper: function(kindId) { return paperStats(makeSticker(undefined, kindId)); }, // cùng 1 hình vẽ, đổi loài → so cây (trong suốt) với con vật (đổ giấy)
+      previewPaper: function() { return paperStats(pvSt); }, // sticker mà nút Done! vừa làm ra (kiểm Done có truyền đúng loài)
+      stickerPx: function(kindId, u, v) { const s = makeSticker(undefined, kindId); if (!s) return null; return Array.from(s.img.getContext('2d').getImageData(Math.round(u * (s.img.width - 1)), Math.round(v * (s.img.height - 1)), 1, 1).data); }, // 1 điểm ảnh của sticker, toạ độ 0..1
       paintAll: function() { while (tileQueue.length) paintTile(tileQueue.shift()); },
       seedOne: function(id, x, y) { return !!seed(id, x === undefined ? 0.5 : x, y === undefined ? 0.5 : y, 1); },
       seedDemo: seedDemo, kindsList: function() { return KINDS.map(function(k) { return k.id; }); },
       film: function(id, n, step) { // dải khung hình của ĐÚNG hàm vẽ thật
-        const c = onLayers(spareL, function() { const a = Art(3); ART[id](a); replay(a.ops); return buildCreature(id, makeSticker(a.ops)); }); c.turn = c.dir = 1; c.vx = 40; c.vy = 0; c.x = 0; c.y = 0; c.rest = 0; c.awake = 99;
+        const c = onLayers(spareL, function() { const a = Art(3); ART[id](a); replay(a.ops); return buildCreature(id, makeSticker(a.ops, id)); }); c.turn = c.dir = 1; c.vx = 40; c.vy = 0; c.x = 0; c.y = 0; c.rest = 0; c.awake = 99;
         const cw = 200, ch = 180, cv = mk(cw * n, ch), g = cv.getContext('2d'); g.fillStyle = '#4cc0d3'; g.fillRect(0, 0, cv.width, ch);
         const rate = { swim: 7, eel: 7, flap: 3.2, hover: 3, dart: 9, pulse: 2.6, walk: 16, crawl: 2.6, sway: 1.5, still: 0, drive: 3 }[c.move], k = Math.min(1, Math.min(cw * 0.86 / c.dw, ch * 0.84 / c.dh));
         for (let i = 0; i < n; i++) { g.save(); g.translate(cw * (i + 0.5), GROUND[c.move] ? ch * 0.94 : ch * 0.5); g.scale(k, k); drawCreature(g, c); g.restore(); c.ph += step * rate; c.pt += step / 2.6; }
