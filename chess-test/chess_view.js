@@ -1357,14 +1357,51 @@
       tween(0.55, k => { m.scale.setScalar((0.4 + k * 3.2) * (K || 1)); m.material.opacity = 1 - k; }, EASE.out).then(() => { fxGrp.remove(m); m.geometry.dispose(); m.material.dispose(); });
     }
     function slowMo(sec) { arena.slowT = sec; }
+    /* MẪU "MƯỢT HƠN" (11-23, bản sao chess-muot): MÁY QUAY BIẾT DIỄN — chạy theo GIỜ THẬT (quay chậm / khựng nhịp không làm máy đứng).
+       z = độ cận (1 = khung gốc), (fx, fy) = điểm nhìn trên mặt phẳng hai con đứng, w = máy xoay về điểm nhìn bao nhiêu (0..1).
+       Máy trôi mềm về đích (rate lớn = tới nhanh); punch = giật cận chỗ chạm, tự tắt dần. */
+    const camFx = { z: 1, fx: 0, fy: 1.08, w: 0, tz: 1, tfx: 0, tfy: 1.08, tw: 0, rate: 4, punch: 0, px: 0, py: 1.08, pz: 0 };
+    // mẫu 2 (11-23): Nam chê máy chạy/rung (chóng mặt) → 3 lệnh dưới để TRỐNG, máy đứng yên, không khựng nhịp
+    function camAim() {}
+    function camPunch() {}
+    function hitStop() {}
+    function stepCam(dt) {
+      const a = 1 - Math.exp(-dt * camFx.rate);
+      camFx.z += (camFx.tz - camFx.z) * a; camFx.fx += (camFx.tfx - camFx.fx) * a;
+      camFx.fy += (camFx.tfy - camFx.fy) * a; camFx.w += (camFx.tw - camFx.w) * a;
+      camFx.punch = Math.max(0, camFx.punch - dt / 0.32);
+    }
+    // tranh có lực: co giãn khi đổi dáng (lấy đà rướn lên, chém bè ra…) rồi tự về 1 theo giờ thật
+    function sprSquash(f, sx, sy) { const S = sprOf(f); if (S) { S.sq = S.sq || { x: 1, y: 1 }; S.sq.x = sx; S.sq.y = sy; } }
+    function sprFlash(f, amt) {              // bị trúng: loé trắng rồi tắt
+      const S = sprOf(f); if (!S) return;
+      const set = v => { for (const c of Object.values(S.cards)) c.material.color.setScalar(v); };
+      set(1 + amt); tween(0.14, k => set(1 + amt * (1 - k)), EASE.out).then(() => set(1));
+    }
+    function sprGhost(f, op) {               // bóng mờ kéo theo lúc lao tới: chụp tấm đang hiện, mờ dần tại chỗ (dùng chung chương trình vẽ tranh)
+      const S = sprOf(f); if (!S) return;
+      const card = S.cards[S.pose]; if (!card) return;
+      card.updateWorldMatrix(true, false);
+      const g = new T.Mesh(card.geometry, sprMat(card.material.map));
+      g.material.color.setRGB(1.25, 0.95, 0.7); g.material.opacity = op; g.renderOrder = 1; g.frustumCulled = false;
+      card.matrixWorld.decompose(g.position, g.quaternion, g.scale);
+      arena.scene.add(g);
+      tween(0.14, k => { g.material.opacity = op * (1 - k); }, EASE.out).then(() => { arena.scene.remove(g); g.material.dispose(); });
+    }
     function stepArenaFx(dt, t) {
       // vệt lửa tan theo giờ TRONG CẢNH: lúc quay chậm (sét giáng) đuôi lửa còn đầy như hình đích — lần đo 3: tan theo giờ thật → lúc sét chỉ còn búi lửa lưa thưa
       stepTrails(clock.g);
       stepStreaks();
-      for (const f of arena.fighters) if (f.spr && f.root.visible) {   // tranh: thở nhẹ (cao lên / hạ xuống 0,6%) cho khỏi đứng như tượng
-        f.model.scale.y = 1 + Math.sin(t * 2.3 + f.spr.breath) * 0.006;
+      stepCam(dt);
+      const back = 1 - Math.exp(-dt * 11);
+      for (const f of arena.fighters) if (f.spr && f.root.visible) {   // tranh: thở nhẹ (cao lên / hạ xuống 0,6%) + co giãn theo dáng
+        const q = f.spr.sq || (f.spr.sq = { x: 1, y: 1 });
+        q.x += (1 - q.x) * back; q.y += (1 - q.y) * back;
+        f.model.scale.y = (1 + Math.sin(t * 2.3 + f.spr.breath) * 0.006) * q.y;
+        f.model.scale.x = (f.spr.mirror ? -1 : 1) * q.x;
       }
       if (arena.slowT > 0) { arena.slowT -= dt; if (speed <= 1) speed = arena.slowT > 0 ? 0.32 : 1; }
+      if (arena.stopT > 0) { arena.stopT -= dt; if (speed <= 1) speed = arena.stopT > 0 ? 0.03 : (arena.slowT > 0 ? 0.32 : 1); }
     }
     function fighterFrom(src, x, opt) {
       // 11-23: Vua + Mã có TRANH ChatGPT vẽ → chiến binh tranh (⚙ "Nhân vật lúc đánh nhau" = 3D thì vẫn dựng giáp code như bản 4)
@@ -1469,14 +1506,18 @@
     }
     const _up = new T.Vector3(0, 1, 0);
     function sprBlade(f, name) { const S = sprOf(f), P = S.set.poses[name]; if (P && P.tip && P.chest) setBladeFrom(S, sprLocal(P, P.chest), sprLocal(P, P.tip)); }
-    function sprSwing(f, k) {                // 0 = kiếm ở dáng lấy đà → 1 = dáng chém: quét vòng QUA ĐỈNH ĐẦU (đường ngắn nhất giữa 2 góc)
-      const S = sprOf(f), A = S.set.poses.windup, B = S.set.poses.strike;
+    function sprSwing(f, k, toPose, fromPose, mode, cAt) {   // 0 = kiếm ở dáng lấy đà → 1 = dáng chém: quét vòng QUA ĐỈNH ĐẦU (đường ngắn nhất giữa 2 góc)
+      // mẫu 2: mode 'flat' = chém ngang (vòng quét DẸT ngang ngực) · 'line' = đâm (lưỡi duỗi thẳng ra trước) · cAt = tâm vung đặt sẵn (nhảy chém)
+      const S = sprOf(f), A = S.set.poses[fromPose || 'windup'], B = S.set.poses[toPose || 'strike'];
       if (!A || !B || !A.tip || !B.tip) return;
       const ca = sprLocal(A, A.chest), ta = sprLocal(A, A.tip), cb = sprLocal(B, B.chest), tb = sprLocal(B, B.tip);
+      const c = cAt ? cAt.clone() : ca.clone().lerp(cb, k);
+      if (mode === 'line') { const d = tb.clone().sub(cb), r = d.length(); setBladeFrom(S, c, c.clone().addScaledVector(d.normalize(), r * (0.35 + 0.65 * k))); return; }
       const a0 = Math.atan2(ta.y - ca.y, ta.x - ca.x), a1 = Math.atan2(tb.y - cb.y, tb.x - cb.x);
       let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
-      const r = ta.distanceTo(ca) + (tb.distanceTo(cb) - ta.distanceTo(ca)) * k, ang = a0 + da * k, c = ca.lerp(cb, k);
-      setBladeFrom(S, c, c.clone().add(new T.Vector3(Math.cos(ang) * r, Math.sin(ang) * r, 0)));
+      const r = ta.distanceTo(ca) + (tb.distanceTo(cb) - ta.distanceTo(ca)) * k, ang = a0 + da * k;
+      const sy = mode === 'flat' ? 0.3 + 0.7 * k * k : 1;     // dẹt giữa đường vung, cuối đường trùng đúng mũi kiếm trong tranh
+      setBladeFrom(S, c, c.clone().add(new T.Vector3(Math.cos(ang) * r, Math.sin(ang) * r * sy, 0)));
     }
     function sprPose(f, name, dur) {        // đổi dáng: tấm mới hiện dần, tấm cũ mờ dần (chạm = bỏ qua → tween xong ngay, vẫn đúng tấm cuối)
       const S = sprOf(f); if (!S || !S.cards[name]) return Promise.resolve();
@@ -1484,6 +1525,11 @@
       if (S.pose === name && S.cards[name].material.opacity >= 1) return Promise.resolve();
       const tok = ++S.tok, to = S.cards[name], P = S.set.poses[name];
       S.pose = name; sprBlade(f, name);
+      // mẫu "mượt hơn": đổi dáng có lực — lấy đà rướn lên, chém bè ra, đỡ lún xuống, trúng đòn co lại (tự về 1 theo giờ thật)
+      const SQ = { windup: [0.95, 1.05], strike: [1.09, 0.95], block: [1.04, 0.97], hit: [0.92, 1.05], kneel: [1.05, 0.94],
+        jump: [0.94, 1.07], slash: [1.08, 0.95], thrust: [1.1, 0.95], dodge: [0.94, 1.03],
+        raise: [0.97, 1.04], coil: [1.04, 0.97], chamber: [1.03, 0.98], recover: [0.99, 1.01] }[name];
+      if (SQ && dur) sprSquash(f, SQ[0], SQ[1]);
       for (const a of S.attach) { const pt = P[a.mark] || P.chest; a.obj.position.copy(sprLocal(P, pt, a.obj.position.z)); }
       to.visible = true;
       const others = Object.values(S.cards).filter(c => c !== to), o0 = others.map(c => c.material.opacity), t0 = to.material.opacity;
@@ -1503,6 +1549,113 @@
     }
     function sprOrder(top, under) {          // con đang chém vẽ ĐÈ lên con kia (lưỡi kiếm chồng lên mặt khiên như hình đích)
       for (const [f, o] of [[top, 3], [under, 2]]) if (sprOf(f)) for (const c of Object.values(f.spr.cards)) c.renderOrder = o;
+    }
+    /* ---------- MẪU 2 (11-23): nhiều kiểu đánh + lùi né + đòn kết TRÚNG NGƯỜI (Nam: "đánh thì chỉ có 1 kiểu", "đòn kết thúc phải trúng
+       đối thủ, kiếm đâm trúng, hoặc chém trúng làm đôi"). Dáng mới ChatGPT vẽ: jump (nhảy chém), slash (chém ngang), dodge (lùi né),
+       thrust (đâm). Thiếu dáng nào thì tự lùi về chém thẳng. ---------- */
+    const sprHas = (f, pose) => !!(sprOf(f) && sprOf(f).set.poses[pose]);
+    const sprSgn = f => (sprOf(f).mirror ? -1 : 1);
+    // kiểu đánh theo LƯỢT trong trận (bộ đếm arena.plan đặt lại mỗi trận): chém ngang → nhảy chém → chém thẳng → đâm → … — trận 2 hiệp
+    // (4 nhát) đủ cả 4 kiểu; con thiếu dáng nào thì bỏ kiểu đó
+    const SPR_PLAN = ['slash', 'jump', 'strike', 'thrust'];
+    function sprPlan(f, i) { const K = (arena.planOrder || SPR_PLAN).filter(k => sprHas(f, k)); return K.length ? K[i % K.length] : 'strike'; }
+    /* 11-24 DÁNG CHUYỂN TIẾP (Nam: "vẫn còn hơi giật" → chọn "Đổi dáng cái rụp"). Mỗi đòn đi qua 4–5 tấm thay vì 3, mỗi lần đổi tấm là
+       sang một tấm GẦN GIỐNG tấm trước (ChatGPT vẽ 8 tấm mới, mỗi con 4):
+         chém thẳng: thủ → lấy đà → kiếm dựng qua đỉnh đầu (raise) → chém → đứng dậy thu kiếm (recover) → thủ
+         nhảy chém:  thủ → lấy đà → nhảy → kiếm qua đỉnh đầu lúc rơi (raise) → chém → recover → thủ
+         chém ngang: thủ → lấy đà → raise → chém ngang → recover → thủ
+         đâm:        thủ → rút kiếm về hông mũi chĩa tới (chamber) → đâm → recover → thủ
+       Con thiếu tấm nào thì bỏ qua tấm đó (về đúng như mẫu 2). Tấm "vặn người kéo kiếm ra SAU ngang hông" (coil) ChatGPT đã vẽ
+       nhưng KHÔNG dùng: soi từng khung 11-24 — gót sau đứng ±1,52 mà khung chỉ ±1,75 → lưỡi kiếm chĩa ra sau nằm trọn NGOÀI khung
+       suốt lúc lấy đà (thấy người khom, mất kiếm). */
+    const WIND = { strike: 'windup', jump: 'windup', slash: 'windup', thrust: 'chamber' };
+    const sprWind = (f, kind) => (sprHas(f, WIND[kind]) ? WIND[kind] : 'windup');
+    function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+    function sprChestW(f, pose, rootX, rootY) { const P = sprOf(f).set.poses[pose], l = sprLocal(P, P.chest); return new T.Vector3(rootX + l.x * sprSgn(f), rootY + l.y, 0); }
+    function splitPoly(w, h, c, n) {         // hình chữ nhật tâm 0 (rộng w, cao h) cắt bởi đường qua c, pháp tuyến n → 2 đa giác + 2 đầu mút đường cắt
+      const R = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+      const side = p => (p[0] - c[0]) * n[0] + (p[1] - c[1]) * n[1];
+      const A = [], B = [], cut = [];
+      for (let i = 0; i < 4; i++) {
+        const p = R[i], q = R[(i + 1) % 4], sp = side(p), sq = side(q);
+        (sp >= 0 ? A : B).push(p);
+        if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq), x = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; A.push(x); B.push(x); cut.push(x); }
+      }
+      return { A, B, cut };
+    }
+    function polyGeo(poly, w, h, off) {      // đa giác lồi → tam giác quạt; toạ độ ảnh (uv) tính lại theo vị trí trong tấm
+      const pos = [], uv = [];
+      for (let i = 1; i < poly.length - 1; i++) for (const p of [poly[0], poly[i], poly[i + 1]]) { pos.push(p[0] - off[0], p[1] - off[1], 0); uv.push(p[0] / w + 0.5, p[1] / h + 0.5); }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      return g;
+    }
+    let splitGlowMat = null;
+    function splitGlowMats() {               // mép cắt cháy: tạo 1 lần (bước dịch sẵn gọi trước → nhát chém làm đôi không phải dịch / nạp gì mới)
+      if (splitGlowMat) return;
+      const tx = canvasTex(64, (g, s) => { const gr = g.createLinearGradient(0, 0, 0, s); gr.addColorStop(0, 'rgba(255,90,0,0)'); gr.addColorStop(0.5, 'rgba(255,230,160,1)'); gr.addColorStop(1, 'rgba(255,90,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, s, s); });
+      splitGlowMat = new T.MeshBasicMaterial({ map: tx, color: new T.Color(2.2, 1.5, 1.0), transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false, side: T.DoubleSide });
+      warm.keep.push(splitGlowMat);
+    }
+    // đoạn đường cắt nằm trên THÂN NGƯỜI (độ trong của tranh > ~40%) → [t0, t1] theo tỉ lệ từ a tới b. Đo 11-23 lần 1: mép cháy dài bằng
+    // nguyên tấm tranh (cả chỗ trống quanh người) → lúc nửa trên xoay, 2 vệt sáng dài chéo nhau thành dấu X to giữa đấu trường
+    const sprAlphaCv = {};
+    function sprAlphaSpan(map, a, b, w, h) {
+      const img = map && map.image; if (!img || !img.width) return [0, 1];
+      let A = sprAlphaCv[map.uuid];
+      if (!A) {                                // ảnh thu 1/4 cho nhẹ; ảnh data-URI cùng nguồn → đọc được điểm ảnh
+        const c = document.createElement('canvas'); c.width = Math.max(1, img.width >> 2); c.height = Math.max(1, img.height >> 2);
+        const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, c.width, c.height);
+        A = sprAlphaCv[map.uuid] = { d: g.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
+      }
+      let t0 = -1, t1 = -1;
+      for (let i = 0; i <= 160; i++) {
+        const t = i / 160, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+        const px = Math.min(A.w - 1, Math.max(0, ((x / w + 0.5) * A.w) | 0)), py = Math.min(A.h - 1, Math.max(0, ((0.5 - y / h) * A.h) | 0));
+        if (A.d[(py * A.w + px) * 4 + 3] > 100) { if (t0 < 0) t0 = t; t1 = t; }
+      }
+      return t0 < 0 ? [0, 1] : [t0, t1];
+    }
+    function sprSplit(D, A, at) {            // CHÉM LÀM ĐÔI: cắt tấm tranh con thua theo đường chém → 2 mảnh, mép cắt cháy đỏ, KHÔNG máu
+      const S = sprOf(D), card = S.cards[S.pose]; if (!card) return;
+      const P = S.set.poses[S.pose], w = P.w * SPR.wpp, h = P.h * SPR.wpp;
+      D.root.updateWorldMatrix(true, true);
+      const lp = card.worldToLocal(at.clone());
+      const tilt = 0.2 * (S.mirror ? -1 : 1) * (Math.sign(D.root.position.x - A.root.position.x) || 1);
+      const { A: up, B: lo, cut } = splitPoly(w, h, [lp.x, Math.max(-h * 0.3, Math.min(h * 0.3, lp.y))], [Math.sin(tilt), Math.cos(tilt)]);
+      if (cut.length !== 2) return;
+      splitGlowMats();
+      const mid = [(cut[0][0] + cut[1][0]) / 2, (cut[0][1] + cut[1][1]) / 2];
+      const len = Math.hypot(cut[1][0] - cut[0][0], cut[1][1] - cut[0][1]), ang = Math.atan2(cut[1][1] - cut[0][1], cut[1][0] - cut[0][0]);
+      const [s0, s1] = sprAlphaSpan(card.material.map, cut[0], cut[1], w, h), sm = (s0 + s1) / 2;   // mép cháy chỉ trên thân người
+      const gx = cut[0][0] + (cut[1][0] - cut[0][0]) * sm - mid[0], gy = cut[0][1] + (cut[1][1] - cut[0][1]) * sm - mid[1];
+      const glows = [];
+      const halves = [up, lo].map(poly => {
+        const g = new T.Group(); g.position.set(card.position.x + mid[0], card.position.y + mid[1], card.position.z); D.model.add(g);
+        const m = new T.Mesh(polyGeo(poly, w, h, mid), sprMat(card.material.map)); m.renderOrder = card.renderOrder; m.frustumCulled = false; g.add(m);
+        const e = new T.Mesh(new T.PlaneGeometry(Math.max(0.1, (s1 - s0) * len * 1.08), 0.06), splitGlowMat.clone());
+        e.rotation.z = ang; e.position.set(gx, gy, 0.01); e.renderOrder = 7; e.frustumCulled = false; g.add(e); glows.push(e);
+        return g;
+      });
+      for (const c of Object.values(S.cards)) c.visible = false;
+      const away = (Math.sign(D.root.position.x - A.root.position.x) || 1) * (S.mirror ? -1 : 1);
+      const [U, L] = halves, u0 = U.position.clone(), l0 = L.position.clone(), K = D.k || 1;
+      sfx('heavy', 0.7); burst(at, 70, 0xff8a3a, 1.0 * K); fan(at, new T.Vector3(Math.sign(D.root.position.x - A.root.position.x) || 1, 0.2, 0).normalize(), 90, 0xffb347, 1.2);
+      S.split = (async () => {
+        await wait(0.12);                        // mảnh trên đứng yên một tích tắc rồi mới trượt theo nhát chém
+        await tween(0.55, k => {
+          // nửa trên trượt RA khỏi nửa dưới rồi mới rơi (đo 11-23 lần 1: trượt 0,32 + rơi 0,42 + xoay 1,0 → nửa trên rơi chồng lên nửa dưới, rối)
+          U.position.set(u0.x + away * 0.55 * k, u0.y + 0.06 * Math.sin(k * Math.PI) - 0.36 * k * k * k, u0.z); U.rotation.z = -away * 0.75 * k * k;
+          L.position.set(l0.x - away * 0.03 * k, l0.y - 0.05 * k, l0.z); L.rotation.z = away * 0.14 * k;
+          for (const e of glows) e.material.opacity = 1 - 0.55 * k;          // mép cháy nguội dần trong lúc nửa trên trượt
+        }, EASE.lin);
+        const c = D.root.position.clone(); c.y = 0.4 * K; burst(c, 40, 0xff8a3a, 0.7 * K); sfx('poof', 0.6);
+        await tween(0.75, k => {
+          for (const g of halves) g.traverse(o => { if (o.material) o.material.opacity = (glows.indexOf(o) >= 0 ? 0.45 : 1) * (1 - k); });
+          U.position.y -= 0.005; L.position.y -= 0.004;
+          if (Math.random() < 0.4) burst(c, 2, 0xff9a40, 0.4 * K);
+        }, EASE.in);
+        for (const g of halves) { D.model.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+      })();
     }
     function sprShove(D, dS, push) {         // trúng / đỡ đòn: dạt ra sau một chút rồi về chỗ
       const x0 = D.root.position.x;
@@ -1550,44 +1703,151 @@
       }
       sprCrackMat.opacity = 1;
     }
-    /* ĐÒN CHÉM TRANH: lấy đà (tấm "lấy đà", lùi nửa bước) → lao tới (tấm "chém", chân sau đứng yên, gốc trượt sao cho mũi kiếm vào
-       đúng chỗ chạm: tâm khiên / chỗ đỡ / ngực) + kiếm ảo quét vòng qua đỉnh đầu kéo vệt lửa → trúng (tia lửa, đòn kết: sét, vòng sóng,
-       chậm lại, khiên nứt) → thu thế */
+    /* ĐÒN ĐÁNH TRANH — mẫu 2 (11-23), 4 kiểu (con thiếu dáng nào → chém thẳng như bản 5):
+       · strike chém thẳng: lấy đà (lùi nửa bước) → lao tới tấm "chém", chân sau đứng yên, gốc trượt sao cho mũi kiếm vào đúng chỗ chạm
+         (tâm khiên / chỗ đỡ / ngực); kiếm ảo quét vòng qua đỉnh đầu kéo vệt lửa
+       · slash chém ngang: như trên nhưng tấm "chém ngang", vòng quét DẸT ngang ngực; chỗ chạm theo độ cao lưỡi
+       · jump nhảy chém: lấy đà → bật lên tấm "nhảy" bay cung ~0,42 về phía trước → rơi xuống đổi tấm "chém", mũi kiếm vào chỗ chạm
+       · thrust đâm: tấm "đâm", lưỡi duỗi thẳng ra trước
+       Bên bị đánh (opt.react 'auto'): đòn CHÉM XUỐNG (chém thẳng / nhảy chém) → lùi né (tấm "lùi né" ngả người ra sau + lùi + nảy nhẹ
+       đúng lúc kiếm tới → lưỡi bổ xuống khoảng trống trước mặt, chỉ tiếng vút); đòn NGANG (chém ngang / đâm) → đỡ (khiên/kiếm → tia lửa).
+       Đo 11-23 lần 2: né đòn ngang thì lưỡi ngang ngực luôn quẹt qua kiếm giơ cao / khiên của người né → nhìn như đỡ, không như né.
+       Đòn kết chết thật (opt.final + opt.fin, cả hai là tranh): bên thua KHÔNG giơ khiên → kiếm trúng NGƯỜI — fin 'stab' đâm xuyên:
+       đúng lúc mũi kiếm tới, người thua đổi tấm "trúng đòn" (ngả ra sau, khiên dạt ra sau lưng, bụng hở — đo 11-23: ở dáng thủ thế khiên
+       Mã che ngang ngực → lưỡi lút vào KHIÊN) và vẽ ĐÈ lên kiếm → lưỡi lút vào bụng, tia lửa toé ra sau lưng; fin 'split' chém ngang
+       làm đôi (sprSplit). Đòn kết không chết (hurt) giữ như bản 5: đỡ khiên + khiên nứt. Máy quay ĐỨNG YÊN (Nam 11-23: rung = chóng mặt). */
+    // lùi né: gót chân sau đứng cách mép khung ~0,23 (khung ±1,75 ở z=0) mà tấm "lùi né" còn chìa ra sau gót ~0,18 → chỉ lùi 0,12
+    // (bản đầu lùi 0,24: Vua lòi nửa người ra ngoài mép trái); kiếm người đánh dừng TRƯỚC ngực chỗ đối thủ vừa đứng 0,35 (bản đầu 0,1:
+    // mũi kiếm dừng ngay đầu gối chân co của người né → nhìn như trúng)
+    const DODGE_BACK = 0.12, DODGE_SHORT = 0.35;
+    function sprDodge(D, dS) {  // lùi né: tấm "lùi né" + lùi ra sau + nảy nhẹ; trả chỗ đứng cũ để về lại sau khi kiếm trượt
+      const x0 = D.root.position.x, y0 = D.root.position.y;
+      sprPose(D, 'dodge', 0.05);
+      return tween(0.2, k => { D.root.position.x = x0 + dS * DODGE_BACK * EASE.out(k); D.root.position.y = y0 + 0.06 * Math.sin(k * Math.PI); }, EASE.lin).then(() => ({ x0, y0 }));
+    }
     async function sprStrike(A, D, opt) {
-      const p0x = A.root.position.x, dS = Math.sign(D.root.position.x - p0x) || 1;
+      const p0x = A.root.position.x, y0 = A.root.position.y, dS = Math.sign(D.root.position.x - p0x) || 1, sD = !!sprOf(D);
+      const fin = opt.final && sD ? (opt.fin || null) : null;
+      const i = arena.plan || 0; if (!opt.final) arena.plan = i + 1;                     // lượt thứ i trong trận
+      let kind = fin === 'stab' ? 'thrust' : fin === 'split' ? 'slash' : opt.final ? 'strike' : (opt.kind || sprPlan(A, i));
+      if (!sprHas(A, kind)) kind = 'strike';
+      const land = kind === 'jump' ? 'strike' : kind;          // dáng lúc kiếm chạm (nhảy chém đáp xuống bằng tấm "chém")
+      const dodge = !opt.final && sD && sprHas(D, 'dodge') && (opt.react === 'dodge' || (opt.react === 'auto' && land === 'strike'));
+      const stab = fin === 'stab' && sprHas(D, 'hit');           // đâm: người thua đổi tấm "trúng đòn" đúng lúc mũi kiếm tới
       sfx('whoosh', 0.7, rnd(0.9, 1.15));
       sprOrder(A, D);
-      const guard = sprOf(D) ? sprPose(D, 'block', 0.07) : (opt.block || opt.final ? shield(D, true, 0.18) : Promise.resolve());
-      await Promise.all([sprPose(A, 'windup', 0.06), tween(0.2, k => { A.root.position.x = p0x - dS * 0.06 * k; }, EASE.out), guard]);
-      const at = sprOf(D) ? sprContact(D) : strikePoint(A, D);
-      let step = at.x - sprTipX(A, 'strike', p0x) + dS * 0.03;          // mũi kiếm vào quá chỗ chạm 3 cm
-      step = dS * Math.max(-0.6, Math.min(0.9, step * dS));
-      const xb = A.root.position.x;
-      sprSwing(A, 0);
-      if (cut.arena) startTrail(A);
-      sprPose(A, 'strike', 0.04);
-      await tween(0.13, k => { A.root.position.x = xb + (p0x + step - xb) * k; sprSwing(A, k); }, EASE.in);
-      sprSwing(A, 1);
+      // bên bị đánh: đỡ → giơ khiên · lùi né / đòn kết chết thật → đứng thủ thế (KHÔNG giơ khiên → kiếm trúng người)
+      const guard = sD ? sprPose(D, (dodge || fin) ? 'stance' : 'block', 0.07) : (opt.block || opt.final ? shield(D, true, 0.18) : Promise.resolve());
+      const wind = sprWind(A, kind);                             // tấm lấy đà theo kiểu đòn (chém ngang: coil · đâm: chamber · còn lại: windup)
+      await Promise.all([sprPose(A, wind, 0.08), tween(0.2, k => { A.root.position.x = p0x - dS * 0.06 * k; }, EASE.out), guard]);
+      let at;
+      if (stab) { at = sprChestW(D, 'hit', D.root.position.x, D.root.position.y); at.z = 0.04; }   // ngực ở dáng "trúng đòn"
+      else if (fin || dodge) at = sprMark(D, 'chest');
+      else at = sD ? sprContact(D) : strikePoint(A, D);
+      if (land === 'slash' || land === 'thrust') {            // lưỡi nằm ngang: chỗ chạm theo độ cao lưỡi (tia lửa / vết cắt đúng chỗ lưỡi đi qua)
+        const P = sprOf(A).set.poses[land], ty = y0 + sprLocal(P, P.tip).y;
+        at.y = Math.max(at.y - 0.25, Math.min(at.y + 0.25, ty));
+      }
+      // mũi kiếm vào QUÁ chỗ chạm: đỡ 3 cm · đâm xuyên 16 cm · chém ngang qua hết người · lùi né: dừng TRƯỚC ngực chỗ đối thủ vừa đứng
+      const past = fin === 'stab' ? 0.16 : fin === 'split' ? 0.34 : dodge ? -DODGE_SHORT : 0.03;
+      let step = at.x - sprTipX(A, land, p0x) + dS * past;
+      // bị né: người đánh không được LÙI quá 0,12 lúc ra đòn (tranh "đâm" / "chém" dài ~2,2–2,7 → muốn kiếm dừng trước người né thì
+      // phải lùi tới 0,5: đo 11-23, Mã vừa đâm vừa lùi ra nửa người ngoài mép khung)
+      step = dS * Math.max(dodge ? -0.12 : -0.6, Math.min(fin ? 1.2 : 0.9, step * dS));
+      const xb = A.root.position.x, xe = p0x + step;
+      let dodging = null;
+      if (kind === 'jump') {
+        // tâm vung (ngực) đi êm từ ngực lúc lấy đà tới ngực lúc đáp; gốc tranh đặt theo tâm đó (gốc tấm "nhảy" = chân THẤP nhất,
+        // khác chân sau của tấm khác → đặt theo gốc thì người giật lùi nửa thân lúc đổi tấm)
+        const sg = sprSgn(A), PS = sprOf(A).set.poses, cw = sprChestW(A, 'windup', xb, y0), ce = sprChestW(A, land, xe, y0), H = 0.42;
+        const place = (pose, cx) => { A.root.position.x = cx - sprLocal(PS[pose], PS[pose].chest).x * sg; };
+        sfx('whoosh', 0.6, 0.75);
+        sprPose(A, 'jump', 0.04);
+        let gi = 0;
+        await tween(0.24, k => {
+          place('jump', cw.x + (ce.x - cw.x) * 0.75 * k); A.root.position.y = y0 + H * Math.sin(k * Math.PI / 2);
+          if (k >= 0.4 * (gi + 1) && gi < 2) sprGhost(A, 0.24 - 0.1 * gi++);
+        }, EASE.out);
+        if (dodge) dodging = sprDodge(D, dS);
+        if (cut.arena) startTrail(A);
+        const c0 = sprChestW(A, 'jump', A.root.position.x, A.root.position.y);
+        const mid = sprHas(A, 'raise') ? 'raise' : null;       // 11-24: lúc rơi kiếm đi qua đỉnh đầu (tấm raise) rồi mới tới tấm chém
+        let pose = 'jump';
+        await tween(mid ? 0.19 : 0.15, k => {
+          const cx = c0.x + (ce.x - c0.x) * k, cy = c0.y + (ce.y - c0.y) * k;
+          A.root.position.y = y0 + H * (1 - k * k);
+          if (mid && pose === 'jump' && k >= 0.3) { pose = mid; sprPose(A, mid, 0.03); }
+          if (pose !== land && k >= (mid ? 0.62 : 0.45)) { pose = land; sprPose(A, land, 0.03); }
+          place(pose, cx);
+          sprSwing(A, k, land, 'jump', null, new T.Vector3((cx - A.root.position.x) * sg, cy - A.root.position.y, 0.02));
+        }, EASE.lin);
+        A.root.position.y = y0; A.root.position.x = xe;
+        sprSwing(A, 1, land, 'jump');
+        sfx('land', 0.55);
+      } else {
+        const mode = land === 'slash' ? 'flat' : land === 'thrust' ? 'line' : null;
+        // 11-24: tấm đánh KHÔNG hiện ngay lúc bắt đầu lao (mẫu 2: lấy đà → chém trong 0,04 giây = "cái rụp"). Chém thẳng / chém ngang:
+        // nửa đầu nhát lao là tấm kiếm qua đỉnh đầu (raise) rồi mới tới tấm chém. Đâm: giữ tấm rút kiếm (chamber) tới SW rồi đổi.
+        // Chém ngang đi qua raise thì kiếm ảo quét TRÒN như chém thẳng: vòng dẹt 'flat' bắt đầu ở 30% độ dài → hụt 1 khúc lúc đổi tấm.
+        // Kiếm ẢO (vệt lửa) quét NỐI 2 tấm đúng quanh lúc đổi tấm → lửa lấp khoảng giữa 2 hình (như khung nhoè trong phim hoạt hình).
+        // Mẫu 2: tấm chém hiện từ đầu nhát lao còn kiếm ảo quét vòng ở 30% thời gian CUỐI (EASE.in) → hình và lửa lệch nhau.
+        const mid = (land === 'strike' || land === 'slash') && sprHas(A, 'raise') ? 'raise' : null;
+        const from = mid || wind, SW = mid ? 0.5 : 0.45;
+        const swing = raw => {                                 // raw = giờ của nhát lao 0..1 → vị trí kiếm ảo
+          if (!mid) return sprSwing(A, EASE.io(Math.max(0, Math.min(1, (raw - SW + 0.2) / 0.45))), land, wind, mode);
+          if (raw < SW) return sprSwing(A, EASE.io(raw / SW), mid, wind);
+          sprSwing(A, EASE.io(Math.min(1, (raw - SW) / 0.35)), land, mid);
+        };
+        swing(0);
+        if (cut.arena) startTrail(A);
+        if (mid) sprPose(A, mid, 0.035);
+        if (dodge) dodging = sprDodge(D, dS);
+        // 2 bóng mờ kéo theo lúc lao tới. Lần quay 1: 3 bóng đậm 0,42/0,32/0,22 sống 0,2 giây → ảnh chụp thấy cả 2 con nhân đôi nhoè
+        let pose = from, gk = 0.35, gi = 0;
+        await tween(mid ? 0.17 : 0.15, (k, raw) => {
+          A.root.position.x = xb + (xe - xb) * k;
+          if (pose !== land && raw >= SW) { pose = land; sprPose(A, land, 0.035); }
+          swing(raw);
+          if (k >= gk && gi < 2) { sprGhost(A, 0.26 - 0.11 * gi++); gk += 0.35; }
+          if (stab && k >= 0.7 && sprOf(D).pose !== 'hit') { sprPose(D, 'hit', 0.03); sprOrder(D, A); }   // mũi kiếm sắp tới: ngả ra sau, vẽ đè lên kiếm
+        }, EASE.in);
+        sprSwing(A, 1, land, from, mid ? null : mode);
+      }
       // đòn kết: giữ lửa bám lưỡi + vệt lửa bùng lại, đứng yên cùng tia sét (như knightStrike)
       if (opt.final && A.trail) {
         const tr = A.trail, t0 = clock.g; tr.hold = true;
         for (const s of tr.samples) s.t = t0 - (t0 - s.t) * 0.35;
         wait(0.12).then(() => { if (A.trail === tr) stopTrail(A); });
       } else stopTrail(A);
-      if (opt.block) {
+      if (dodge) {
+        sfx('whoosh', 0.9, 1.3);                               // chém hụt: chỉ tiếng vút, không tia lửa
+      } else if (fin) {
+        hitFx(A, D, true, at); sprFlash(D, 1.1);
+        if (fin === 'stab') {
+          sfx('heavy', 1);
+          if (stab) sprPose(D, 'hit', 0.02);
+          sprOrder(D, A);                                      // người thua vẽ ĐÈ lên kiếm → lưỡi lút vào người
+          const tipW = sprMark(A, 'tip');                      // tia lửa toé ra SAU LƯNG chỗ mũi kiếm xuyên qua
+          if (tipW) fan(tipW, new T.Vector3(dS, 0.15, 0).normalize(), 60, 0xff9a40, 1.0);
+        } else sprSplit(D, A, at);                             // chém ngang làm đôi (sprSplit tự có tiếng + tia lửa)
+      } else if (opt.block) {
         hitFx(A, D, false, at); sfx(Math.random() < 0.5 ? 'clash' : 'clash2', 0.85, rnd(0.9, 1.1));
-        await (sprOf(D) ? sprShove(D, dS, 0.05) : lean(D, -0.22, 0.08));
+        if (sD) { sprSquash(D, 0.95, 1.03); sprFlash(D, 0.45); }
+        await (sD ? sprShove(D, dS, 0.05) : lean(D, -0.22, 0.08));
       } else if (opt.final) {
         hitFx(A, D, true, at); sfx('heavy', 1);
-        if (sprOf(D)) sprCrack(D, A);
+        if (sD) { sprCrack(D, A); sprFlash(D, 1.1); }
       }
-      // đòn kết: GIỮ khoảnh khắc kiếm chạm khiên suốt lúc sét giáng (~0,45 giây trong cảnh) như hình đích. Đo 11-23 lần 1: chỉ giữ
+      // đòn kết: GIỮ khoảnh khắc kiếm chạm suốt lúc sét giáng (~0,45 giây trong cảnh) như hình đích. Đo 11-23 lần 1: chỉ giữ
       // 0,16 → khung sét chụp được Vua đã thu kiếm, Mã đã ngả ra sau, tia sét rơi vào khoảng trống giữa hai người
       await wait(opt.final ? 0.45 : 0.05);
-      if (opt.final && sprOf(D)) sprShove(D, dS, 0.1);
-      const back = [sprPose(A, 'stance', 0.08), tween(0.24, k => { A.root.position.x = p0x + step * (1 - k); })];
-      if (opt.block) back.push(sprOf(D) ? sprPose(D, 'stance', 0.08) : Promise.all([lean(D, 0, 0.16), shield(D, false, 0.16)]));
-      if (opt.final && sprOf(D)) back.push(sprPose(D, 'hit', 0.05));     // đòn kết: bên trúng ngả ra sau (die() / hurt() lo tiếp)
+      if (opt.final && sD && fin !== 'split') sprShove(D, dS, 0.1);
+      // 11-24: về thủ thế qua tấm "đứng dậy thu kiếm" (recover) — mẫu 2 đổi thẳng tấm đánh (người choãi, kiếm duỗi) → thủ thế trong 0,08 giây
+      const back = [sprHas(A, 'recover') ? sprPose(A, 'recover', 0.04).then(() => wait(0.09)).then(() => sprPose(A, 'stance', 0.07)) : sprPose(A, 'stance', 0.08),
+        tween(0.26, k => { A.root.position.x = xe + (p0x - xe) * k; })];
+      if (dodging) back.push(dodging.then(o => Promise.all([sprPose(D, 'stance', 0.1), tween(0.28, k => { D.root.position.x = o.x0 + dS * DODGE_BACK * (1 - k); D.root.position.y = o.y0; })])));
+      else if (opt.block) back.push(sD ? sprPose(D, 'stance', 0.08) : Promise.all([lean(D, 0, 0.16), shield(D, false, 0.16)]));
+      if (opt.final && sD && fin !== 'split') back.push(sprPose(D, 'hit', 0.05));     // đòn kết: bên trúng ngả ra sau (die() / hurt() lo tiếp)
       await Promise.all(back);
       sprBlade(A, 'stance');
     }
@@ -1606,6 +1866,8 @@
       arena.scene.add(sparks, fxGrp, flashLight, streaks);
       sparks.material.size = 0.13;
       cut.active = true; cut.arena = true; cut.views = []; cut.shake = 0;
+      // mẫu "mượt hơn": vào trận khung hơi rộng rồi máy từ từ tiến lại (đẩy máy vào ~2 giây)
+      Object.assign(camFx, { z: 0.86, fx: 0, fy: 1.08, w: 0, tz: 1, tfx: 0, tfy: 1.08, tw: 0, rate: 1.3, punch: 0, pz: 0 }); arena.stopT = 0;
       const mk = (side, vp) => { const cam = new T.PerspectiveCamera(40, vp.w / vp.h, 0.1, 220); arenaCamPose(cam, side, vp.w / vp.h); cut.views.push({ cam, vp, to: { pos: cam.position.clone() } }); };
       if (cfg.cutscene === 'split') {
         if (orient === 'portrait') { mk('w', { x: 0, y: 0, w: PX, h: PX / 2 }); mk('b', { x: 0, y: PX / 2, w: PX, h: PX / 2 }); }
@@ -1616,7 +1878,7 @@
       for (const f of arena.fighters) { stopTrail(f); arena.scene.remove(f.root); }
       arena.fighters = [];
       for (const tr of trails.splice(0, trails.length)) { arena.scene.remove(tr.mesh); tr.geo.dispose(); }
-      arena.scene.remove(streaks); arena.slowT = 0; arena.flashK = 0;
+      arena.scene.remove(streaks); arena.slowT = 0; arena.flashK = 0; arena.stopT = 0;
       sparks.material.size = 0.09;
       scene.add(sparks, fxGrp, flashLight);
       cut.active = false; cut.arena = false; cut.views = []; cut.shake = 0;
@@ -1650,10 +1912,11 @@
           const out = [f.root];
           if (f.spr) {                                    // tranh: mở đủ 6 tấm (tấm ẩn thì máy không nạp ảnh lên card đồ hoạ → trận đầu khựng)
             for (const cd of Object.values(f.spr.cards)) { cd.visible = true; cd.material.opacity = 1; }
-            sprCrackMats();
+            sprCrackMats(); splitGlowMats();
             const ck = new T.Mesh(new T.PlaneGeometry(0.5, 0.5), sprCrackMat); ck.position.set(0, 1, 0.3);
             const ch = new T.Mesh(new T.TetrahedronGeometry(0.05), sprChipMat); ch.position.set(0.2, 0.8, 0.3);
-            out.push(ck, ch);
+            const sg = new T.Mesh(new T.PlaneGeometry(0.4, 0.07), splitGlowMat); sg.position.set(-0.2, 1.1, 0.3);   // mẫu 2: mép cắt cháy (chém làm đôi)
+            out.push(ck, ch, sg);
           }
           const cr = f.model.getObjectByName('crack');
           if (cr) { cr.visible = true; cr.material.uniforms.uReveal.value = 1; warm.keep.push(cr.material); }
@@ -1668,6 +1931,8 @@
         });
       }
       S.push(() => {                                      // vệt lửa theo lưỡi kiếm · sét · tia điện quấn lưỡi
+        // mẫu 2: đọc sẵn độ trong của tranh "thủ thế" (chém làm đôi cắt tấm này) → nhát chém đầu tiên khỏi khựng ~50 ms lúc đọc ảnh
+        for (const id in sprTex) if (/\/stance$/.test(id)) sprAlphaSpan(sprTex[id], [0, 0], [0, 0], 1, 1);
         const g = new T.BufferGeometry();
         g.setAttribute('position', new T.BufferAttribute(new Float32Array([-0.3, 1.2, 0, -0.3, 1.6, 0, 0.3, 1.2, 0, 0.3, 1.6, 0]), 3));
         g.setAttribute('aAge', new T.BufferAttribute(new Float32Array([0.2, 0.2, 0.1, 0.1]), 1));
@@ -1741,6 +2006,7 @@
       }
       const sh = cut.shake;
       if (cut.arena && cut.views.length === 1 && PP.composer) {     // đấu trường 1 khung: sàn gương + loá sáng + lượt màu cuối
+        // mẫu 2 (11-23): máy quay ĐỨNG YÊN như bản 5 — mẫu 1 cho máy cận/giật/rung → Nam: "rung lắc gây chóng mặt"
         const v = cut.views[0], p0 = v.cam.position.clone();
         if (sh > 0) v.cam.position.add(new T.Vector3(rnd(-sh, sh), rnd(-sh, sh), rnd(-sh, sh)));
         R.setScissorTest(false); R.setViewport(0, 0, PX, PX);
@@ -1942,7 +2208,7 @@
           shockRing(D.root.position.clone(), A.k);
           if (A.model && A.model.getObjectByName('blade')) skyBolt(at);
           slowMo(0.28);
-          cut.shake = 0.09; tween(0.4, k => { cut.shake = 0.09 * (1 - k); });
+          // mẫu 2 (11-23): bỏ rung màn hình ở đòn kết — Nam: "màn hình rung lắc gây chóng mặt"
         }
         return;
       }
@@ -2014,6 +2280,10 @@
       fxGrp.remove(tube);
     }
     async function exchange(A, D) {          // một hiệp: A đánh – D đỡ, D đánh trả – A đỡ
+      if (sprOf(A) && sprOf(D)) {            // mẫu 2: cặp tranh — mỗi nhát một kiểu đánh (sprPlan), bên bị đánh lúc đỡ lúc lùi né
+        for (const [X, Y] of [[A, D], [D, A]]) await strike(X, Y, { block: true, react: 'auto' });
+        return;
+      }
       await strike(A, D, { block: true });
       await strike(D, A, { block: true });
     }
@@ -2048,6 +2318,12 @@
     /* ---------- diễn: chết ---------- */
     async function die(M, attackerPos, deathType) {
       M.busy = true;
+      const SS = sprOf(M);
+      if (SS && SS.split) {                    // mẫu 2: bị chém làm đôi — 2 mảnh tự trượt / rơi / tan (sprSplit) → xong thì ẩn, khỏi gục gối
+        await SS.split; SS.split = null;
+        M.root.visible = false; M.busy = false;
+        return;
+      }
       const pos = M.root.position.clone();
       if (deathType === 'shatter') {
         sfx(style === 'crystal' ? 'glass' : (style === 'warriors' ? 'poof' : 'woodbrk'), 1);
@@ -2170,6 +2446,8 @@
 
     /* ---------- ĐẠO DIỄN CẢNH ĐÁNH NHAU ---------- */
     let cfg = { death: 'topple', battleLen: 'long', cutscene: 'toward', fight: 'arena', art: 'paint' };   // art: 'paint' tranh ChatGPT (11-23) / '3d' giáp code (bản 4)
+    // mẫu 2: kiểu đòn kết chết thật — Nam chọn 11-23 "Chém trúng làm đôi" → mặc định 'split'; ?fin=stab (đâm xuyên) vẫn ép được để so
+    const FIN_Q = (/[?&]fin=(stab|split)\b/.exec(location.search) || [])[1] || 'split';
     function exchangesFor(at, dt) {
       if (cfg.battleLen === 'short') return 1;
       let n = { p: 1, n: 2, b: 2, r: 2, q: 3, k: 3 }[dt] || 1;
@@ -2208,6 +2486,10 @@
         await Promise.all([tween(0.6, k => applyCutBlend(k)), slide(A, stage, 0.55, 0.2), turnTo(A, yawA, 0.5), turnTo(D, yawD, 0.5)]);
       }
       const K = A.k || 1;
+      // mẫu 2: bộ đếm kiểu đánh đặt lại mỗi trận + thứ tự 4 kiểu BỐC NGẪU NHIÊN mỗi trận (Nam 11-23 "Thứ tự đòn ngẫu nhiên" — bản đầu
+      // trận nào cũng chém ngang → nhảy → chém thẳng → đâm). ?order=fixed giữ thứ tự cũ (bộ thử / quay phim so sánh)
+      arena.plan = 0;
+      arena.planOrder = /[?&]order=fixed\b/.test(location.search) ? SPR_PLAN.slice() : shuffle(SPR_PLAN.slice());
       let winner = b.winner === 'a' ? A : D, loser = b.winner === 'a' ? D : A;
       if (b.mode === 'dice') {
         const dA = makeDie(A.c, K), dD = makeDie(D.c, K);
@@ -2245,11 +2527,13 @@
         const n = exchangesFor(A.t, D.t);
         for (let i = 0; i < n; i++) await exchange(A, D);
       }
-      // đòn kết
-      await strike(winner, loser, { final: true, magic: true });
+      // đòn kết — mẫu 2: con thua CHẾT THẬT thì kiếm trúng NGƯỜI (đâm xuyên / chém làm đôi); chỉ trúng đòn còn sống thì như bản 5
       const dieEv = follow.find(e => e.type === 'die');
+      const fin = dieEv && dieEv.id === loser.id ? FIN_Q : null;
+      await strike(winner, loser, { final: true, magic: true, fin });
       const hitEv = follow.find(e => e.type === 'hit');
       const bounceEv = follow.find(e => e.type === 'bounce');
+      if (dieEv && cut.arena) camAim(0.96, 0, 1.08, 0.15, 1.0);   // mẫu "mượt hơn": máy lùi ra từ từ trong lúc con thua gục
       if (dieEv) await die(dieEv.id === A.id ? A : D, (dieEv.id === A.id ? D : A).root.position.clone(), cfg.death);
       else if (hitEv) await hurt(hitEv.id === A.id ? A : D);
       else if (bounceEv) { sfx('punch', 0.8); await lean(A, -0.5, 0.15); await lean(A, 0, 0.2); }
@@ -2407,12 +2691,13 @@
         showArena(ta, td, ca, cb) { buildArena(); for (const f of arena.fighters.slice()) arena.scene.remove(f.root); arena.fighters = []; ca = ca || 'w'; cb = cb || 'b'; const gap = arenaGap(ta, td, ca, cb); const A = fighterFrom({ t: ta, c: ca, id: -11 }, -gap), D = fighterFrom({ t: td, c: cb, id: -12 }, gap); enterArena(ca); return { A, D }; },
         // chiến binh tranh (11-23): đặt ngay một dáng · đọc dáng/lật/vị trí · bật sổ ghi đổi dáng (bộ thử) · chỉnh mức bù màu (đo ảnh)
         sprPose(f, name) { return sprPose(f, name, 0); },
-        spr(f) { const S = sprOf(f); return S ? { pose: S.pose, mirror: S.mirror, x: +f.root.position.x.toFixed(3), cards: Object.keys(S.cards).length, attach: S.attach.length } : null; },
+        spr(f) { const S = sprOf(f); return S ? { pose: S.pose, mirror: S.mirror, x: +f.root.position.x.toFixed(3), cards: Object.keys(S.cards).length, attach: S.attach.length, split: !!S.split } : null; },
         sprLog(on) { arena.sprLog = on ? [] : null; },
         get sprLogData() { return arena.sprLog ? arena.sprLog.slice() : null; },
         sprComp(v) { sprUni.uComp.value = v; },
         sprMark(f, m) { const v = sprMark(f, m); return v ? [+v.x.toFixed(3), +v.y.toFixed(3)] : null; },
         sprTipX: (f, pose) => sprTipX(f, pose, f.root.position.x),
+        get sprAlphaRead() { return Object.keys(sprAlphaCv).length; },     // mẫu 2: số tranh đã đọc sẵn độ trong (chém làm đôi)
         hideArena() { exitArena(); },
         // đặt ngay một dáng có tên cho chiến binh giáp (bộ chụp ảnh tools/look_knights.py): thân / kiếm / khiên
         knPose(f, body, sw, sh) {
