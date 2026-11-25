@@ -467,12 +467,17 @@
       camTmp.rotateZ(viewerInfo(side).roll);
       return { pos: camTmp.position.clone(), quat: camTmp.quaternion.clone(), fov: 30 };
     }
+    // mỗi lần đặt máy quay = 1 lượt mới; cú xoay của lượt CŨ đang chạy dở thì thôi kéo máy quay. 11-24: đổi kiểu bàn / xoay iPad giữa lúc
+    // máy quay đang xoay theo lượt (0,95 giây) → máy quay được đặt ngay về chỗ mới rồi bị cú xoay cũ kéo về góc nghiêng (bàn phẳng bị nhìn
+    // nghiêng, cú chạm lúc đó tính sai ô). Phép thử: test_mau "đổi sang bàn phẳng giữa lúc máy quay đang xoay".
+    let camGen = 0;
     function placeBoardCam(animate) {
-      const to = camPose();
+      const to = camPose(), gen = ++camGen;
       if (!animate) { boardCam.position.copy(to.pos); boardCam.quaternion.copy(to.quat); boardCam.fov = to.fov; boardCam.updateProjectionMatrix(); return; }
       const p0 = boardCam.position.clone(), q0 = boardCam.quaternion.clone(), f0 = boardCam.fov;
       // xoay vòng qua phía trên bàn (đi thẳng qua giữa sẽ chui xuống mặt bàn)
       tween(0.95, k => {
+        if (gen !== camGen) return;
         boardCam.position.lerpVectors(p0, to.pos, k); boardCam.position.y += Math.sin(k * Math.PI) * 9;
         boardCam.quaternion.slerpQuaternions(q0, to.quat, k);
         boardCam.fov = f0 + (to.fov - f0) * k; boardCam.updateProjectionMatrix();
