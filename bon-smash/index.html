@@ -34,6 +34,8 @@
   .hud { position:fixed; top:calc(var(--ti, env(safe-area-inset-top)) + 10px); right:12px; display:flex; gap:10px; z-index:5; }
   .hud button, .hudl button { width:64px; height:64px; border-radius:18px; border:none; background:#fff; font-size:30px; box-shadow:0 3px 0 #0002; cursor:pointer; }
   .hud button:active, .hudl button:active { transform:translateY(2px); box-shadow:none; }
+  .hud button.off { opacity:0.45; }   /* 🧹 khi chưa có hình nào để dọn · ⏹ khi màn đã kết thúc */
+  .stopIco { display:inline-block; width:26px; height:26px; box-sizing:border-box; border:5px solid #e63946; border-radius:6px; background:#fff; vertical-align:middle; }   /* Nam 11-24: nút Stop viền ĐỎ (emoji ⏹️ ra ô xanh, mỗi máy một kiểu → tự vẽ) */
   .hudl { position:fixed; top:calc(var(--ti, env(safe-area-inset-top)) + 10px); left:12px; display:flex; gap:10px; align-items:center; z-index:5; }
   .hudl .lbl { background:#ffffffd0; padding:8px 14px; border-radius:14px; font-size:22px; font-weight:800; }
 
@@ -98,11 +100,11 @@
 </div>
 
 <div class="hudl hidden" id="hudl"><button id="btnMenu" type="button">☰</button><span class="lbl" id="lbl"></span></div>
-<div class="hud hidden" id="hud"><button id="btnRestart" type="button">↺</button></div>
+<div class="hud hidden" id="hud"><button id="btnSweep" type="button" aria-label="Clear my drawings">🧹</button><button id="btnStop" type="button" aria-label="Stop this level"><span class="stopIco"></span></button><button id="btnRestart" type="button">↺</button></div>
 <div class="hint hidden" id="hint"></div>
 
 <div id="win" class="hidden">
-  <div class="big">You got them all!</div>
+  <div class="big" id="winTitle">You got them all!</div>
   <div class="row" id="winBtns"></div>
 </div>
 
@@ -248,6 +250,8 @@
 
   // ================= Vật lý (màn chơi) =================
   let L = null, engine = null, friends = [], inks = [], shot = null, stroke = null, shots = 0, won = false, events = [], bubbles = [];
+  let stopped = false, stopTimer = 0;   // 11-23: Bon bấm ⏹ Stop = thua màn đó (các em chưa ngã cười); không đánh dấu ✓
+  const STOP_PANEL_MS = 1800;           // mốc thử: cười kéo dài 1,6 s + so le 0,15 s/em → bảng "Level stopped" hiện khi cười vừa xong
   let current = { kind: 'builtin', i: 0 };   // màn đang chơi
   function buildWorld(level) {
     L = JSON.parse(JSON.stringify(level));
@@ -265,9 +269,11 @@
       body.plugin.friend = f; return f;
     });
     inks = []; shot = null; stroke = null; shots = 0; won = false; events = []; bubbles = [];
+    stopped = false; clearTimeout(stopTimer); refreshHud();
     Events.on(engine, 'collisionStart', onHit);
   }
   function onHit(e) {
+    if (stopped) return;   // sau Stop: vật đang rơi dở không còn làm ai ngã
     for (const p of e.pairs) {
       const a = p.bodyA, b = p.bodyB;
       const fa = a.plugin && a.plugin.friend, fb = b.plugin && b.plugin.friend;
@@ -286,7 +292,7 @@
 
   // nét → chuỗi hạt tròn cách đều → 1 vật cứng có sức nặng
   function dropInk(pts) {
-    if (!pts.length || won) return;
+    if (!pts.length || won || stopped) return;
     const beads = [pts[0]];
     for (let i = 1; i < pts.length; i++) {
       const last = beads[beads.length - 1];
@@ -300,10 +306,23 @@
     inks.push(body); shots++;
     shot = { body, hits: 0, still: 0, age: 0 };
     events.push({ type: 'drop', beads: beads.length });
+    refreshHud();
+  }
+  // em còn đứng = chưa bị trúng (đang idle hoặc đang cười) — cười chọc quê và Stop chỉ tính những em này
+  const standing = () => friends.filter(f => f.state === 'idle' || f.state === 'laugh');
+  // mấy em chưa ngã cười chọc quê — DÙNG CHUNG cho "vẽ trượt" và "Stop" (11-23): em gần điểm ref nhất cười thành tiếng, cả nhóm cười lần lượt. Trả về số em cười.
+  function laughAt(ref) {
+    const left = standing();
+    if (!left.length) return 0;
+    left.sort((p, q) => Math.hypot(p.x - ref.x, p.y - ref.y) - Math.hypot(q.x - ref.x, q.y - ref.y));
+    left.forEach((f, i) => { f.state = 'laugh'; f.t = -i * 0.15; });
+    sayLaugh(left[0].id); bubble(left[0], 'HA HA!', '#1d6fd6');
+    events.push({ type: 'laugh', id: left[0].id });
+    return left.length;
   }
   // vật đã đứng yên / rơi khỏi màn → cú này không trúng ai thì mấy em chưa trúng cười chọc quê (em gần nhất cười thành tiếng)
   function checkShot(dt) {
-    if (!shot) return;
+    if (!shot || stopped) return;
     const b = shot.body; shot.age += dt;
     shot.still = (b.speed < 0.15 && Math.abs(b.angularSpeed) < 0.01) ? shot.still + 1 : 0;
     const gone = b.position.y > WH + 200 || b.position.x < -400 || b.position.x > WW + 400;
@@ -311,14 +330,34 @@
       const s = shot; shot = null;
       events.push({ type: 'settled', hits: s.hits, gone });
       if (gone) { Composite.remove(engine.world, b); inks = inks.filter(x => x !== b); }
-      const left = friends.filter(f => f.state === 'idle' || f.state === 'laugh');
-      if (s.hits === 0 && left.length) {
-        left.sort((p, q) => Math.hypot(p.x - b.position.x, p.y - b.position.y) - Math.hypot(q.x - b.position.x, q.y - b.position.y));
-        left.forEach((f, i) => { f.state = 'laugh'; f.t = -i * 0.15; });
-        sayLaugh(left[0].id); bubble(left[0], 'HA HA!', '#1d6fd6');
-        events.push({ type: 'laugh', id: left[0].id });
-      }
+      if (s.hits === 0) laughAt(b.position);
     }
+  }
+  // 🧹 dọn mọi hình Bon đã vẽ (các em đã ngã vẫn nằm đó) — gỡ chỗ "đợt vẽ trước cản đường nên có em không bao giờ bị đập tới"
+  function sweepInk() {
+    if (screen !== 'play' || won || stopped || !inks.length) return;
+    const n = inks.length;
+    for (const b of inks) Composite.remove(engine.world, b);
+    inks = []; shot = null;
+    events.push({ type: 'sweep', n });
+    refreshHud();
+  }
+  // ⏹ Stop = thua màn này: hỏi lại Yes/No → các em chưa ngã cười như khi vẽ trượt → bảng "Level stopped" (không đánh dấu ✓ qua màn)
+  function doStop() {
+    if (screen !== 'play' || won || stopped || !standing().length) return;   // không còn em nào đứng = đã thắng, hoặc em cuối vừa bị trúng đang chóng mặt (sắp thắng) → Stop vô nghĩa
+    ask('Stop this level?', () => {
+      if (screen !== 'play' || won || stopped || !standing().length) return;   // lúc hộp hỏi đang mở, em cuối có thể vừa ngã (thắng) → không Stop nữa
+      stopped = true; stroke = null;
+      const n = laughAt({ x: L.box.x + L.box.w / 2, y: L.box.y + L.box.h });
+      events.push({ type: 'stop', left: n });
+      refreshHud();
+      clearTimeout(stopTimer); stopTimer = setTimeout(showWin, STOP_PANEL_MS);
+    });
+  }
+  function refreshHud() {
+    const sw = document.getElementById('btnSweep'), st = document.getElementById('btnStop');
+    if (sw) sw.classList.toggle('off', !inks.length || won || stopped);
+    if (st) st.classList.toggle('off', won || stopped);
   }
   function updateFriends(dt) {
     for (const f of friends) {
@@ -338,8 +377,8 @@
     updateFriends(STEP / 1000);
     checkShot(STEP / 1000);
     for (let i = 0; i < SUB; i++) Engine.update(engine, STEP / SUB);
-    if (!won && friends.length && friends.every(f => f.state === 'dizzy')) {
-      won = true; events.push({ type: 'win', shots });
+    if (!won && !stopped && friends.length && friends.every(f => f.state === 'dizzy')) {
+      won = true; refreshHud(); events.push({ type: 'win', shots });
       if (current.kind === 'builtin') { save.cleared[current.i] = 1; persist(); }
       setTimeout(showWin, 700);
     }
@@ -349,7 +388,7 @@
   const inBox = p => p.x >= L.box.x && p.x <= L.box.x + L.box.w && p.y >= L.box.y && p.y <= L.box.y + L.box.h;
   const clampBox = p => ({ x: clamp(p.x, L.box.x + BEAD, L.box.x + L.box.w - BEAD), y: clamp(p.y, L.box.y + BEAD, L.box.y + L.box.h - BEAD) });
   function playDown(ev, p) {
-    if (won || !inBox(p)) return;
+    if (won || stopped || !inBox(p)) return;
     stroke = { pts: [clampBox(p)], len: 0, id: ev.pointerId };
     hideHint();
   }
@@ -516,12 +555,13 @@
     makeTools(); refreshTools();
     showHint('Pick something below, then tap the picture');
   }
-  function showWin() {
-    if (screen !== 'play' || !won) return;
+  function showWin() {   // bảng cuối màn: thắng ("You got them all!") hoặc Bon bấm Stop ("Level stopped")
+    if (screen !== 'play' || !(won || stopped)) return;
+    document.getElementById('winTitle').textContent = won ? 'You got them all!' : 'Level stopped';
     const row = document.getElementById('winBtns'); row.innerHTML = '';
     const add = (txt, fn, go) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = txt; b.onclick = fn; if (go) b.className = 'go'; row.appendChild(b); };
-    add('↺ Again', () => startPlay(current));
-    if (current.kind === 'builtin' && current.i < BUILTIN.length - 1) add('Next ▶', () => startPlay({ kind: 'builtin', i: current.i + 1 }), true);
+    add('↺ Again', () => startPlay(current), !won);   // Stop: "Again" là nút chính (cam)
+    if (current.kind === 'builtin' && current.i < BUILTIN.length - 1) add('Next ▶', () => startPlay({ kind: 'builtin', i: current.i + 1 }), won);
     if (current.kind === 'bon') add('✏️ Edit', () => startBuild(current.i));
     add('☰ Levels', showMenu);
     show('win', true);
@@ -553,6 +593,8 @@
   }
   document.getElementById('btnMenu').onclick = showMenu;
   document.getElementById('btnRestart').onclick = () => startPlay(current);
+  document.getElementById('btnSweep').onclick = sweepInk;
+  document.getElementById('btnStop').onclick = doStop;
   const HOME = location.protocol !== 'file:';
   if (HOME) { show('homeBtn', true); document.getElementById('homeBtn').onclick = () => { location.href = '../'; }; }
   ORDER.forEach(id => document.getElementById('cast').appendChild(thumb(id, 35, 'laugh')));
@@ -696,6 +738,7 @@
   window.__smash = {
     get screen() { return screen; }, get friends() { return friends.map(f => ({ id: f.id, state: f.state })); },
     get events() { return events; }, get won() { return won; }, get shotActive() { return !!shot; }, get sfx() { return SFX.log; },
+    get stopped() { return stopped; }, get inkCount() { return inks.length; },
     get level() { return L; }, get edit() { return edit; }, get save() { return save; }, get sel() { return sel && { kind: sel.kind }; },
     levels: BUILTIN, startPlay, startBuild, showMenu,
     playData(lv) { current = { kind: 'test', i: 0 }; buildWorld(lv); if (screen !== 'play') setScreen('play'); },  // bot thử màn nháp chưa vào levels.js
