@@ -49,6 +49,23 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
 .btn{min-width:150px;height:60px;border-radius:16px;border:none;font-size:20px;font-weight:700;padding:0 18px}
 .b1{background:linear-gradient(#7dffa8,#33c46a);color:#08130c}
 .b2{background:#232741;color:#e8e6f0}
+.mi{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.18em}
+.tb .ic .mi{width:20px;height:20px;vertical-align:middle}
+.libcard{width:min(780px,94%);max-height:90%;display:flex;flex-direction:column;box-sizing:border-box}
+.libcard h2{margin-bottom:8px}
+#lvGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;overflow-y:auto;padding:4px;min-height:80px}
+.lv{background:#10131d;border:2px solid #2d3150;border-radius:16px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.lv.cur{border-color:#ffd24d}
+.lvPlay{display:block;width:100%;padding:0;border:none;background:none;border-radius:10px;touch-action:manipulation}
+.lvPlay canvas{width:100%;height:auto;aspect-ratio:320/224;border-radius:10px;display:block}
+.lv .nm{font-size:14px;font-weight:600}
+.lv .acts{display:flex;gap:8px}
+.lv .acts button{width:48px;height:38px;border-radius:10px;border:2px solid #2a2e43;background:#161926;color:#e8e6f0;font-size:17px;padding:0}
+.lvEmpty{grid-column:1/-1;color:#8b8fa8;font-size:16px;padding:22px 8px;line-height:1.5}
+#ask{z-index:10}
+#ask .row2{flex-wrap:wrap}
+#dbg{position:absolute;left:6px;bottom:6px;z-index:7;pointer-events:none;font:10px/1.35 ui-monospace,Menlo,Consolas,monospace;color:#9fe8ff;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:6px;white-space:pre}
+#dbg.bad{color:#ffb0b0;background:rgba(90,0,0,.7)}
 </style>
 <link rel="manifest" href="../manifest.json">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
@@ -81,8 +98,11 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
     <canvas id="cv"></canvas>
     <button id="homeBtn" class="hide" aria-label="Bon's Games">🏠</button>
     <div id="hint"></div>
+    <div id="dbg" class="hide"></div>
     <div id="pick" class="ov hide"><div class="card"><h2>Pick your baby!</h2><div class="picks" id="picks"></div></div></div>
-    <div id="end" class="ov hide"><div class="card"><h2 id="endMsg"></h2><div class="row2"><button class="btn b1" id="again">Try again</button><button class="btn b2" id="toEdit">Edit maze</button></div></div></div>
+    <div id="end" class="ov hide"><div class="card"><h2 id="endMsg"></h2><div class="row2"><button class="btn b1" id="again">Try again</button><button class="btn b2" id="toEdit">Edit maze</button><button class="btn b2" id="toLib"><span class="mzico"></span> Mazes</button></div></div></div>
+    <div id="lib" class="ov hide"><div class="card libcard"><h2>My mazes</h2><div id="lvGrid"></div><div class="row2"><button class="btn b2" id="libClose">Close</button></div></div></div>
+    <div id="ask" class="ov hide"><div class="card"><h2 id="askMsg"></h2><div class="row2" id="askBtns"></div></div></div>
   </div>
   <div id="panel">
     <div class="sec" id="pDraw">
@@ -112,6 +132,10 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
       <div class="g2">
         <button class="tb row" id="biggerBtn"><span class="ic">↔️</span>Bigger</button>
         <button class="tb row" id="clearBtn"><span class="ic">🗑</span>Clear</button>
+      </div>
+      <div class="g2">
+        <button class="tb row" id="saveBtn"><span class="ic">💾</span>Save</button>
+        <button class="tb row" id="libBtn"><span class="ic mzico"></span>Mazes</button>
       </div>
     </div>
     <div class="sec hide" id="pPlay">
@@ -143,8 +167,12 @@ const SPEEDS = { slow: 75, normal: 110, fast: 150 };
 const PLAYER_SPEED = 165;
 const FRIENDS = ['froggy', 'babyfrog', 'chicken', 'pillow'];
 const FNAME = { froggy: 'Froggy', babyfrog: 'Baby Froggy', chicken: 'Chicken Banana', pillow: 'Gối chút chút' };
-const STORE = 'bon_maze_mau_v2';
-const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+const STORE = 'bon_maze_mau_v2';      // "màn đang vẽ" (tự lưu như cũ)
+const LV_KEY = 'bon_maze_levels_v1';  // danh sách màn đã bấm Save (khoá MỚI)
+const TRIAL = false;                  // bản thử: bật dòng số ở góc màn. Đẩy vào Maze thật thì đổi thành false
+const DEBUG_STRIP = TRIAL || /[?&]debug\b/.test(location.search);
+const ITEM_TOOLS = ['start', 'exit', 'key', 'portal', 'snake', 'baby'];   // công cụ "chạm để đặt"; chạm vào món cùng loại thì nhấc lên dời
+const DX =[1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
 
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
@@ -153,16 +181,22 @@ const cam = { x: 0, y: 0, z: 1, fit: false };
 
 // ====================== dữ liệu ======================
 let maze = null;
+let curLevelId = null, savedSig = '';   // màn đang vẽ đang gắn với màn nào trong danh sách Save (null = chưa), và "chữ ký" lúc Save/Mở gần nhất
 let set = { dark: 'A', mute: {}, portalSnd: 'portal', snakePortal: true };
 let tool = 'wall', num = 1, mode = 'draw';
-const undoStack = [];
+const undoStack = [], undoMeta = [];
 function setWorld(w, h) { W = w; H = h; GW = W / G; GH = H / G; bgDirty = true; }
-function save() { try { localStorage.setItem(STORE, JSON.stringify({ maze, set })); } catch (e) {} }
+function save() { try { localStorage.setItem(STORE, JSON.stringify({ maze, set, lv: curLevelId, sig: savedSig })); } catch (e) {} }
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s && s.maze && s.maze.w) { maze = s.maze; maze.pending = maze.pending || []; return true; } } catch (e) {} // KHÔNG đọc lại `set` đã lưu: kiểu tối + tiếng đã chốt cứng (Nam chốt 11-23: đèn lồng, mọi tiếng bật, portal kiểu 1) — bản mẫu có ⚙ từng lưu lựa chọn cùng khoá này
+  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s && s.maze && s.maze.w) { maze = s.maze; maze.pending = maze.pending || []; curLevelId = s.lv != null ? s.lv : null; savedSig = typeof s.sig === 'string' ? s.sig : ''; return true; } } catch (e) {} // KHÔNG đọc lại `set` đã lưu: kiểu tối + tiếng đã chốt cứng (Nam chốt 11-23: đèn lồng, mọi tiếng bật, portal kiểu 1) — bản mẫu có ⚙ từng lưu lựa chọn cùng khoá này
   return false;
 }
-function pushUndo() { undoStack.push(JSON.stringify(maze)); if (undoStack.length > 60) undoStack.shift(); }
+function pushUndo() { undoStack.push(JSON.stringify(maze)); undoMeta.push({ lv: curLevelId, sig: savedSig }); if (undoStack.length > 60) { undoStack.shift(); undoMeta.shift(); } }
+// bỏ khoá tạm (vd. _warnT của cửa) khi lưu danh sách + so "đã Save chưa"
+const noTemp = (k, v) => (k[0] === '_' ? undefined : v);
+const cleanCopy = m => JSON.parse(JSON.stringify(m, noTemp));
+const sigOf = m => JSON.stringify({ w: m.w, h: m.h, walls: m.walls, items: m.items, speed: m.speed, light: m.light, pending: m.pending }, noTemp);
+const isDirty = () => !!(maze.walls.length || maze.items.length || maze.pending.length) && sigOf(maze) !== savedSig;
 function emptyMaze(w, h) { return { w: w || 2000, h: h || 1400, walls: [], pending: [], items: [], speed: 'normal', light: 'off' }; }
 
 function sampleMaze() {
@@ -449,7 +483,30 @@ function setZoom(z, keepX, keepY) {   // giữ điểm (keepX,keepY) đứng yê
   cam.z = z; cam.x = keepX - sx / z; cam.y = keepY - sy / z; clampCam(); bgDirty = true;
 }
 function centerOn(x, y) { cam.x = x - cssW / cam.z / 2; cam.y = y - cssH / cam.z / 2; clampCam(); }
+// ----- khung màn hình vs tờ vẽ: nếu KHUNG đổi cỡ mà game chưa đo lại thì nét vẽ lệch khỏi ngón (nghi can vụ "chạm ở dưới, nét hiện ở trên", Nam 11-24) -----
+const DBG = { resizes: 0, heals: 0, last: '-', fx: 0, fy: 0, wx: 0, wy: 0 };
+let obsOn = true, boxRO = null, dbgT = 0;
+function boxStale() { const r = cv.getBoundingClientRect(); return Math.abs(r.width - cssW) > 1 || Math.abs(r.height - cssH) > 1; }
+function healBox(why) { if (!boxStale()) return; DBG.heals++; DBG.last = 'heal:' + why; resize(); }
+function observeBox() {
+  const re = why => () => { if (!obsOn) return; DBG.last = why; resize(); };
+  if (window.ResizeObserver) { boxRO = new ResizeObserver(re('observer')); boxRO.observe(stage); }
+  if (window.visualViewport) visualViewport.addEventListener('resize', re('viewport'));
+  addEventListener('orientationchange', () => setTimeout(re('rotate'), 350));   // iPad báo xoay màn hình hơi sớm, số đo chưa kịp đổi → đo lại sau 0,35 giây
+}
+function dbgPoint(e, p) { if (DEBUG_STRIP) { DBG.fx = e.clientX; DBG.fy = e.clientY; DBG.wx = p.x; DBG.wy = p.y; } }
+function dbgShow() {
+  const el = $('dbg'), r = cv.getBoundingClientRect(), vv = window.visualViewport, bad = Math.abs(r.width - cv.width / dpr) > 1 || Math.abs(r.height - cv.height / dpr) > 1;
+  el.classList.toggle('bad', bad);
+  el.textContent = (TRIAL ? 'TEST ' : 'DEBUG ') + (bad ? '!! BOX != PICTURE' : 'ok') +
+    '\nfinger ' + Math.round(DBG.fx) + ',' + Math.round(DBG.fy) + ' -> world ' + Math.round(DBG.wx) + ',' + Math.round(DBG.wy) +
+    '\ncam ' + Math.round(cam.x) + ',' + Math.round(cam.y) + ' z' + cam.z.toFixed(2) + '  maze ' + W + 'x' + H +
+    '\nbox ' + r.width.toFixed(0) + 'x' + r.height.toFixed(0) + '  picture ' + (cv.width / dpr).toFixed(0) + 'x' + (cv.height / dpr).toFixed(0) + '  dpr ' + dpr +
+    '\ninner ' + innerWidth + 'x' + innerHeight + (vv ? '  vv ' + vv.width.toFixed(0) + 'x' + vv.height.toFixed(0) + ' top' + vv.offsetTop.toFixed(0) + ' s' + vv.scale.toFixed(2) : '') +
+    '\n' + ((navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) ? 'app-icon' : 'browser') + '  resizes ' + DBG.resizes + '  healed ' + DBG.heals + ' (' + DBG.last + ')';
+}
 function resize() {
+  DBG.resizes++;
   const r = stage.getBoundingClientRect(); cssW = r.width; cssH = r.height;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
@@ -484,13 +541,13 @@ const HINTS = {
 let hintOverride = null, hintT = 0;
 function setHint(msg, secs) {
   if (msg) { hintOverride = msg; hintT = performance.now() + (secs || 2500); }
-  const h = (hintOverride && performance.now() < hintT) ? hintOverride : (mode === 'draw' ? HINTS[tool] : (mode === 'play' ? 'Slide your finger anywhere to move' : ''));
+  const h = (hintOverride && performance.now() < hintT) ? hintOverride : (mode === 'draw' ? HINTS[tool] + (ITEM_TOOLS.includes(tool) ? ' · drag one to move it' : '') : (mode === 'play' ? 'Slide your finger anywhere to move' : ''));
   if ($('hint').textContent !== h) $('hint').textContent = h;
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; refreshPanel(); }));
 nums.addEventListener('click', e => { const b = e.target.closest('.num'); if (b) { num = +b.dataset.n; if (!['key', 'door', 'portal'].includes(tool)) tool = 'key'; refreshPanel(); } });
 $('speeds').addEventListener('click', e => { const b = e.target.closest('.sp'); if (b) { maze.speed = b.dataset.sp; save(); refreshPanel(); } });
-$('undo').addEventListener('click', () => { if (!undoStack.length) return; maze = JSON.parse(undoStack.pop()); setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); });
+$('undo').addEventListener('click', () => { if (!undoStack.length) return; maze = JSON.parse(undoStack.pop()); const mt = undoMeta.pop(); curLevelId = mt.lv; savedSig = mt.sig; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); });   // Undo trả cả "đang gắn với màn Save nào" — không thì Save sẽ đè nhầm màn khác
 $('doneBtn').addEventListener('click', () => { const n = commitPending(); setHint(n ? 'Walls made straight! ✨' : 'Draw some walls first ✏️'); });
 $('seeAll').addEventListener('click', () => { cam.fit = !cam.fit; const cx = cam.x + cssW / cam.z / 2, cy = cam.y + cssH / cam.z / 2; cam.z = cam.fit ? fitZoom() : baseZoom(); centerOn(cx, cy); bgDirty = true; refreshPanel(); });
 $('biggerBtn').addEventListener('click', () => {
@@ -498,18 +555,20 @@ $('biggerBtn').addEventListener('click', () => {
   pushUndo(); maze.w = Math.min(MAXW, Math.round(W * 1.5)); maze.h = Math.min(MAXH, Math.round(H * 1.5)); setWorld(maze.w, maze.h);
   if (cam.fit) cam.z = fitZoom(); clampCam(); save(); refreshPanel(); setHint('Bigger maze! Use ✋ Move to look around');
 });
-$('clearBtn').addEventListener('click', () => { if (!maze.walls.length && !maze.items.length && !maze.pending.length) return; pushUndo(); const l = maze.light; maze = emptyMaze(); maze.light = l; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); setHint('All clear! (Undo brings it back)'); });
+$('clearBtn').addEventListener('click', () => { if (!maze.walls.length && !maze.items.length && !maze.pending.length) return; pushUndo(); const l = maze.light; maze = emptyMaze(); maze.light = l; curLevelId = null; savedSig = ''; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); setHint('All clear! (Undo brings it back)'); });
 $('lightDraw').addEventListener('click', () => { maze.light = maze.light === 'on' ? 'off' : 'on'; save(); refreshPanel(); });
 $('lightPlay').addEventListener('click', () => { game.light = game.light === 'on' ? 'off' : 'on'; play('lock', 0.4, 1.6); syncLoops(); refreshPanel(); });
-$('playBtn').addEventListener('click', () => {
+function tryPlay() {
   if (maze.pending.length) commitPending();          // còn nét chưa bấm Done → nắn luôn trước khi chơi
   const w = wayOut(maze); if (!w.ok) { setHint(w.why, 3000); flashWhy = performance.now(); return; }
   showPick();
-});
+}
+$('playBtn').addEventListener('click', tryPlay);
 $('editBtn').addEventListener('click', () => toDraw());
 $('restartBtn').addEventListener('click', () => startPlay(game.friend));
 $('again').addEventListener('click', () => { $('end').classList.add('hide'); startPlay(game.friend); });
 $('toEdit').addEventListener('click', () => { $('end').classList.add('hide'); toDraw(); });
+$('toLib').addEventListener('click', () => { $('end').classList.add('hide'); showLib(); });
 let flashWhy = 0;
 function showPick() {
   const box = $('picks'); box.innerHTML = '';
@@ -523,7 +582,7 @@ function showPick() {
 }
 
 // ====================== VẼ ======================
-let stroke = null, ghosts = [], tapStart = null, erasing = false, panFrom = null;
+let stroke = null, ghosts = [], tapStart = null, erasing = false, panFrom = null, drag = null, ptrCur = null;
 function nearestItem(p, r) {
   let bi = -1, bd = r;
   maze.items.forEach((it, i) => { const d = it.t === 'door' ? segDist(p.x, p.y, it.x, it.y, it.x2, it.y2).d : Math.hypot(it.x - p.x, it.y - p.y); if (d < bd) { bd = d; bi = i; } });
@@ -541,7 +600,7 @@ function eraseAt(p) {
 }
 function placeAt(p) {
   clampW(p); const t = tool;
-  if (!['start', 'exit', 'key', 'portal', 'snake', 'baby'].includes(t)) return;
+  if (!ITEM_TOOLS.includes(t)) return;
   pushUndo();
   if (t === 'start' || t === 'exit') maze.items = maze.items.filter(i => i.t !== t);
   const it = { t, x: Math.round(p.x), y: Math.round(p.y) };
@@ -549,6 +608,25 @@ function placeAt(p) {
   maze.items.push(it); save(); play('snap', 0.5);
   if (t === 'portal') { const cnt = maze.items.filter(i => i.t === 'portal' && i.n === num).length; setHint(cnt % 2 ? 'Now tap the other portal ' + num : 'Portal ' + num + ' connected! ✨'); }
 }
+// ----- chạm vào món ĐÃ đặt (cùng loại với công cụ đang chọn) rồi kéo = dời nó (Nam 11-24: "place xong move it around") -----
+const GRAB_R = { start: 30, exit: 30, key: 28, portal: 34, baby: 30, snake: 24 };
+function grabItem(p) {
+  let bi = -1, bd = 1e9;
+  maze.items.forEach((it, i) => {
+    if (it.t !== tool) return;
+    // rắn mẫu: đầu ở (x,y), thân vẽ lùi về bên trái ~150px → bắt cả thân
+    const d = it.t === 'snake' ? segDist(p.x, p.y, it.x - 150, it.y, it.x, it.y).d : Math.hypot(it.x - p.x, it.y - p.y);
+    if (d < GRAB_R[it.t] && d < bd) { bd = d; bi = i; }
+  });
+  return bi;
+}
+function moveDrag(p) {
+  const it = maze.items[drag.i]; if (!it) { drag = null; return; }
+  const nx = p.x + drag.dx, ny = p.y + drag.dy;
+  if (!drag.moved) { if (Math.hypot(nx - drag.x0, ny - drag.y0) < 5) return; pushUndo(); drag.moved = true; }   // chỉ coi là "dời" khi ngón thật sự đi, và chụp Undo ĐÚNG 1 lần, trước khi đổi
+  const q = clampW({ x: nx, y: ny }); it.x = Math.round(q.x); it.y = Math.round(q.y);
+}
+function endDrag() { if (!drag) return; const d = drag; drag = null; if (d.moved) { save(); play('snap', 0.5); } }
 function finishStroke() {
   const raw = stroke; stroke = null; if (!raw) return;
   if (tool === 'door') {
@@ -810,6 +888,17 @@ function drawMarkerSnake(g, it, t) {
   for (let i = 0; i < 60; i++) fake.trail.push({ x: it.x - i * 3, y: it.y + Math.sin(i * 0.25) * 6 });
   drawSnake(g, snakePts(fake), t, 0); snakeEyes(g, it.x, it.y, 0, false);
 }
+function drawMarkerBaby(g, it) {
+  g.save(); g.translate(it.x, it.y); g.fillStyle = 'rgba(255,60,80,.25)'; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill();
+  g.strokeStyle = '#ff6070'; g.setLineDash([4, 4]); g.lineWidth = 2; g.stroke(); g.setLineDash([]);
+  g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🧸', 0, 1); g.restore();
+}
+// bóng mờ của món sắp đặt (đang kéo ngón trước khi nhấc tay) — dùng lại đúng hàm vẽ của món thật
+function drawGhost(g, tl, p, tm) {
+  const it = { t: tl, x: p.x, y: p.y, n: num };
+  if (tl === 'start') drawStart(g, it, tm); else if (tl === 'exit') drawExit(g, it, tm); else if (tl === 'key') drawKey(g, it, tm);
+  else if (tl === 'portal') drawPortal(g, it, -1, tm); else if (tl === 'snake') drawMarkerSnake(g, it, tm); else if (tl === 'baby') drawMarkerBaby(g, it);
+}
 function drawChaserBaby(g, c) {
   g.save(); g.translate(c.x, c.y);
   const gr = g.createRadialGradient(0, 4, 2, 0, 4, 28); gr.addColorStop(0, 'rgba(255,40,60,.55)'); gr.addColorStop(1, 'rgba(255,40,60,0)');
@@ -899,8 +988,10 @@ function render(now) {
     maze.pending.forEach(raw => chalk(raw, 0.8));
     maze.items.forEach(it => {
       if (it.t === 'snake') drawMarkerSnake(ctx, it, t);
-      if (it.t === 'baby') { ctx.save(); ctx.translate(it.x, it.y); ctx.fillStyle = 'rgba(255,60,80,.25)'; ctx.beginPath(); ctx.arc(0, 0, 22, 0, 7); ctx.fill(); ctx.strokeStyle = '#ff6070'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧸', 0, 1); ctx.restore(); }
+      if (it.t === 'baby') drawMarkerBaby(ctx, it);
     });
+    if (drag && drag.moved && maze.items[drag.i]) { const it = maze.items[drag.i]; ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(it.x, it.y, 36, 0, 7); ctx.stroke(); ctx.restore(); }   // vòng nét đứt quanh món đang được nhấc
+    if (tapStart && ptrCur && ITEM_TOOLS.includes(tool) && Math.hypot(ptrCur.x - tapStart.x, ptrCur.y - tapStart.y) > 8) { ctx.save(); ctx.globalAlpha = 0.6; drawGhost(ctx, tool, ptrCur, t); ctx.restore(); }
     if (stroke && stroke.length > 1) { if (tool === 'door') { ctx.save(); ctx.strokeStyle = COLORS[num]; ctx.globalAlpha = 0.85; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); stroke.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore(); } else chalk(stroke, 1); }
     if (flashWhy && now - flashWhy < 900) { ctx.fillStyle = `rgba(255,60,80,${0.25 * (1 - (now - flashWhy) / 900)})`; ctx.fillRect(0, 0, W, H); }
   } else if (P) {
@@ -922,15 +1013,21 @@ const ptrs = new Map();
 function screenPt(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (er) {}
+  healBox('pointerdown');   // khung màn đổi cỡ mà game chưa biết → đo lại TRƯỚC khi đổi toạ độ ngón (nghi can vụ nét lệch)
   ptrs.set(e.pointerId, screenPt(e)); e.preventDefault();
-  if (ptrs.size === 2 && mode === 'draw') { stroke = null; tapStart = null; panFrom = null; return; }   // 2 ngón: huỷ nét, chuyển sang kéo bản đồ
+  if (ptrs.size === 2 && mode === 'draw') { endDrag(); stroke = null; tapStart = null; panFrom = null; return; }   // 2 ngón: huỷ nét, chuyển sang kéo bản đồ
   if (ptrs.size > 1) return;
   const p = toWorld(e), s = screenPt(e);
+  dbgPoint(e, p);
   if (mode === 'draw') {
     if (tool === 'move') panFrom = s;
     else if (tool === 'wall' || tool === 'door') stroke = [p];
     else if (tool === 'erase') { erasing = false; eraseAt(p); }
-    else tapStart = p;
+    else {   // công cụ đặt món: chạm trúng món cùng loại → nhấc lên dời; không thì chuẩn bị đặt món mới
+      const gi = grabItem(p);
+      if (gi >= 0) { const it = maze.items[gi]; drag = { i: gi, dx: it.x - p.x, dy: it.y - p.y, x0: it.x, y0: it.y, moved: false }; }
+      else { tapStart = p; ptrCur = p; }
+    }
   } else if (mode === 'play' && !game.over) {
     // cần gạt vô hình: hướng = (ngón hiện tại − chỗ đặt ngón), đo theo màn hình
     joy = { ox: s.x / cam.z, oy: s.y / cam.z, x: s.x / cam.z, y: s.y / cam.z, sx: s.x, sy: s.y, cx: s.x, cy: s.y };
@@ -941,10 +1038,13 @@ cv.addEventListener('pointermove', e => {
   const prev = ptrs.get(e.pointerId), s = screenPt(e); ptrs.set(e.pointerId, s);
   if (ptrs.size === 2 && mode === 'draw') { cam.x -= (s.x - prev.x) / 2 / cam.z; cam.y -= (s.y - prev.y) / 2 / cam.z; clampCam(); return; }
   const p = toWorld(e);
+  dbgPoint(e, p);
   if (mode === 'draw') {
     if (panFrom) { cam.x -= (s.x - panFrom.x) / cam.z; cam.y -= (s.y - panFrom.y) / cam.z; clampCam(); panFrom = s; }
+    else if (drag) moveDrag(p);
     else if (stroke) { const l = stroke[stroke.length - 1]; if (Math.hypot(l.x - p.x, l.y - p.y) > 3) stroke.push(p); }
     else if (tool === 'erase') eraseAt(p);
+    else if (tapStart) ptrCur = p;
   } else if (joy) { joy.x = s.x / cam.z; joy.y = s.y / cam.z; joy.cx = s.x; joy.cy = s.y; }
 });
 function up(e) {
@@ -952,15 +1052,95 @@ function up(e) {
   if (wasMulti) return;
   const p = toWorld(e);
   if (mode === 'draw') {
-    if (stroke) finishStroke();
-    else if (tapStart && Math.hypot(p.x - tapStart.x, p.y - tapStart.y) < 20) placeAt(tapStart);
-    tapStart = null; erasing = false; panFrom = null;
+    if (drag) endDrag();
+    else if (stroke) finishStroke();
+    else if (tapStart) placeAt(Math.hypot(p.x - tapStart.x, p.y - tapStart.y) < 20 ? tapStart : p);   // chạm = đặt tại chỗ chạm; kéo rồi nhấc = đặt tại chỗ nhấc (trước đây kéo xa hơn 20px thì KHÔNG đặt gì)
+    tapStart = null; ptrCur = null; erasing = false; panFrom = null;
   }
   joy = null;
 }
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
 addEventListener('keydown', e => { keysDown[e.key] = true; });
 addEventListener('keyup', e => { keysDown[e.key] = false; });
+
+// ====================== 💾 Save + danh sách màn đã Save (Nam 11-24) ======================
+// "Màn đang vẽ" vẫn tự lưu như cũ (khoá STORE). Bấm Save thì chép màn đó vào DANH SÁCH riêng (khoá LV_KEY) để mốt mở lại chơi.
+const MAZE_SVG = '<svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3z M9 3v8h6 M15 7v-4 M3 15h8v6 M15 15v6 M15 15h6"/></svg>';   // icon mê cung (không có emoji mê cung; 🗺️ đã là nút See all)
+document.querySelectorAll('.mzico').forEach(el => { el.innerHTML = MAZE_SVG; });
+function lvRead() { try { const s = JSON.parse(localStorage.getItem(LV_KEY) || 'null'); if (s && Array.isArray(s.items)) return s; } catch (e) {} return { v: 1, next: 1, items: [] }; }
+function lvWrite(s) { try { localStorage.setItem(LV_KEY, JSON.stringify(s)); return true; } catch (e) { return false; } }
+function saveLevel() {
+  if (maze.pending.length) commitPending();          // nét chưa bấm Done → nắn luôn, giống nút Play
+  if (!maze.walls.length && !maze.items.length) { setHint('Draw something first ✏️'); return false; }
+  const s = lvRead(), snap = cleanCopy(maze); let l = curLevelId != null ? s.items.find(x => x.id === curLevelId) : null;
+  if (l) { l.maze = snap; l.at = Date.now(); } else { l = { id: s.next, at: Date.now(), maze: snap }; s.items.push(l); s.next++; }
+  if (!lvWrite(s)) { setHint('Could not save — no room left 😕', 4000); return false; }
+  curLevelId = l.id; savedSig = sigOf(maze); save(); play('snap', 0.8); refreshPanel(); setHint('Saved! ✅ Maze ' + l.id, 3000);
+  return true;
+}
+function drawThumb(cvs, m) {   // hình nhỏ của mê cung: tường + chấm màu cho từng món (không dùng hàm vẽ nặng)
+  const g = cvs.getContext('2d'), w = cvs.width, h = cvs.height, k = Math.min(w / m.w, h / m.h), u = 1 / k;
+  g.fillStyle = '#10131a'; g.fillRect(0, 0, w, h);
+  g.save(); g.translate((w - m.w * k) / 2, (h - m.h * k) / 2); g.scale(k, k);
+  g.fillStyle = '#1b1f2a'; g.fillRect(0, 0, m.w, m.h); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.strokeStyle = '#8d96ad'; g.lineWidth = 2.6 * u; g.strokeRect(0, 0, m.w, m.h);
+  g.beginPath(); for (const s of m.walls) { g.moveTo(s.ax, s.ay); g.lineTo(s.bx, s.by); } g.stroke();
+  for (const it of m.items) {
+    const c = COLORS[it.n] || '#fff';
+    if (it.t === 'door') { g.strokeStyle = c; g.lineWidth = 4 * u; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x2, it.y2); g.stroke(); continue; }
+    g.beginPath(); g.arc(it.x, it.y, (it.t === 'portal' ? 6 : 5) * u, 0, 7);
+    if (it.t === 'start') { g.strokeStyle = '#9fd8ff'; g.lineWidth = 2.4 * u; g.stroke(); }
+    else if (it.t === 'portal') { g.strokeStyle = c; g.lineWidth = 2.6 * u; g.stroke(); }
+    else { g.fillStyle = it.t === 'exit' ? '#5dffb0' : it.t === 'key' ? c : it.t === 'snake' ? '#6fd13a' : '#ff6a7a'; g.fill(); }
+  }
+  g.restore();
+}
+function askBox(msg, btns) {   // hộp hỏi nhỏ: mỗi nút = [chữ, kiểu nút (b1 xanh / b2 xám), việc làm]
+  $('askMsg').textContent = msg; const box = $('askBtns'); box.innerHTML = '';
+  btns.forEach(([label, cls, fn]) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.addEventListener('click', () => { $('ask').classList.add('hide'); fn(); }); box.appendChild(b); });
+  $('ask').classList.remove('hide');
+}
+function showLib() {
+  const s = lvRead(), grid = $('lvGrid'); grid.innerHTML = '';
+  if (!s.items.length) { const d = document.createElement('div'); d.className = 'lvEmpty'; d.textContent = 'No saved mazes yet. Draw one, then tap 💾 Save!'; grid.appendChild(d); }
+  s.items.forEach(l => {
+    const card = document.createElement('div'); card.className = 'lv' + (l.id === curLevelId ? ' cur' : ''); card.dataset.id = l.id;
+    const pb = document.createElement('button'); pb.className = 'lvPlay'; pb.setAttribute('aria-label', 'Play Maze ' + l.id);
+    const c = document.createElement('canvas'); c.width = 320; c.height = 224; drawThumb(c, l.maze); pb.appendChild(c);
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = 'Maze ' + l.id;
+    const acts = document.createElement('div'); acts.className = 'acts';
+    [['edit', '✏️'], ['del', '🗑']].forEach(([a, ic]) => { const b = document.createElement('button'); b.dataset.act = a; b.textContent = ic; b.setAttribute('aria-label', a === 'edit' ? 'Edit' : 'Delete'); acts.appendChild(b); });
+    card.append(pb, nm, acts); grid.appendChild(card);
+  });
+  $('lib').classList.remove('hide');
+}
+const hideLib = () => $('lib').classList.add('hide');
+function openLevel(id, thenPlay) {
+  const l = lvRead().items.find(x => x.id === id); if (!l) return;
+  pushUndo(); maze = cleanCopy(l.maze); maze.pending = maze.pending || []; setWorld(maze.w, maze.h);   // pushUndo trước → Undo trả lại bản đang vẽ
+  curLevelId = id; savedSig = sigOf(maze); cam.fit = false; cam.z = baseZoom(); clampCam();
+  const st = maze.items.find(i => i.t === 'start'); centerOn(st ? st.x : W / 2, st ? st.y : H / 2);
+  save(); toDraw(); setHint('Opened Maze ' + id + ' (Undo brings your last drawing back)', 3500);
+  if (thenPlay) tryPlay();
+}
+function requestOpen(id, thenPlay) {   // đang vẽ dở chưa Save thì hỏi trước khi thay bằng màn khác
+  if (!isDirty()) { openLevel(id, thenPlay); return; }
+  askBox('Save your drawing first?', [['💾 Save first', 'b1', () => { if (saveLevel()) openLevel(id, thenPlay); }], ['Open anyway', 'b2', () => openLevel(id, thenPlay)], ['Cancel', 'b2', () => {}]]);
+}
+function delLevel(id) {
+  const s = lvRead(); s.items = s.items.filter(x => x.id !== id); lvWrite(s);
+  if (curLevelId === id) { curLevelId = null; savedSig = ''; save(); }
+  showLib();
+}
+$('saveBtn').addEventListener('click', saveLevel);
+$('libBtn').addEventListener('click', showLib);
+$('libClose').addEventListener('click', () => { hideLib(); if (mode === 'play' && game.over) $('end').classList.remove('hide'); });   // mở từ thẻ thắng/thua thì đóng xong hiện lại thẻ đó
+$('lvGrid').addEventListener('click', e => {
+  const b = e.target.closest('button'), card = b && b.closest('.lv'); if (!card) return; const id = +card.dataset.id;
+  if (b.classList.contains('lvPlay')) { hideLib(); requestOpen(id, true); }
+  else if (b.dataset.act === 'edit') { hideLib(); requestOpen(id, false); }
+  else if (b.dataset.act === 'del') askBox('Delete Maze ' + id + '?', [['Keep it', 'b1', () => {}], ['🗑 Delete', 'b2', () => delLevel(id)]]);
+});
 
 // ====================== 🏠 về trang chủ ======================
 // App mở từ icon iPad không có nút Back. Ẩn lúc đang chơi (cả màn hình là chỗ kéo ngón để chạy — chạm nhầm là văng ra), hiện lại ở màn vẽ / thắng / thua.
@@ -973,12 +1153,14 @@ const TEST = { auto: false, freeze: false };
 function frame(now) {
   const dt = Math.min(0.05, (now - (lastT || now)) / 1000); lastT = now;
   if (mode === 'play' && P) updatePlay(dt, now);
-  setHint(); syncHome(); render(now);
+  setHint(); syncHome(); if (DEBUG_STRIP && now - dbgT > 250) { dbgT = now; dbgShow(); } render(now);
   requestAnimationFrame(frame);
 }
-if (!load()) { maze = sampleMaze(); save(); }
+if (!load()) { maze = sampleMaze(); curLevelId = null; savedSig = sigOf(maze); save(); }   // mê cung mẫu lúc mở lần đầu = "sạch" (chưa ai đụng) → mở màn khác khỏi hỏi Save-trước
 setWorld(maze.w, maze.h);
-resize();
+resize(); observeBox();
+if (DEBUG_STRIP) $('dbg').classList.remove('hide');
+if (TRIAL) document.title = "Bon's Maze (TEST)";
 { const st = maze.items.find(i => i.t === 'start'); if (st) centerOn(st.x, st.y); }
 refreshPanel(); requestAnimationFrame(frame);
 
@@ -987,8 +1169,13 @@ window.__mz = {
   get keys() { return [...keys]; }, get openDoors() { return [...openDoors]; }, get over() { return !!game.over; }, get set() { return set; },
   get cam() { return { ...cam }; }, get size() { return { W, H }; }, get light() { return game.light; },
   sfx: () => SFX.log.slice(), wayOut: () => wayOut(maze),
-  loadSample() { maze = sampleMaze(); setWorld(maze.w, maze.h); clampCam(); save(); toDraw(); },
-  clear() { maze = emptyMaze(); setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); },
+  loadSample() { maze = sampleMaze(); curLevelId = null; savedSig = ''; setWorld(maze.w, maze.h); clampCam(); save(); toDraw(); },
+  clear() { maze = emptyMaze(); curLevelId = null; savedSig = ''; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); },
+  // thêm 11-24 (Save / dời món / khung đổi cỡ) — cho máy tự kiểm
+  levels: () => lvRead().items.map(l => ({ id: l.id, walls: l.maze.walls.length, items: l.maze.items.length })),
+  get cur() { return { lv: curLevelId, dirty: isDirty() }; }, saveLevel, openLevel: (id, play) => openLevel(id, !!play),
+  stopObserve() { obsOn = false; if (boxRO) boxRO.disconnect(); },   // tắt người canh khung để thử riêng nhánh "đo lại lúc chạm"
+  dbg: () => ({ ...DBG }), boxStale,
   setTool(t, n) { tool = t; if (n) num = n; refreshPanel(); }, start: f => startPlay(f || 'froggy'),
   lookAt(x, y) { centerOn(x, y); },
   worldToClient(x, y) { const r = cv.getBoundingClientRect(); return { x: r.left + (x - cam.x) * cam.z, y: r.top + (y - cam.y) * cam.z }; },
