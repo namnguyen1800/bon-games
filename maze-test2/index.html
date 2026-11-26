@@ -119,7 +119,10 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
         <button class="tb" id="undo"><span class="ic">↶</span>Undo</button>
         <button class="tb" id="seeAll"><span class="ic">🗺️</span>See all</button>
       </div>
-      <button class="tb row" id="doneBtn"><span class="ic">✅</span>Done drawing<span class="badge hide" id="pendN">0</span></button>
+      <div class="g2">
+        <button class="tb row" id="doneBtn"><span class="ic">✅</span>Done<span class="badge hide" id="pendN">0</span></button>
+        <button class="tb row" id="clearBtn"><span class="ic">🗑</span>Clear</button>
+      </div>
       <div class="lbl">NUMBER</div>
       <div class="g4" id="nums"></div>
       <div class="lbl">CHASER SPEED</div>
@@ -130,7 +133,7 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
       <button class="big" id="playBtn">▶ Play</button>
       <div class="g2">
         <button class="tb row" id="biggerBtn"><span class="ic">↔️</span>Bigger</button>
-        <button class="tb row" id="clearBtn"><span class="ic">🗑</span>Clear</button>
+        <button class="tb row" id="smallerBtn"><span class="ic"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="1" width="22" height="22" rx="5" fill="#3d8bfd"/><path d="M3 12h7 M6.5 8l4 4-4 4 M21 12h-7 M17.5 8l-4 4 4 4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Smaller</button>
       </div>
       <div class="g2">
         <button class="tb row" id="saveBtn"><span class="ic">💾</span>Save</button>
@@ -156,6 +159,7 @@ html,body{margin:0;height:100%;background:#06070b;overflow:hidden;touch-action:n
 // ====================== hằng số ======================
 let W = 2000, H = 1400;              // cỡ mê cung (to hơn màn hình, màn trượt theo); nút Bigger nới thêm
 const MAXW = 3000, MAXH = 2100;
+const SIZES = [[1000, 700], [1500, 1050], [2000, 1400], [3000, 2100]];   // nấc cỡ mê cung: ↔️ Bigger lên 1 nấc, Smaller xuống 1 nấc (Nam 11-25: nhỏ lại thì CẮT phần ngoài, Undo lấy lại)
 const HT = 6;                        // nửa bề dày tường
 const PR = 18;                       // bán kính em bé
 const SR = 14;                       // bán kính đầu rắn
@@ -176,7 +180,7 @@ const DX =[1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
 let dpr = 1, cssW = 0, cssH = 0;
-const cam = { x: 0, y: 0, z: 1, fit: false };
+const cam = { x: 0, y: 0, z: 1, fit: false, k: 1 };   // k = độ zoom 2 ngón so với nấc thường (giữ lại khi xoay màn)
 
 // ====================== dữ liệu ======================
 let maze = null;
@@ -472,6 +476,9 @@ function rebuildBg() {
 // phóng theo DIỆN TÍCH màn (không theo cạnh hẹp) → em bé to đều cả iPad ngang lẫn dọc
 function baseZoom() { return Math.max(0.8, Math.min(1.6, Math.sqrt(cssW * cssH) / Math.sqrt(820 * 620))); }
 function fitZoom() { return Math.min(cssW / W, cssH / H) * 0.97; }
+// zoom 2 ngón lúc vẽ (Nam 11-25): xa nhất = thấy trọn mê cung, gần nhất = gấp 3 nấc thường
+function minZoom() { return Math.min(fitZoom(), baseZoom()); }
+function maxZoom() { return baseZoom() * 3; }
 function clampCam() {
   const vw = cssW / cam.z, vh = cssH / cam.z;
   cam.x = vw >= W ? -(vw - W) / 2 : Math.max(0, Math.min(W - vw, cam.x));
@@ -509,7 +516,7 @@ function resize() {
   const r = stage.getBoundingClientRect(); cssW = r.width; cssH = r.height;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
-  cam.z = cam.fit ? fitZoom() : baseZoom(); clampCam();
+  cam.z = cam.fit ? fitZoom() : Math.max(minZoom(), Math.min(maxZoom(), baseZoom() * cam.k)); clampCam();
   dk.width = Math.ceil(cssW / 2); dk.height = Math.ceil(cssH / 2);
   bgDirty = true;
 }
@@ -528,6 +535,7 @@ function refreshPanel() {
   const pn = maze.pending.length; $('pendN').textContent = pn; $('pendN').classList.toggle('hide', !pn); $('doneBtn').classList.toggle('glow', pn > 0);
   $('seeAll').classList.toggle('on', cam.fit);
   $('biggerBtn').style.opacity = (W >= MAXW && H >= MAXH) ? 0.4 : 1;
+  $('smallerBtn').style.opacity = W <= SIZES[0][0] ? 0.4 : 1;
   lightBtn($('lightDraw'), maze.light === 'on'); lightBtn($('lightPlay'), game.light === 'on');
   setHint();
 }
@@ -535,7 +543,7 @@ const HINTS = {
   wall: 'Draw your walls, then tap ✅ Done', erase: 'Rub over a wall or a thing to erase it',
   start: 'Tap where the baby starts', exit: 'Tap where the way out is', key: 'Tap to put a key (pick a number)',
   door: 'Draw a short line across a path for a door', portal: 'Tap two portals with the same number',
-  snake: 'Tap to add a snake 🐍', baby: 'Tap to add a baby chaser 🧸', move: 'Slide to look around the maze',
+  snake: 'Tap to add a snake 🐍', baby: 'Tap to add a baby chaser 🧸', move: 'Slide to look around · pinch 2 fingers to zoom',
 };
 let hintOverride = null, hintT = 0;
 function setHint(msg, secs) {
@@ -548,11 +556,37 @@ nums.addEventListener('click', e => { const b = e.target.closest('.num'); if (b)
 $('speeds').addEventListener('click', e => { const b = e.target.closest('.sp'); if (b) { maze.speed = b.dataset.sp; save(); refreshPanel(); } });
 $('undo').addEventListener('click', () => { if (!undoStack.length) return; maze = JSON.parse(undoStack.pop()); const mt = undoMeta.pop(); curLevelId = mt.lv; savedSig = mt.sig; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); });   // Undo trả cả "đang gắn với màn Save nào" — không thì Save sẽ đè nhầm màn khác
 $('doneBtn').addEventListener('click', () => { const n = commitPending(); setHint(n ? 'Walls made straight! ✨' : 'Draw some walls first ✏️'); });
-$('seeAll').addEventListener('click', () => { cam.fit = !cam.fit; const cx = cam.x + cssW / cam.z / 2, cy = cam.y + cssH / cam.z / 2; cam.z = cam.fit ? fitZoom() : baseZoom(); centerOn(cx, cy); bgDirty = true; refreshPanel(); });
+$('seeAll').addEventListener('click', () => { cam.fit = !cam.fit; cam.k = 1; const cx = cam.x + cssW / cam.z / 2, cy = cam.y + cssH / cam.z / 2; cam.z = cam.fit ? fitZoom() : baseZoom(); centerOn(cx, cy); bgDirty = true; refreshPanel(); });
 $('biggerBtn').addEventListener('click', () => {
   if (W >= MAXW && H >= MAXH) { setHint('This is the biggest maze!'); return; }
-  pushUndo(); maze.w = Math.min(MAXW, Math.round(W * 1.5)); maze.h = Math.min(MAXH, Math.round(H * 1.5)); setWorld(maze.w, maze.h);
+  const nx = SIZES.find(s => s[0] > W) || SIZES[SIZES.length - 1];
+  pushUndo(); maze.w = Math.max(nx[0], W); maze.h = Math.max(nx[1], H); setWorld(maze.w, maze.h);
   if (cam.fit) cam.z = fitZoom(); clampCam(); save(); refreshPanel(); setHint('Bigger maze! Use ✋ Move to look around');
+});
+// cắt 1 đoạn thẳng vào khung [0,w]×[0,h] (Liang–Barsky); nằm ngoài hẳn → null
+function clipSeg(ax, ay, bx, by, w, h) {
+  const dx = bx - ax, dy = by - ay, P = [-dx, dx, -dy, dy], Q = [ax, w - ax, ay, h - ay]; let t0 = 0, t1 = 1;
+  for (let i = 0; i < 4; i++) {
+    if (P[i] === 0) { if (Q[i] < 0) return null; continue; }
+    const r = Q[i] / P[i];
+    if (P[i] < 0) { if (r > t1) return null; if (r > t0) t0 = r; } else { if (r < t0) return null; if (r < t1) t1 = r; }
+  }
+  return { ax: Math.round(ax + t0 * dx), ay: Math.round(ay + t0 * dy), bx: Math.round(ax + t1 * dx), by: Math.round(ay + t1 * dy) };
+}
+$('smallerBtn').addEventListener('click', () => {
+  const dn = [...SIZES].reverse().find(s => s[0] < W);
+  if (!dn) { setHint('This is the smallest maze!'); return; }
+  if (maze.pending.length) commitPending();            // còn nét chưa Done → nắn trước rồi mới cắt
+  pushUndo();
+  const [nw, nh] = dn; let cut = 0;
+  maze.walls = maze.walls.map(s => { const c = clipSeg(s.ax, s.ay, s.bx, s.by, nw, nh); if (c && Math.hypot(c.bx - c.ax, c.by - c.ay) >= 8) return { ...s, ...c }; cut++; return null; }).filter(Boolean);
+  maze.items = maze.items.map(it => {
+    if (it.t === 'door') { const c = clipSeg(it.x, it.y, it.x2, it.y2, nw, nh); if (c && Math.hypot(c.bx - c.ax, c.by - c.ay) >= 20) return { ...it, x: c.ax, y: c.ay, x2: c.bx, y2: c.by }; cut++; return null; }
+    if (it.x <= nw && it.y <= nh) return it; cut++; return null;
+  }).filter(Boolean);
+  maze.w = nw; maze.h = nh; setWorld(nw, nh);
+  if (cam.fit) cam.z = fitZoom(); clampCam(); save(); refreshPanel();
+  setHint(cut ? 'Smaller maze! (' + cut + ' cut off · ↶ Undo brings them back)' : 'Smaller maze!', 3500);
 });
 $('clearBtn').addEventListener('click', () => { if (!maze.walls.length && !maze.items.length && !maze.pending.length) return; pushUndo(); const l = maze.light; maze = emptyMaze(); maze.light = l; curLevelId = null; savedSig = ''; setWorld(maze.w, maze.h); clampCam(); save(); refreshPanel(); setHint('All clear! (Undo brings it back)'); });
 $('lightDraw').addEventListener('click', () => { maze.light = maze.light === 'on' ? 'off' : 'on'; save(); refreshPanel(); });
@@ -645,7 +679,7 @@ function rebuildPlayGrid() { grid = buildGrid(barsOf(maze, openDoors)); links = 
 function syncLoops() { if (mode !== 'play' || game.over) return; loopOn('amb', game.light === 'on' ? 0.35 : 0.55); if (game.light === 'off' && set.dark !== 'A') loopOn('wind', 0.22); else loopOff('wind'); }
 function startPlay(friendId) {
   game.friend = friendId; mode = 'play'; game.over = false; game.light = maze.light || 'off';
-  cam.fit = false; cam.z = baseZoom();
+  cam.fit = false; cam.k = 1; cam.z = baseZoom();
   const st = maze.items.find(i => i.t === 'start');
   P = { x: st.x, y: st.y, vx: 0, vy: 0, face: 1, moving: 0, stepT: 0, lock: -1, scared: 0 };
   centerOn(P.x, P.y); bgDirty = true;
@@ -1008,7 +1042,7 @@ function render(now) {
 }
 
 // ====================== nhập: 1 ngón vẽ/điều khiển, 2 ngón kéo bản đồ ======================
-const ptrs = new Map();
+const ptrs = new Map(); let pinched = false;
 function screenPt(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (er) {}
@@ -1035,7 +1069,16 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)) return;
   const prev = ptrs.get(e.pointerId), s = screenPt(e); ptrs.set(e.pointerId, s);
-  if (ptrs.size === 2 && mode === 'draw') { cam.x -= (s.x - prev.x) / 2 / cam.z; cam.y -= (s.y - prev.y) / 2 / cam.z; clampCam(); return; }
+  if (ptrs.size === 2 && mode === 'draw') {   // 2 ngón: kéo = trượt bản đồ, chụm/banh = thu nhỏ/phóng to (Nam 11-25); điểm giữa 2 ngón đứng yên dưới tay
+    const o = [...ptrs].find(([id]) => id !== e.pointerId)[1];
+    const d0 = Math.hypot(prev.x - o.x, prev.y - o.y), d1 = Math.hypot(s.x - o.x, s.y - o.y);
+    const m0x = (prev.x + o.x) / 2, m0y = (prev.y + o.y) / 2, m1x = (s.x + o.x) / 2, m1y = (s.y + o.y) / 2;
+    const wx = m0x / cam.z + cam.x, wy = m0y / cam.z + cam.y;
+    const z = d0 > 10 ? Math.max(minZoom(), Math.min(maxZoom(), cam.z * d1 / d0)) : cam.z;
+    cam.z = z; cam.x = wx - m1x / z; cam.y = wy - m1y / z; clampCam();
+    cam.k = z / baseZoom(); cam.fit = false; pinched = true;   // nền vẽ lại 1 lần khi nhấc ngón, không vẽ lại mỗi lần ngón nhích (nặng)
+    return;
+  }
   const p = toWorld(e);
   dbgPoint(e, p);
   if (mode === 'draw') {
@@ -1048,7 +1091,7 @@ cv.addEventListener('pointermove', e => {
 });
 function up(e) {
   if (!ptrs.has(e.pointerId)) return; const wasMulti = ptrs.size > 1; ptrs.delete(e.pointerId);
-  if (wasMulti) return;
+  if (wasMulti) { if (pinched) { pinched = false; bgDirty = true; refreshPanel(); } return; }
   const p = toWorld(e);
   if (mode === 'draw') {
     if (drag) endDrag();
@@ -1117,7 +1160,7 @@ const hideLib = () => $('lib').classList.add('hide');
 function openLevel(id, thenPlay) {
   const l = lvRead().items.find(x => x.id === id); if (!l) return;
   pushUndo(); maze = cleanCopy(l.maze); maze.pending = maze.pending || []; setWorld(maze.w, maze.h);   // pushUndo trước → Undo trả lại bản đang vẽ
-  curLevelId = id; savedSig = sigOf(maze); cam.fit = false; cam.z = baseZoom(); clampCam();
+  curLevelId = id; savedSig = sigOf(maze); cam.fit = false; cam.k = 1; cam.z = baseZoom(); clampCam();
   const st = maze.items.find(i => i.t === 'start'); centerOn(st ? st.x : W / 2, st ? st.y : H / 2);
   save(); toDraw(); setHint('Opened Maze ' + id + ' (Undo brings your last drawing back)', 3500);
   if (thenPlay) tryPlay();
