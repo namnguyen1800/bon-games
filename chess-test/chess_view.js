@@ -2451,8 +2451,10 @@
 
     /* ---------- ĐẠO DIỄN CẢNH ĐÁNH NHAU ---------- */
     let cfg = { death: 'topple', battleLen: 'long', cutscene: 'toward', fight: 'arena', art: 'paint' };   // art: 'paint' tranh ChatGPT (11-23) / '3d' giáp code (bản 4)
-    // mẫu 2: kiểu đòn kết chết thật — Nam chọn 11-23 "Chém trúng làm đôi" → mặc định 'split'; ?fin=stab (đâm xuyên) vẫn ép được để so
-    const FIN_Q = (/[?&]fin=(stab|split)\b/.exec(location.search) || [])[1] || 'split';
+    // mẫu 2: kiểu đòn kết chết thật — Nam chọn 11-23 "Chém trúng làm đôi" → mặc định 'split'; ?fin=stab|split ép MỌI con (bộ thử / so)
+    // 11-25 Nam chọn (popup "Đòn kết Tốt"): Tốt cầm giáo thắng → mỗi trận BỐC NGẪU NHIÊN đâm xuyên hoặc chém làm đôi; Vua, Mã giữ chém đôi
+    const FIN_Q = (/[?&]fin=(stab|split)\b/.exec(location.search) || [])[1] || null;
+    const finFor = w => FIN_Q || (w.t === 'p' ? (Math.random() < 0.5 ? 'stab' : 'split') : 'split');
     function exchangesFor(at, dt) {
       if (cfg.battleLen === 'short') return 1;
       let n = { p: 1, n: 2, b: 2, r: 2, q: 3, k: 3 }[dt] || 1;
@@ -2494,7 +2496,8 @@
       // mẫu 2: bộ đếm kiểu đánh đặt lại mỗi trận + thứ tự 4 kiểu BỐC NGẪU NHIÊN mỗi trận (Nam 11-23 "Thứ tự đòn ngẫu nhiên" — bản đầu
       // trận nào cũng chém ngang → nhảy → chém thẳng → đâm). ?order=fixed giữ thứ tự cũ (bộ thử / quay phim so sánh)
       arena.plan = 0;
-      arena.planOrder = /[?&]order=fixed\b/.test(location.search) ? SPR_PLAN.slice() : shuffle(SPR_PLAN.slice());
+      // hooks.order (11-25, như hooks.fin): bộ thử ép thứ tự đòn của 1 trận — đo mũi giáo lúc bị đỡ khỏi phụ thuộc thứ tự bốc
+      arena.planOrder = hooks.order ? hooks.order.slice() : /[?&]order=fixed\b/.test(location.search) ? SPR_PLAN.slice() : shuffle(SPR_PLAN.slice());
       let winner = b.winner === 'a' ? A : D, loser = b.winner === 'a' ? D : A;
       if (b.mode === 'dice') {
         const dA = makeDie(A.c, K), dD = makeDie(D.c, K);
@@ -2534,7 +2537,8 @@
       }
       // đòn kết — mẫu 2: con thua CHẾT THẬT thì kiếm trúng NGƯỜI (đâm xuyên / chém làm đôi); chỉ trúng đòn còn sống thì như bản 5
       const dieEv = follow.find(e => e.type === 'die');
-      const fin = dieEv && dieEv.id === loser.id ? FIN_Q : null;
+      const fin = dieEv && dieEv.id === loser.id ? (hooks.fin || finFor(winner)) : null;   // hooks.fin: bộ thử ép từng kiểu (như hooks.win)
+      arena.fin = fin;                                           // bộ thử đọc kiểu đòn kết vừa bốc (debug.arena.fin)
       await strike(winner, loser, { final: true, magic: true, fin });
       const hitEv = follow.find(e => e.type === 'hit');
       const bounceEv = follow.find(e => e.type === 'bounce');
@@ -2692,6 +2696,7 @@
       get warmed() { return warm.done; },
       debug: {
         meshes, scene, renderer: R, boardCam, cut, tweens, arena, wallGrp, iconBadgeGrp, warm,
+        finFor,                    // 11-25 luật đòn kết theo con thắng — bộ thử lấy mẫu: Tốt bốc ngẫu nhiên đâm/chém đôi, Vua/Mã chém đôi
         // bộ thử chụp ảnh: dựng 2 chiến binh đứng yên trong đấu trường (không diễn trận) — tools/look_knights.py
         showArena(ta, td, ca, cb) { buildArena(); for (const f of arena.fighters.slice()) arena.scene.remove(f.root); arena.fighters = []; ca = ca || 'w'; cb = cb || 'b'; const gap = arenaGap(ta, td, ca, cb); const A = fighterFrom({ t: ta, c: ca, id: -11 }, -gap), D = fighterFrom({ t: td, c: cb, id: -12 }, gap); enterArena(ca); return { A, D }; },
         // chiến binh tranh (11-23): đặt ngay một dáng · đọc dáng/lật/vị trí · bật sổ ghi đổi dáng (bộ thử) · chỉnh mức bù màu (đo ảnh)
