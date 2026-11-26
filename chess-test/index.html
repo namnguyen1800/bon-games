@@ -110,7 +110,7 @@
 </div></div>
 
 <button id="gear" title="Settings (sample only)">⚙</button>
-<div id="ver">Bản 8 · mẫu</div>
+<div id="ver">Bản 8b · mẫu</div>
 <div id="promoList" class="hidden"><div class="pl-card"><div class="pl-title">Your pawn made it! Pick a piece</div><div class="pl-opts"></div></div></div>
 
 <div id="sheet" class="hidden"><div class="card">
@@ -171,6 +171,14 @@
 <script src="assets/knight_tex.js"></script>
 <script src="chess_knights.js"></script>
 <script src="assets/spr_kn.js"></script>
+<script>/* ?stress (11-25): chép tranh Vua/Mã/Tốt sang Hậu/Xe/Tượng → dịch sẵn nạp 12 bộ tranh như khi vẽ xong hết, để thử bộ nhớ iPad thật
+   TRƯỚC khi vẽ thêm quân. Không có ?stress thì không đụng gì. Nhãn góc màn: "thử 12 bộ tranh…" → "✓ đã nạp xong" khi dịch sẵn xong. */
+if (/[?&]stress\b/.test(location.search) && window.CHESS_SPR) {
+  const S = CHESS_SPR.sets, v = document.getElementById('ver');
+  for (const [to, from] of [['q', 'k'], ['r', 'n'], ['b', 'p']]) for (const c of ['w', 'b']) S[to + '_' + c] = Object.assign({}, S[from + '_' + c]);
+  v.textContent += ' · thử 12 bộ tranh…';
+  const t = setInterval(() => { if (window.__chess && __chess.view && __chess.view.warmed) { v.textContent = v.textContent.replace('…', ' ✓ đã nạp xong'); clearInterval(t); } }, 500);
+}</script>
 <script src="chess_view.js"></script>
 <script src="chess_app.js"></script>
 </body>

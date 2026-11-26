@@ -1978,7 +1978,7 @@
       }
       const C = warm.cur, hid = [];
       arena.scene.add(sparks, fxGrp, flashLight, streaks);            // như enterArena: đúng bộ đèn + vật của trận thật
-      let objs = [];
+      let objs = [], wait = false;
       try {
         if (!C.objs) C.objs = C.step() || [];
         objs = C.objs;
@@ -1989,19 +1989,27 @@
         for (const r of (objs.length ? objs : [arena.scene])) r.traverse(x => { if (x.visible && x.material && (x.isMesh || x.isSprite || x.isPoints || x.isLine)) pool.push(x); });
         if (!C.mats) C.mats = [...new Set(pool.flatMap(uu))];
         const target = C.mats[C.k];
-        for (const x of pool) if (uu(x).indexOf(target) < 0) { x.visible = false; hid.push(x); }
-        R.setScissorTest(false); R.setViewport(0, 0, PX, PX);
-        if (PP.composer && cfg.cutscene !== 'split') {
-          updateMirror(warm.camM); PP.rpass.camera = warm.cam; PP.final.uniforms.uFlash.value = 0; PP.composer.render();
-        } else { if (mirror.uni) mirror.uni.uReflK.value = 0; R.render(arena.scene, warm.cam); }
-        warm.n++;
+        // 11-25: ảnh của vật liệu này còn đang giải mã (texture.version 0) → three BỎ QUA lượt đưa lên card đồ hoạ và không quay lại.
+        // Vật liệu đầu mỗi bước = tấm THỦ THẾ, vẽ ngay khung bước vừa dựng chiến binh → đo 11-25: 6/6 bộ thiếu đúng tấm thủ thế → trận
+        // đầu phải nạp giữa lúc chuyển cảnh. → chờ ảnh xong rồi mới vẽ vật liệu này (tối đa 120 lượt, ảnh hỏng thì đi tiếp như cũ).
+        const tObj = pool.find(x => uu(x).indexOf(target) >= 0);
+        const tMat = tObj && (Array.isArray(tObj.material) ? tObj.material : [tObj.material]).find(m => m.uuid === target);
+        if (tMat && tMat.map && tMat.map.version === 0 && (C.wait = (C.wait || 0) + 1) < 120) wait = true;
+        if (!wait) {
+          for (const x of pool) if (uu(x).indexOf(target) < 0) { x.visible = false; hid.push(x); }
+          R.setScissorTest(false); R.setViewport(0, 0, PX, PX);
+          if (PP.composer && cfg.cutscene !== 'split') {
+            updateMirror(warm.camM); PP.rpass.camera = warm.cam; PP.final.uniforms.uFlash.value = 0; PP.composer.render();
+          } else { if (mirror.uni) mirror.uni.uReflK.value = 0; R.render(arena.scene, warm.cam); }
+          warm.n++;
+        }
       } catch (e) {
         warm.done = true; console.error('dịch sẵn đấu trường hỏng:', e);   // trận thật vẫn tự dịch như cũ; bộ thử bắt lỗi này
       }
       for (const x of hid) x.visible = true;
       for (const o of objs) if (o.parent) o.parent.remove(o);
       arena.scene.remove(streaks); scene.add(sparks, fxGrp, flashLight);  // như exitArena: trả về bàn cờ
-      if (!warm.done && ++C.k >= (C.mats ? C.mats.length : 0)) { warm.cur = null; warm.i++; }
+      if (!warm.done && !wait && ++C.k >= (C.mats ? C.mats.length : 0)) { warm.cur = null; warm.i++; }
     }
 
     /* ---------- vẽ ---------- */
